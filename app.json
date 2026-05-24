@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "Fuel Receipt",
+    "slug": "fuel-receipt-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "fuelreceipt",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1D4ED8"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fuelreceipt.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to thermal receipt printers.",
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to thermal receipt printers.",
+        "NSCameraUsageDescription": "This app uses the camera to capture your station logo.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select a station logo."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1D4ED8"
+      },
+      "package": "com.fuelreceipt.app",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Fuel Receipt to access your photos for station logo.",
+          "cameraPermission": "Allow Fuel Receipt to use the camera for station logo."
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Allow Fuel Receipt to connect to Bluetooth thermal printers."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6a94638d-1f04-4a9c-afa2-2b644c54c3a2"
+      }
+    }
+  }
+}
