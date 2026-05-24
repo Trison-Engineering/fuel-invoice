@@ -29,6 +29,11 @@
         "backgroundColor": "#1D4ED8"
       },
       "package": "com.fuelreceipt.app",
+      "statusBar": {
+        "backgroundColor": "#FFFFFF",
+        "barStyle": "dark-content",
+        "translucent": false
+      },
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",

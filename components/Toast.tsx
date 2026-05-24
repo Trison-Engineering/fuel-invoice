@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { View, Text, Animated } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing } from "../constants/theme";
 
@@ -20,6 +21,7 @@ export function Toast({
   onHide,
   duration = 3000,
 }: ToastProps) {
+  const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export function Toast({
     <Animated.View
       style={{
         position: "absolute",
-        top: 60,
+        top: insets.top + spacing.sm,
         left: spacing.lg,
         right: spacing.lg,
         opacity,
