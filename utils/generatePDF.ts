@@ -5,10 +5,12 @@ import { ReceiptData } from "./generateReceipt";
 
 const MM_TO_POINTS = 2.83465;
 const PAGE_WIDTH_MM = 58;
-const LINE_HEIGHT_MM = 3.2;
-const SEPARATOR_HEIGHT_MM = 2.5;
-const LOGO_HEIGHT_MM = 14;
-const PAGE_PADDING_MM = 6;
+const PAGE_PADDING_MM = 8;
+const LOGO_HEIGHT_MM = 22;
+const ROW_HEIGHT_MM = 4.5;
+const SEPARATOR_HEIGHT_MM = 3.5;
+const FOOTER_LINE_MM = 4;
+const HEIGHT_BUFFER_MM = 12;
 
 function escapeHtml(text: string): string {
   return text
@@ -41,21 +43,31 @@ function dashedSeparator(): string {
   return '<div class="separator"></div>';
 }
 
-function estimateHeightMm(data: ReceiptData, addressLines: number): number {
-  let lines = 0;
-  if (data.logoDataUrl) lines += LOGO_HEIGHT_MM / LINE_HEIGHT_MM;
-  lines += 1 + addressLines + 1;
-  lines += 3 + 3 + 1 + 1;
-  if (data.customerName.trim()) lines += 1;
-  lines += 4;
-
+function estimateHeightMm(data: ReceiptData, addressLineCount: number): number {
   const separatorCount = 6;
-  return (
+  let rowCount = 0;
+
+  if (data.logoDataUrl) rowCount += 0; // logo counted separately
+  rowCount += 1; // station name
+  rowCount += addressLineCount;
+  rowCount += 1; // FUEL RECEIPT
+  rowCount += 3; // receipt no, date, time
+  rowCount += 3; // product, volume, rate
+  rowCount += 1; // total
+  rowCount += 1; // vehicle
+  if (data.customerName.trim()) rowCount += 1;
+  rowCount += 4; // footer lines
+
+  const logoMm = data.logoDataUrl ? LOGO_HEIGHT_MM : 0;
+  const rawHeight =
     PAGE_PADDING_MM +
-    lines * LINE_HEIGHT_MM +
+    logoMm +
+    rowCount * ROW_HEIGHT_MM +
     separatorCount * SEPARATOR_HEIGHT_MM +
-    2
-  );
+    FOOTER_LINE_MM +
+    HEIGHT_BUFFER_MM;
+
+  return Math.ceil(rawHeight);
 }
 
 function buildHtmlReceipt(data: ReceiptData): { html: string; heightMm: number } {
@@ -118,9 +130,10 @@ function buildHtmlReceipt(data: ReceiptData): { html: string; heightMm: number }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: ${PAGE_WIDTH_MM}mm;
-      height: auto;
+      height: ${heightMm}mm;
       margin: 0;
       padding: 0;
+      overflow: hidden;
     }
     body {
       font-family: 'Courier New', Courier, monospace;
@@ -128,7 +141,13 @@ function buildHtmlReceipt(data: ReceiptData): { html: string; heightMm: number }
       line-height: 1.35;
       color: #111;
       background: #fff;
-      padding: 3mm 2.5mm;
+      padding: 4mm 2.5mm;
+    }
+    .receipt {
+      width: 100%;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      -webkit-column-break-inside: avoid;
     }
     .logo {
       display: block;
@@ -185,7 +204,9 @@ function buildHtmlReceipt(data: ReceiptData): { html: string; heightMm: number }
   </style>
 </head>
 <body>
+<div class="receipt">
 ${body}
+</div>
 </body>
 </html>`;
 
@@ -195,7 +216,8 @@ ${body}
 export async function generateAndSharePDF(data: ReceiptData): Promise<void> {
   const { html, heightMm } = buildHtmlReceipt(data);
   const widthPoints = PAGE_WIDTH_MM * MM_TO_POINTS;
-  const heightPoints = Math.ceil(heightMm * MM_TO_POINTS);
+  // Extra points buffer — Android PDF renderer often needs more than CSS mm estimate
+  const heightPoints = Math.ceil(heightMm * MM_TO_POINTS) + 40;
 
   const { uri } = await Print.printToFileAsync({
     html,
