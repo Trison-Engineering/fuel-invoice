@@ -10,7 +10,7 @@ const LOGO_HEIGHT_MM = 22;
 const ROW_HEIGHT_MM = 4.5;
 const SEPARATOR_HEIGHT_MM = 3.5;
 const FOOTER_LINE_MM = 4;
-const HEIGHT_BUFFER_MM = 12;
+const HEIGHT_BUFFER_MM = 6;
 
 function escapeHtml(text: string): string {
   return text
