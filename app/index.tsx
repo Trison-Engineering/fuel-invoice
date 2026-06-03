@@ -19,9 +19,7 @@ import { SelectField } from "../components/SelectField";
 import { TextAreaField } from "../components/TextAreaField";
 import { LogoUploader } from "../components/LogoUploader";
 import { PrinterStatus } from "../components/PrinterStatus";
-import { ReceiptPreview } from "../components/ReceiptPreview";
 import { Toast } from "../components/Toast";
-import { generateAndSharePDF } from "../utils/generatePDF";
 import { colors, spacing } from "../constants/theme";
 
 export default function HomeScreen() {
@@ -30,11 +28,9 @@ export default function HomeScreen() {
   const printer = usePrinterContext();
   const form = useFormState();
 
-  const [showPreview, setShowPreview] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [isSavingPdf, setIsSavingPdf] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" }>({
     visible: false,
     message: "",
@@ -65,34 +61,22 @@ export default function HomeScreen() {
   const handlePrint = async () => {
     if (!form.validate()) return;
 
-    if (!printer.connectedDevice) {
-      showToast("No printer connected. Go to Printer Setup to connect.", "error");
-      return;
-    }
-
     setIsPrinting(true);
     try {
+      const connected = await printer.ensureConnected();
+      if (!connected) {
+        showToast("Connect your Bluetooth POS printer first.", "error");
+        router.push("/printer-setup");
+        return;
+      }
+
       await printer.printReceipt(form.getReceiptData());
-      showToast("Receipt sent to printer");
+      showToast("Receipt printed");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Print failed";
       showToast(msg, "error");
     } finally {
       setIsPrinting(false);
-    }
-  };
-
-  const handleSavePdf = async () => {
-    if (!form.validate()) return;
-
-    setIsSavingPdf(true);
-    try {
-      await generateAndSharePDF(form.getReceiptData());
-      showToast("PDF ready to share");
-    } catch {
-      showToast("Failed to generate PDF", "error");
-    } finally {
-      setIsSavingPdf(false);
     }
   };
 
@@ -129,7 +113,7 @@ export default function HomeScreen() {
     <View style={{ flex: 1 }}>
       <ScrollView
         ref={form.scrollRef}
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }}
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
         {fieldWrapper(
@@ -342,10 +326,6 @@ export default function HomeScreen() {
             />
           </View>
         </FormSection>
-
-        <Pressable onPress={() => setShowPreview(true)} style={{ alignItems: "center", marginBottom: spacing.md }}>
-          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: "500" }}>Preview Receipt</Text>
-        </Pressable>
       </ScrollView>
 
       <View
@@ -358,55 +338,27 @@ export default function HomeScreen() {
           backgroundColor: colors.white,
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          gap: spacing.sm,
         }}
       >
         <Pressable
           onPress={handlePrint}
-          onLongPress={() => setShowPreview(true)}
-          disabled={isPrinting}
+          disabled={isPrinting || printer.isReconnecting}
           style={{
             height: 48,
             backgroundColor: colors.primary,
             borderRadius: 8,
             alignItems: "center",
             justifyContent: "center",
-            opacity: isPrinting ? 0.7 : 1,
+            opacity: isPrinting || printer.isReconnecting ? 0.7 : 1,
           }}
         >
-          {isPrinting ? (
+          {isPrinting || printer.isReconnecting ? (
             <ActivityIndicator color={colors.white} />
           ) : (
-            <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Print Receipt</Text>
-          )}
-        </Pressable>
-        <Pressable
-          onPress={handleSavePdf}
-          disabled={isSavingPdf}
-          style={{
-            height: 48,
-            backgroundColor: colors.white,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: colors.primary,
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: isSavingPdf ? 0.7 : 1,
-          }}
-        >
-          {isSavingPdf ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : (
-            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "600" }}>Save as PDF</Text>
+            <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Print</Text>
           )}
         </Pressable>
       </View>
-
-      <ReceiptPreview
-        visible={showPreview}
-        data={form.getReceiptData()}
-        onClose={() => setShowPreview(false)}
-      />
 
       <Toast
         visible={toast.visible}

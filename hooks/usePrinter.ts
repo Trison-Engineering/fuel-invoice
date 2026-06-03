@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PermissionsAndroid, Platform } from "react-native";
+import { AppState, NativeModules, PermissionsAndroid, Platform } from "react-native";
 import { BleManager, Device, State } from "react-native-ble-plx";
-import { getItem, setItem, StorageKeys } from "../utils/storage";
+import { getItem, removeItem, setItem, StorageKeys } from "../utils/storage";
 import { generateEscPosBuffer, bufferToBase64, ReceiptData } from "../utils/generateReceipt";
 
 export interface DiscoveredPrinter {
@@ -17,19 +17,33 @@ const PRINTER_SERVICE_UUIDS = [
 ];
 
 const WRITE_CHAR_UUID = "49535343-8841-43f4-a8d4-ecbe34729bb3";
-
 const CHUNK_SIZE = 180;
+const CHUNK_DELAY_MS = 25;
+
+const BLE_UNAVAILABLE_MESSAGE =
+  "Bluetooth printing needs the installed app build. Expo Go does not support BLE printers.";
 
 let bleManagerInstance: BleManager | null = null;
 
-function getBleManager(): BleManager {
+export function isBleNativeModuleAvailable(): boolean {
+  return NativeModules.BlePlx != null;
+}
+
+function createBleManager(): BleManager | null {
+  if (!isBleNativeModuleAvailable()) {
+    return null;
+  }
   if (!bleManagerInstance) {
     bleManagerInstance = new BleManager();
   }
   return bleManagerInstance;
 }
 
-async function requestAndroidPermissions(): Promise<boolean> {
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestBluetoothPermissions(): Promise<boolean> {
   if (Platform.OS !== "android") return true;
 
   const apiLevel = Platform.Version;
@@ -52,26 +66,26 @@ async function requestAndroidPermissions(): Promise<boolean> {
   return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
-function isLikelyPrinter(name: string | null): boolean {
-  if (!name) return false;
-  const lower = name.toLowerCase();
-  const keywords = [
-    "printer",
-    "pos",
-    "thermal",
-    "58",
-    "80",
-    "rp",
-    "mtp",
-    "inner",
-    "speedx",
-    "goojprt",
-    "epson",
-    "star",
-    "bt-",
-    "bluetooth printer",
-  ];
-  return keywords.some((k) => lower.includes(k));
+async function waitForBluetoothPoweredOn(manager: BleManager): Promise<boolean> {
+  const state = await manager.state();
+  if (state === State.PoweredOn) return true;
+
+  return new Promise((resolve) => {
+    const subscription = manager.onStateChange((nextState) => {
+      if (nextState === State.PoweredOn) {
+        subscription.remove();
+        resolve(true);
+      } else if (nextState === State.PoweredOff || nextState === State.Unauthorized) {
+        subscription.remove();
+        resolve(false);
+      }
+    }, true);
+
+    setTimeout(() => {
+      subscription.remove();
+      resolve(false);
+    }, 8000);
+  });
 }
 
 export function usePrinter() {
@@ -79,62 +93,158 @@ export function usePrinter() {
   const [devices, setDevices] = useState<DiscoveredPrinter[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<DiscoveredPrinter | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [bluetoothEnabled, setBluetoothEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isBleSupported] = useState(isBleNativeModuleAvailable);
 
-  const managerRef = useRef<BleManager>(getBleManager());
+  const managerRef = useRef<BleManager | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disconnectSubRef = useRef<{ remove: () => void } | null>(null);
 
-  useEffect(() => {
-    const manager = managerRef.current;
-    const subscription = manager.onStateChange((state) => {
-      setBluetoothEnabled(state === State.PoweredOn);
-    }, true);
+  const getManager = useCallback((): BleManager | null => {
+    if (!isBleSupported) return null;
+    if (!managerRef.current) {
+      managerRef.current = createBleManager();
+    }
+    return managerRef.current;
+  }, [isBleSupported]);
 
-    return () => {
-      subscription.remove();
-      if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
-    };
+  const clearDeviceConnection = useCallback(() => {
+    disconnectSubRef.current?.remove();
+    disconnectSubRef.current = null;
+    deviceRef.current = null;
+    setConnectedDevice(null);
   }, []);
 
-  const autoReconnect = useCallback(async () => {
-    const lastId = await getItem<string>(StorageKeys.LAST_PRINTER_ID);
-    if (!lastId) return;
-
-    try {
-      const manager = managerRef.current;
-      const state = await manager.state();
-      if (state !== State.PoweredOn) return;
-
-      const device = await manager.connectToDevice(lastId, { autoConnect: false });
-      await device.discoverAllServicesAndCharacteristics();
+  const attachDevice = useCallback(
+    (device: Device, fallbackName?: string) => {
+      disconnectSubRef.current?.remove();
       deviceRef.current = device;
       setConnectedDevice({
         id: device.id,
-        name: device.name ?? device.localName ?? "Printer",
+        name: device.name ?? device.localName ?? fallbackName ?? "Bluetooth Printer",
         rssi: device.rssi,
       });
-    } catch {
-      // auto-reconnect is best-effort
+      disconnectSubRef.current = device.onDisconnected(() => {
+        clearDeviceConnection();
+      });
+    },
+    [clearDeviceConnection]
+  );
+
+  const autoReconnect = useCallback(async (): Promise<boolean> => {
+    const manager = getManager();
+    if (!manager) {
+      setError(BLE_UNAVAILABLE_MESSAGE);
+      return false;
     }
-  }, []);
+
+    if (deviceRef.current) {
+      try {
+        const connected = await deviceRef.current.isConnected();
+        if (connected) return true;
+      } catch {
+        clearDeviceConnection();
+      }
+    }
+
+    const lastId = await getItem<string>(StorageKeys.LAST_PRINTER_ID);
+    if (!lastId) return false;
+
+    const lastName = await getItem<string>(StorageKeys.LAST_PRINTER_NAME);
+
+    setIsReconnecting(true);
+    setError(null);
+
+    try {
+      const permitted = await requestBluetoothPermissions();
+      if (!permitted) {
+        setError("Bluetooth permissions are required.");
+        return false;
+      }
+
+      const poweredOn = await waitForBluetoothPoweredOn(manager);
+      if (!poweredOn) {
+        setBluetoothEnabled(false);
+        setError("Please turn on Bluetooth.");
+        return false;
+      }
+
+      setBluetoothEnabled(true);
+
+      const device = await manager.connectToDevice(lastId, {
+        timeout: 15000,
+        autoConnect: Platform.OS === "android",
+      });
+      await device.discoverAllServicesAndCharacteristics();
+      attachDevice(device, lastName ?? undefined);
+
+      await setItem(StorageKeys.LAST_PRINTER_ID, device.id);
+      await setItem(
+        StorageKeys.LAST_PRINTER_NAME,
+        device.name ?? device.localName ?? lastName ?? "Bluetooth Printer"
+      );
+
+      return true;
+    } catch {
+      clearDeviceConnection();
+      return false;
+    } finally {
+      setIsReconnecting(false);
+    }
+  }, [attachDevice, clearDeviceConnection, getManager]);
 
   useEffect(() => {
+    if (!isBleSupported) {
+      setError(BLE_UNAVAILABLE_MESSAGE);
+      return;
+    }
+
+    const manager = getManager();
+    if (!manager) return;
+
+    const stateSubscription = manager.onStateChange((state) => {
+      const enabled = state === State.PoweredOn;
+      setBluetoothEnabled(enabled);
+      if (enabled && !deviceRef.current) {
+        autoReconnect();
+      }
+    }, true);
+
     autoReconnect();
-  }, [autoReconnect]);
+
+    const appStateSubscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && !deviceRef.current) {
+        autoReconnect();
+      }
+    });
+
+    return () => {
+      stateSubscription.remove();
+      appStateSubscription.remove();
+      if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+      disconnectSubRef.current?.remove();
+    };
+  }, [autoReconnect, getManager, isBleSupported]);
 
   const scanForPrinters = useCallback(async () => {
+    const manager = getManager();
+    if (!manager) {
+      setError(BLE_UNAVAILABLE_MESSAGE);
+      return;
+    }
+
     setError(null);
-    const permitted = await requestAndroidPermissions();
+    const permitted = await requestBluetoothPermissions();
     if (!permitted) {
       setError("Bluetooth permissions are required to scan for printers.");
       return;
     }
 
-    const manager = managerRef.current;
-    const state = await manager.state();
-    if (state !== State.PoweredOn) {
+    const poweredOn = await waitForBluetoothPoweredOn(manager);
+    if (!poweredOn) {
       setError("Please enable Bluetooth to scan for printers.");
       setBluetoothEnabled(false);
       return;
@@ -149,11 +259,9 @@ export function usePrinter() {
       if (err || !device) return;
 
       const name = device.name ?? device.localName ?? "";
-      if (!name && !isLikelyPrinter(name)) return;
-
       found.set(device.id, {
         id: device.id,
-        name: name || `Device ${device.id.slice(0, 8)}`,
+        name: name || `Bluetooth device ${device.id.slice(0, 8)}`,
         rssi: device.rssi,
       });
       setDevices(Array.from(found.values()).sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100)));
@@ -164,39 +272,53 @@ export function usePrinter() {
       manager.stopDeviceScan();
       setIsScanning(false);
     }, 10000);
-  }, []);
+  }, [getManager]);
 
-  const connectToPrinter = useCallback(async (printer: DiscoveredPrinter) => {
-    setIsConnecting(true);
-    setError(null);
-
-    try {
-      const manager = managerRef.current;
-      manager.stopDeviceScan();
-      setIsScanning(false);
-
-      if (deviceRef.current) {
-        try {
-          await deviceRef.current.cancelConnection();
-        } catch {
-          // ignore
-        }
+  const connectToPrinter = useCallback(
+    async (printer: DiscoveredPrinter) => {
+      const manager = getManager();
+      if (!manager) {
+        setError(BLE_UNAVAILABLE_MESSAGE);
+        return;
       }
 
-      const device = await manager.connectToDevice(printer.id, { timeout: 15000 });
-      await device.discoverAllServicesAndCharacteristics();
-      deviceRef.current = device;
-      setConnectedDevice(printer);
-      await setItem(StorageKeys.LAST_PRINTER_ID, printer.id);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to connect to printer";
-      setError(message);
-      setConnectedDevice(null);
-      deviceRef.current = null;
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
+      setIsConnecting(true);
+      setError(null);
+
+      try {
+        manager.stopDeviceScan();
+        setIsScanning(false);
+
+        if (deviceRef.current) {
+          try {
+            await deviceRef.current.cancelConnection();
+          } catch {
+            // ignore
+          }
+          clearDeviceConnection();
+        }
+
+        const permitted = await requestBluetoothPermissions();
+        if (!permitted) {
+          throw new Error("Bluetooth permissions are required.");
+        }
+
+        const device = await manager.connectToDevice(printer.id, { timeout: 15000 });
+        await device.discoverAllServicesAndCharacteristics();
+        attachDevice(device, printer.name);
+
+        await setItem(StorageKeys.LAST_PRINTER_ID, printer.id);
+        await setItem(StorageKeys.LAST_PRINTER_NAME, printer.name);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Failed to connect to Bluetooth printer";
+        setError(message);
+        clearDeviceConnection();
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    [attachDevice, clearDeviceConnection, getManager]
+  );
 
   const disconnect = useCallback(async () => {
     try {
@@ -206,11 +328,25 @@ export function usePrinter() {
     } catch {
       // ignore
     }
-    deviceRef.current = null;
-    setConnectedDevice(null);
-  }, []);
+    clearDeviceConnection();
+    await removeItem(StorageKeys.LAST_PRINTER_ID);
+    await removeItem(StorageKeys.LAST_PRINTER_NAME);
+  }, [clearDeviceConnection]);
 
   const findWritableCharacteristic = useCallback(async (device: Device) => {
+    for (const serviceUuid of PRINTER_SERVICE_UUIDS) {
+      try {
+        const characteristics = await device.characteristicsForService(serviceUuid);
+        for (const char of characteristics) {
+          if (char.isWritableWithResponse || char.isWritableWithoutResponse) {
+            return { serviceUuid, charUuid: char.uuid };
+          }
+        }
+      } catch {
+        // try next service
+      }
+    }
+
     const services = await device.services();
     for (const service of services) {
       const characteristics = await service.characteristics();
@@ -220,6 +356,7 @@ export function usePrinter() {
         }
       }
     }
+
     return { serviceUuid: PRINTER_SERVICE_UUIDS[1], charUuid: WRITE_CHAR_UUID };
   }, []);
 
@@ -243,21 +380,42 @@ export function usePrinter() {
             base64
           );
         }
+        if (i + CHUNK_SIZE < data.length) {
+          await delay(CHUNK_DELAY_MS);
+        }
       }
     },
     [findWritableCharacteristic]
   );
 
+  const ensureConnected = useCallback(async (): Promise<boolean> => {
+    if (!getManager()) {
+      setError(BLE_UNAVAILABLE_MESSAGE);
+      return false;
+    }
+
+    if (deviceRef.current) {
+      try {
+        const connected = await deviceRef.current.isConnected();
+        if (connected) return true;
+      } catch {
+        clearDeviceConnection();
+      }
+    }
+    return autoReconnect();
+  }, [autoReconnect, clearDeviceConnection, getManager]);
+
   const printReceipt = useCallback(
     async (data: ReceiptData): Promise<void> => {
-      if (!deviceRef.current) {
-        throw new Error("No printer connected");
+      const connected = await ensureConnected();
+      if (!connected || !deviceRef.current) {
+        throw new Error("No Bluetooth printer connected");
       }
 
       const buffer = generateEscPosBuffer(data);
       await writeChunked(deviceRef.current, buffer);
     },
-    [writeChunked]
+    [ensureConnected, writeChunked]
   );
 
   return {
@@ -265,11 +423,14 @@ export function usePrinter() {
     devices,
     connectedDevice,
     isConnecting,
+    isReconnecting,
+    isBleSupported,
     bluetoothEnabled,
     error,
     scanForPrinters,
     connectToPrinter,
     disconnect,
+    ensureConnected,
     printReceipt,
     autoReconnect,
   };
