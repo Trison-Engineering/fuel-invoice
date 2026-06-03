@@ -1,12 +1,38 @@
 import { View, Text, Pressable, FlatList, ActivityIndicator } from "react-native";
+import { useEffect } from "react";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { colors, spacing } from "../constants/theme";
 
 export default function PrinterSetupScreen() {
   const printer = usePrinterContext();
 
+  useEffect(() => {
+    if (!printer.connectedDevice) {
+      printer.autoReconnect();
+    }
+  }, [printer.connectedDevice, printer.autoReconnect]);
+
   return (
     <View style={{ flex: 1, padding: spacing.lg }}>
+      {printer.isReconnecting ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+            marginBottom: spacing.md,
+            padding: spacing.md,
+            backgroundColor: colors.primaryLight,
+            borderRadius: 8,
+          }}
+        >
+          <ActivityIndicator color={colors.primary} size="small" />
+          <Text style={{ color: colors.primary, fontSize: 14 }}>
+            Reconnecting to saved Bluetooth printer...
+          </Text>
+        </View>
+      ) : null}
+
       {printer.connectedDevice ? (
         <View
           style={{
@@ -18,12 +44,17 @@ export default function PrinterSetupScreen() {
             marginBottom: spacing.lg,
           }}
         >
-          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Connected Printer</Text>
+          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
+            Connected via Bluetooth
+          </Text>
           <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
             {printer.connectedDevice.name}
           </Text>
           <Text style={{ fontSize: 12, color: colors.muted, marginBottom: spacing.md }}>
-            ID: {printer.connectedDevice.id}
+            {printer.connectedDevice.id}
+          </Text>
+          <Text style={{ fontSize: 12, color: colors.success, marginBottom: spacing.md }}>
+            This printer reconnects automatically when you reopen the app.
           </Text>
           <Pressable
             onPress={printer.disconnect}
@@ -49,7 +80,7 @@ export default function PrinterSetupScreen() {
           lineHeight: 20,
         }}
       >
-        Make sure your thermal printer is powered on and in pairing mode.
+        Pair your 58mm POS thermal printer over Bluetooth. Turn the printer on and tap Scan.
       </Text>
 
       <Pressable
@@ -68,7 +99,9 @@ export default function PrinterSetupScreen() {
         {printer.isScanning ? (
           <ActivityIndicator color={colors.white} />
         ) : (
-          <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Scan for Printers</Text>
+          <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>
+            Scan Bluetooth Printers
+          </Text>
         )}
       </Pressable>
 
@@ -101,7 +134,7 @@ export default function PrinterSetupScreen() {
         ListEmptyComponent={
           !printer.isScanning ? (
             <Text style={{ textAlign: "center", color: colors.muted, marginTop: spacing.xl }}>
-              No printers found. Tap Scan to search.
+              No Bluetooth printers found. Tap Scan to search.
             </Text>
           ) : null
         }

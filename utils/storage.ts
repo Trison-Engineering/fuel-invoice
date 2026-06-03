@@ -43,5 +43,6 @@ export async function clearAll(): Promise<void> {
 export const StorageKeys = {
   STATION_PROFILE: "station_profile",
   LAST_PRINTER_ID: "last_printer_id",
+  LAST_PRINTER_NAME: "last_printer_name",
   INCLUDE_LOGO_IN_PRINT: "include_logo_in_print",
 } as const;

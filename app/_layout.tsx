@@ -40,7 +40,7 @@ function RootNavigator() {
         }}
       >
         <Stack.Screen name="index" options={{ title: "Fuel Receipt" }} />
-        <Stack.Screen name="printer-setup" options={{ title: "Printer Setup" }} />
+        <Stack.Screen name="printer-setup" options={{ title: "Bluetooth Printer" }} />
         <Stack.Screen name="settings" options={{ title: "Settings" }} />
       </Stack>
     </>
