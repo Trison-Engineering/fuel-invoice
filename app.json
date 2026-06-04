@@ -68,6 +68,8 @@
           "bluetoothAlwaysPermission": "Allow Fuel Receipt to connect to Bluetooth thermal printers."
         }
       ],
+      "./plugins/withSunmiPrinter.js",
+      "./plugins/withPosSerialPrinter.js",
       "expo-asset",
       "expo-font",
       "@react-native-community/datetimepicker"
