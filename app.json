@@ -69,8 +69,9 @@
         }
       ],
       "./plugins/withSunmiPrinter.js",
-      "./plugins/withSunmiPrinterPatch.js",
+      "./plugins/withPosAidlPrinter.js",
       "./plugins/withPosSerialPrinter.js",
+      "./plugins/withPosPrinterPackages.js",
       "expo-asset",
       "expo-font",
       "@react-native-community/datetimepicker"

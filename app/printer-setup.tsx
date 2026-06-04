@@ -104,8 +104,8 @@ export default function PrinterSetupScreen() {
             Handheld POS built-in printer
           </Text>
           <Text style={{ fontSize: 14, color: colors.black, marginBottom: spacing.md, lineHeight: 20 }}>
-            Your EzPump / Handheld-POS device uses an internal thermal printer. The app connects
-            automatically on startup — no Bluetooth pairing needed.
+            Your EzPump / Handheld-POS uses the built-in printer via the system iPos service.
+            The app connects automatically — no Bluetooth pairing needed for the internal printer.
           </Text>
           {printer.printerMode === "builtin" && printer.connectedDevice ? (
             <>
