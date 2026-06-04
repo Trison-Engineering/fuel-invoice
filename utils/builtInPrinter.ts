@@ -1,21 +1,29 @@
 import { NativeModules, Platform } from "react-native";
 import SunmiPrinter from "@heasy/react-native-sunmi-printer";
 import { bufferToBase64 } from "./generateReceipt";
+import {
+  checkPosAidlPrinterStatus,
+  connectPosAidlPrinter,
+  disconnectPosAidlPrinter,
+  getPosAidlBackend,
+  isPosAidlPrinterModuleAvailable,
+  isPosAidlPrinterReady,
+  printPosAidlRaw,
+} from "./posAidlPrinter";
 
 const BUILT_IN_ID = "builtin-pos-printer";
 const BUILT_IN_NAME = "Built-in POS Printer";
 
-/** Sunmi AIDL: 1 = ready, 2 = busy, 4 = no paper, 5 = overheated */
+/** Sunmi AIDL: 1 = ready */
 const SUNMI_STATE_READY = 1;
 
-export type InternalBackend = "sunmi" | "printerModule";
+export type InternalBackend = "ipos" | "sunmi" | "printerModule";
 
 type GenericPrinterModule = {
   printText?: (text: string) => void | Promise<void>;
   printRaw?: (data: string) => void | Promise<void>;
   sendRAWData?: (data: string) => void;
   hasPrinter?: () => Promise<boolean>;
-  printerInit?: () => void;
   updatePrinterState?: () => Promise<number>;
   getServiceVersion?: () => Promise<string>;
 };
@@ -32,7 +40,6 @@ function getGenericPrinterModule(): GenericPrinterModule | null {
 }
 
 function prependUtf8Init(buffer: Uint8Array): Uint8Array {
-  // ESC @ init + FS & (UTF-8 on many Chinese OEM POS printers)
   const prefix = new Uint8Array([0x1b, 0x40, 0x1c, 0x26]);
   const merged = new Uint8Array(prefix.length + buffer.length);
   merged.set(prefix);
@@ -49,7 +56,11 @@ export function isGenericPrinterModuleAvailable(): boolean {
 }
 
 export function isInternalPrinterModuleAvailable(): boolean {
-  return isSunmiPrinterModuleAvailable() || isGenericPrinterModuleAvailable();
+  return (
+    isPosAidlPrinterModuleAvailable() ||
+    isSunmiPrinterModuleAvailable() ||
+    isGenericPrinterModuleAvailable()
+  );
 }
 
 export function getActiveInternalBackend(): InternalBackend | null {
@@ -84,9 +95,20 @@ async function isGenericReady(): Promise<boolean> {
 }
 
 export async function isBuiltInPrinterReady(): Promise<boolean> {
+  if (activeBackend === "ipos") return isPosAidlPrinterReady();
   if (activeBackend === "sunmi") return isSunmiReady();
   if (activeBackend === "printerModule") return isGenericReady();
-  return (await isSunmiReady()) || (await isGenericReady());
+  return (await isPosAidlPrinterReady()) || (await isSunmiReady()) || (await isGenericReady());
+}
+
+async function connectIpos(): Promise<boolean> {
+  if (!isPosAidlPrinterModuleAvailable()) return false;
+  const connected = await connectPosAidlPrinter();
+  if (connected) {
+    activeBackend = "ipos";
+    return true;
+  }
+  return false;
 }
 
 async function connectSunmi(maxAttempts = 20): Promise<boolean> {
@@ -100,7 +122,7 @@ async function connectSunmi(maxAttempts = 20): Promise<boolean> {
         return true;
       }
     } catch {
-      // printer service may still be binding
+      // service may still be binding
     }
     await delay(500);
   }
@@ -141,7 +163,9 @@ export async function connectBuiltInPrinter(): Promise<boolean> {
   if (!isInternalPrinterModuleAvailable()) return false;
 
   activeBackend = null;
+  await disconnectPosAidlPrinter().catch(() => undefined);
 
+  if (await connectIpos()) return true;
   if (await connectSunmi()) return true;
   if (await connectGeneric()) return true;
 
@@ -156,6 +180,11 @@ export async function getBuiltInPrinterInfo(): Promise<{
   backend?: InternalBackend;
 }> {
   try {
+    if (activeBackend === "ipos" || (await isPosAidlPrinterReady())) {
+      const backend = getPosAidlBackend() ?? "ipos";
+      return { backend: "ipos", serviceVersion: backend };
+    }
+
     if (activeBackend === "sunmi" || (await isSunmiReady())) {
       const [model, paper, version, serviceVersion] = await Promise.all([
         SunmiPrinter.getPrinterModal().catch(() => undefined),
@@ -185,15 +214,19 @@ export async function checkBuiltInPrinterStatus(): Promise<{
     return { ready: false, message: "Internal printer not connected" };
   }
 
+  if (activeBackend === "ipos") {
+    return checkPosAidlPrinterStatus();
+  }
+
   if (activeBackend === "sunmi") {
     try {
       const ready = await SunmiPrinter.hasPrinter();
       if (!ready) {
-        return { ready: false, message: "Internal printer service not connected" };
+        return { ready: false, message: "Sunmi printer service not connected" };
       }
       const state = await SunmiPrinter.updatePrinterState();
       if (state === SUNMI_STATE_READY) {
-        return { ready: true, message: "Printer ready" };
+        return { ready: true, message: "Printer ready (Sunmi)" };
       }
       const messages: Record<number, string> = {
         2: "Printer is busy",
@@ -230,6 +263,11 @@ export async function checkBuiltInPrinterStatus(): Promise<{
 }
 
 export async function printBuiltInRaw(buffer: Uint8Array): Promise<void> {
+  if (activeBackend === "ipos" || (await isPosAidlPrinterReady())) {
+    await printPosAidlRaw(buffer);
+    return;
+  }
+
   const ready = await isBuiltInPrinterReady();
   if (!ready) {
     throw new Error("Internal printer service not connected");

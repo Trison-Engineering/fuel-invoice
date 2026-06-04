@@ -195,7 +195,12 @@ export function usePrinter() {
 
       const info = await getBuiltInPrinterInfo();
       const backend = getActiveInternalBackend();
-      const backendLabel = backend === "printerModule" ? "AIDL" : "Sunmi AIDL";
+      const backendLabel =
+        backend === "ipos"
+          ? "iPos AIDL"
+          : backend === "printerModule"
+            ? "AIDL"
+            : "Sunmi AIDL";
       const displayName = info.model
         ? `${getBuiltInPrinterName()} (${info.model}, ${backendLabel})`
         : `${getBuiltInPrinterName()} (${backendLabel})`;
@@ -664,10 +669,7 @@ export function usePrinter() {
     let workingMethod: PrinterConnectionMethod | null = null;
 
     const tryAidl = async (): Promise<PrinterTestResult> => {
-      const label =
-        getActiveInternalBackend() === "printerModule"
-          ? "Internal AIDL (PrinterModule)"
-          : "Internal AIDL (Sunmi service)";
+      const label = "Internal AIDL (iPos / Sunmi service)";
       try {
         if (!isBuiltInSupported) {
           return {
@@ -697,7 +699,13 @@ export function usePrinter() {
         });
         await setItem(StorageKeys.PRINTER_MODE, "builtin");
         workingMethod = "aidl";
-        return { method: "aidl", label, success: true, message: "Test receipt sent via AIDL" };
+        const backend = getActiveInternalBackend() ?? "aidl";
+        return {
+          method: "aidl",
+          label,
+          success: true,
+          message: `Test receipt sent via ${backend} AIDL`,
+        };
       } catch (e) {
         const message = e instanceof Error ? e.message : "AIDL print failed";
         return { method: "aidl", label, success: false, message };

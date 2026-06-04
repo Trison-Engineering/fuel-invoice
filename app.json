@@ -68,6 +68,7 @@
         }
       ],
       "./plugins/withSunmiPrinter.js",
+      "./plugins/withPosAidlPrinter.js",
       "./plugins/withSunmiPrinterPatch.js",
       "./plugins/withPosSerialPrinter.js",
       "expo-asset",

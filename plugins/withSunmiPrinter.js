@@ -1,10 +1,11 @@
 const { withAndroidManifest } = require("@expo/config-plugins");
 
 const POS_PRINTER_PACKAGES = [
+  "com.iposprinter.iposprinterservice",
   "woyou.aidlservice.jiuiv5",
   "com.sunmi.peripheral.printer",
-  "com.iposprinter.iposprinterservice",
   "net.nyx.printerservice",
+  "com.android.printspooler",
 ];
 
 module.exports = function withSunmiPrinter(config) {
