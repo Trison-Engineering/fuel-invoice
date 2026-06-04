@@ -89,21 +89,20 @@ export async function isBuiltInPrinterReady(): Promise<boolean> {
   return (await isSunmiReady()) || (await isGenericReady());
 }
 
-async function connectSunmi(maxAttempts = 15): Promise<boolean> {
+async function connectSunmi(maxAttempts = 20): Promise<boolean> {
   if (!isSunmiPrinterModuleAvailable()) return false;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const ready = await SunmiPrinter.hasPrinter();
       if (ready) {
-        SunmiPrinter.printerInit();
         activeBackend = "sunmi";
         return true;
       }
     } catch {
       // printer service may still be binding
     }
-    await delay(400);
+    await delay(500);
   }
 
   return false;
@@ -122,7 +121,6 @@ async function connectGeneric(maxAttempts = 10): Promise<boolean> {
           continue;
         }
       }
-      module.printerInit?.();
       activeBackend = "printerModule";
       return true;
     } catch {
@@ -189,6 +187,10 @@ export async function checkBuiltInPrinterStatus(): Promise<{
 
   if (activeBackend === "sunmi") {
     try {
+      const ready = await SunmiPrinter.hasPrinter();
+      if (!ready) {
+        return { ready: false, message: "Internal printer service not connected" };
+      }
       const state = await SunmiPrinter.updatePrinterState();
       if (state === SUNMI_STATE_READY) {
         return { ready: true, message: "Printer ready" };
@@ -228,11 +230,21 @@ export async function checkBuiltInPrinterStatus(): Promise<{
 }
 
 export async function printBuiltInRaw(buffer: Uint8Array): Promise<void> {
+  const ready = await isBuiltInPrinterReady();
+  if (!ready) {
+    throw new Error("Internal printer service not connected");
+  }
+
   const payload = prependUtf8Init(buffer);
   const base64 = bufferToBase64(payload);
 
   if (activeBackend === "sunmi" || (activeBackend === null && isSunmiPrinterModuleAvailable())) {
-    SunmiPrinter.sendRAWData(base64);
+    try {
+      SunmiPrinter.sendRAWData(base64);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Sunmi print failed";
+      throw new Error(message);
+    }
     return;
   }
 

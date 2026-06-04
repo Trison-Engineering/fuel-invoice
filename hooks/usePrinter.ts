@@ -313,18 +313,13 @@ export function usePrinter() {
       if (builtInConnected) return true;
     }
 
-    if (Platform.OS === "android" && isSerialSupported) {
-      const serialConnected = await connectSerial();
-      if (serialConnected) return true;
-    }
-
     const savedMode = await getItem<PrinterMode>(StorageKeys.PRINTER_MODE);
     if (savedMode === "bluetooth") {
       return reconnectBluetooth();
     }
 
     return false;
-  }, [connectBuiltIn, connectSerial, isBuiltInSupported, isSerialSupported, reconnectBluetooth]);
+  }, [connectBuiltIn, isBuiltInSupported, reconnectBluetooth]);
 
   const autoReconnect = useCallback(async (): Promise<boolean> => {
     if (printerModeRef.current === "builtin" && (await isBuiltInPrinterReady())) {
@@ -338,11 +333,20 @@ export function usePrinter() {
   }, [connectWithFallback]);
 
   useEffect(() => {
-    autoReconnect();
+    let cancelled = false;
+    const startupTimer = setTimeout(() => {
+      if (!cancelled) {
+        autoReconnect().catch(() => {
+          // Printer unavailable at startup — non-fatal
+        });
+      }
+    }, 1500);
 
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
-        autoReconnect();
+        autoReconnect().catch(() => {
+          // ignore reconnect errors when returning to foreground
+        });
       }
     });
 
@@ -353,20 +357,22 @@ export function usePrinter() {
         const enabled = state === State.PoweredOn;
         setBluetoothEnabled(enabled);
         if (enabled && printerModeRef.current === "bluetooth" && !deviceRef.current) {
-          reconnectBluetooth();
+          reconnectBluetooth().catch(() => {
+            // ignore background bluetooth reconnect errors
+          });
         }
       }, true);
-    } else if (!isBuiltInSupported && !isSerialSupported) {
-      setError(BLE_UNAVAILABLE_MESSAGE);
     }
 
     return () => {
+      cancelled = true;
+      clearTimeout(startupTimer);
       stateSubscription?.remove();
       appStateSubscription.remove();
       if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
       disconnectSubRef.current?.remove();
     };
-  }, [autoReconnect, getManager, isBuiltInSupported, isSerialSupported, reconnectBluetooth]);
+  }, [autoReconnect, getManager, reconnectBluetooth]);
 
   const scanForPrinters = useCallback(async () => {
     const manager = getManager();
