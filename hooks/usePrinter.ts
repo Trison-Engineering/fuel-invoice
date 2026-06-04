@@ -26,6 +26,7 @@ import {
   isSerialPrinterReady,
   printSerialRaw,
 } from "../utils/serialPrinter";
+import { getPosAidlLastConnectError } from "../utils/posAidlPrinter";
 
 export interface DiscoveredPrinter {
   id: string;
@@ -191,7 +192,10 @@ export function usePrinter() {
 
     try {
       const ready = await connectBuiltInPrinter();
-      if (!ready) return false;
+      if (!ready) {
+        setError(getPosAidlLastConnectError() ?? "Could not connect to built-in printer");
+        return false;
+      }
 
       const info = await getBuiltInPrinterInfo();
       const backend = getActiveInternalBackend();
@@ -677,7 +681,12 @@ export function usePrinter() {
         }
         const connected = await connectBuiltInPrinter();
         if (!connected) {
-          return { method: "aidl", label, success: false, message: "Could not bind printer service" };
+          return {
+            method: "aidl",
+            label,
+            success: false,
+            message: getPosAidlLastConnectError() ?? "Could not bind printer service",
+          };
         }
         const status = await checkBuiltInPrinterStatus();
         if (!status.ready) {
@@ -823,6 +832,15 @@ export function usePrinter() {
     return results;
   }, [getManager, isBuiltInSupported, isSerialSupported, reconnectBluetooth, setMode, writeChunked]);
 
+  const clearTestResults = useCallback(() => {
+    setTestResults([]);
+    setError(null);
+  }, []);
+
+  const dismissError = useCallback(() => {
+    setError(null);
+  }, []);
+
   return {
     isScanning,
     devices,
@@ -846,5 +864,7 @@ export function usePrinter() {
     printReceipt,
     testPrint,
     autoReconnect,
+    clearTestResults,
+    dismissError,
   };
 };
