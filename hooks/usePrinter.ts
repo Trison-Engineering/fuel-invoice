@@ -196,11 +196,7 @@ export function usePrinter() {
       const info = await getBuiltInPrinterInfo();
       const backend = getActiveInternalBackend();
       const backendLabel =
-        backend === "ipos"
-          ? "iPos AIDL"
-          : backend === "printerModule"
-            ? "AIDL"
-            : "Sunmi AIDL";
+        backend === "ipos" ? "iPos AIDL" : backend === "printerModule" ? "AIDL" : "Built-in";
       const displayName = info.model
         ? `${getBuiltInPrinterName()} (${info.model}, ${backendLabel})`
         : `${getBuiltInPrinterName()} (${backendLabel})`;
@@ -669,7 +665,7 @@ export function usePrinter() {
     let workingMethod: PrinterConnectionMethod | null = null;
 
     const tryAidl = async (): Promise<PrinterTestResult> => {
-      const label = "Internal AIDL (iPos / Sunmi service)";
+      const label = "Internal AIDL (iPos service)";
       try {
         if (!isBuiltInSupported) {
           return {

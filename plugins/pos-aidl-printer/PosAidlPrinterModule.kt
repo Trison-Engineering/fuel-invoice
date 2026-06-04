@@ -209,11 +209,6 @@ class PosAidlPrinterModule(reactContext: ReactApplicationContext) :
     activeBackend = null
   }
 
-  override fun invalidate() {
-    disconnectInternal()
-    super.invalidate()
-  }
-
   companion object {
     private const val TAG = "PosAidlPrinter"
   }

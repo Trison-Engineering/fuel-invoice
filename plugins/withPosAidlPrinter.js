@@ -1,7 +1,4 @@
-const {
-  withDangerousMod,
-  withMainApplication,
-} = require("@expo/config-plugins");
+const { withDangerousMod } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
 
@@ -23,13 +20,7 @@ function copyRecursive(src, dest) {
 }
 
 function copyAidlPrinterSources(projectRoot, platformRoot) {
-  const aidlDest = path.join(
-    platformRoot,
-    "app",
-    "src",
-    "main",
-    "aidl"
-  );
+  const aidlDest = path.join(platformRoot, "app", "src", "main", "aidl");
   const kotlinDest = path.join(
     platformRoot,
     "app",
@@ -53,40 +44,8 @@ function copyAidlPrinterSources(projectRoot, platformRoot) {
   }
 }
 
-function addPackageToMainApplication(contents) {
-  const importLine = "import com.fuelreceipt.app.posaidl.PosAidlPrinterPackage";
-  const packageLine = "packages.add(PosAidlPrinterPackage())";
-
-  if (contents.includes(packageLine)) {
-    return contents;
-  }
-
-  let updated = contents;
-
-  if (!updated.includes(importLine)) {
-    updated = updated.replace(
-      /(import com\.facebook\.react\.ReactApplication\n)/,
-      `$1${importLine}\n`
-    );
-  }
-
-  if (updated.includes("// packages.add(MyReactNativePackage())")) {
-    updated = updated.replace(
-      "// packages.add(MyReactNativePackage())",
-      `${packageLine}\n              // packages.add(MyReactNativePackage())`
-    );
-  } else if (updated.includes("return packages")) {
-    updated = updated.replace(
-      /(\s+)return packages/,
-      `$1${packageLine}\n$1return packages`
-    );
-  }
-
-  return updated;
-}
-
 module.exports = function withPosAidlPrinter(config) {
-  config = withDangerousMod(config, [
+  return withDangerousMod(config, [
     "android",
     async (config) => {
       copyAidlPrinterSources(
@@ -96,13 +55,4 @@ module.exports = function withPosAidlPrinter(config) {
       return config;
     },
   ]);
-
-  config = withMainApplication(config, (config) => {
-    config.modResults.contents = addPackageToMainApplication(
-      config.modResults.contents
-    );
-    return config;
-  });
-
-  return config;
 };
