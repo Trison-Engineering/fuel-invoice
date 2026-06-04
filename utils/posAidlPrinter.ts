@@ -10,10 +10,12 @@ type PosAidlPrinterModule = {
   isConnected: () => Promise<boolean>;
   getBackend: () => Promise<string>;
   getPrinterStatus: () => Promise<number>;
+  getLastConnectError: () => Promise<string>;
   writeRaw: (base64Data: string) => Promise<boolean>;
 };
 
 let connectedBackend: string | null = null;
+let lastConnectError: string | null = null;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,6 +42,10 @@ export function getPosAidlBackend(): string | null {
   return connectedBackend;
 }
 
+export function getPosAidlLastConnectError(): string | null {
+  return lastConnectError;
+}
+
 export async function isPosAidlPrinterReady(): Promise<boolean> {
   const module = getModule();
   if (!module) return false;
@@ -58,10 +64,14 @@ export async function connectPosAidlPrinter(): Promise<boolean> {
     await module.disconnect().catch(() => undefined);
     const backend = await module.connect();
     connectedBackend = backend || "ipos";
+    lastConnectError = null;
     await delay(300);
     return await module.isConnected();
-  } catch {
+  } catch (e) {
     connectedBackend = null;
+    const fromNative = await module.getLastConnectError?.().catch(() => "");
+    const fromReject = e instanceof Error ? e.message : "";
+    lastConnectError = fromNative || fromReject || "Could not bind printer service";
     return false;
   }
 }

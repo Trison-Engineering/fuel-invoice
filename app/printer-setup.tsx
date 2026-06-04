@@ -1,7 +1,27 @@
 import { View, Text, Pressable, FlatList, ActivityIndicator } from "react-native";
 import { useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { colors, spacing } from "../constants/theme";
+
+function DismissButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={12}
+      accessibilityLabel="Dismiss"
+      style={{
+        width: 28,
+        height: 28,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 14,
+      }}
+    >
+      <Ionicons name="close" size={20} color={colors.muted} />
+    </Pressable>
+  );
+}
 
 export default function PrinterSetupScreen() {
   const printer = usePrinterContext();
@@ -67,9 +87,17 @@ export default function PrinterSetupScreen() {
             gap: spacing.sm,
           }}
         >
-          <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: spacing.xs }}>
-            Connection test results
-          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: spacing.xs,
+            }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600" }}>Connection test results</Text>
+            <DismissButton onPress={printer.clearTestResults} />
+          </View>
           {printer.testResults.map((result) => (
             <View key={result.method}>
               <Text
@@ -249,9 +277,13 @@ export default function PrinterSetupScreen() {
             padding: spacing.md,
             borderRadius: 8,
             marginBottom: spacing.md,
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: spacing.sm,
           }}
         >
-          <Text style={{ color: colors.error, fontSize: 14 }}>{printer.error}</Text>
+          <Text style={{ color: colors.error, fontSize: 14, flex: 1 }}>{printer.error}</Text>
+          <DismissButton onPress={printer.dismissError} />
         </View>
       ) : null}
 
