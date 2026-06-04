@@ -7,7 +7,9 @@ export default function PrinterSetupScreen() {
   const printer = usePrinterContext();
 
   useEffect(() => {
-    printer.autoReconnect();
+    printer.autoReconnect().catch(() => {
+      // ignore — user can connect manually from this screen
+    });
   }, [printer.autoReconnect]);
 
   return (
