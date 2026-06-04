@@ -1,10 +1,11 @@
-const { withDangerousMod } = require("@expo/config-plugins");
+const { withDangerousMod, withAppBuildGradle } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
 
 const PLUGIN_DIR = "plugins/pos-aidl-printer";
 const AIDL_SOURCE = path.join(PLUGIN_DIR, "aidl");
 const KOTLIN_FILES = ["PosAidlPrinterModule.kt", "PosAidlPrinterPackage.kt"];
+const AIDL_MARKER = "pos-aidl-printer";
 
 function copyRecursive(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
@@ -44,7 +45,39 @@ function copyAidlPrinterSources(projectRoot, platformRoot) {
   }
 }
 
+/** AGP 8+ disables AIDL unless buildFeatures.aidl is true. */
+function enableAidlInBuildGradle(contents) {
+  if (contents.includes(AIDL_MARKER)) {
+    return contents;
+  }
+
+  const aidlBlock = `    // ${AIDL_MARKER}
+    buildFeatures {
+        aidl true
+    }
+`;
+
+  if (/buildFeatures\s*\{/.test(contents)) {
+    if (/aidl\s+true/.test(contents)) {
+      return contents;
+    }
+    return contents.replace(/buildFeatures\s*\{/, (match) => {
+      return `${match}
+        aidl true`;
+    });
+  }
+
+  return contents.replace(/android\s*\{/, `android {\n${aidlBlock}`);
+}
+
 module.exports = function withPosAidlPrinter(config) {
+  config = withAppBuildGradle(config, (config) => {
+    config.modResults.contents = enableAidlInBuildGradle(
+      config.modResults.contents
+    );
+    return config;
+  });
+
   return withDangerousMod(config, [
     "android",
     async (config) => {

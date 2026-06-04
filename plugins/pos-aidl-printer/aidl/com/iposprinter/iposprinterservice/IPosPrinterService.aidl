@@ -116,7 +116,7 @@ interface IPosPrinterService {
     * @param callback Execution result callback
     * @return
     */
-    void PrintSpecFormatText(String text, String typeface, int fontsize, int alignment, IPosPrinterCallback callback);
+    void PrintSpecFormatText(String text, String typeface, int fontsize, int alignment, in IPosPrinterCallback callback);
 
 	/**
 	* Print a row of the table, you can specify the column width and alignment
