@@ -132,7 +132,7 @@ class PosAidlPrinterModule(reactContext: ReactApplicationContext) :
     }
 
     try {
-      promise.resolve(service.printerStatus)
+      promise.resolve(service.getPrinterStatus())
     } catch (e: Exception) {
       promise.reject("STATUS_ERROR", e.message, e)
     }
@@ -148,7 +148,7 @@ class PosAidlPrinterModule(reactContext: ReactApplicationContext) :
 
     try {
       val bytes = Base64.decode(base64Data, Base64.DEFAULT)
-      val status = service.printerStatus
+      val status = service.getPrinterStatus()
       if (status == 1) {
         promise.reject("PAPERLESS", "Printer is out of paper")
         return
@@ -175,7 +175,7 @@ class PosAidlPrinterModule(reactContext: ReactApplicationContext) :
                     }
                   }
 
-                  override fun onReturnString(value: String?) {
+                  override fun onReturnString(value: String) {
                     // ignore
                   }
                 }
@@ -185,7 +185,7 @@ class PosAidlPrinterModule(reactContext: ReactApplicationContext) :
             }
           }
 
-          override fun onReturnString(value: String?) {
+          override fun onReturnString(value: String) {
             // ignore
           }
         }
