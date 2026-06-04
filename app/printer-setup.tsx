@@ -7,10 +7,8 @@ export default function PrinterSetupScreen() {
   const printer = usePrinterContext();
 
   useEffect(() => {
-    if (!printer.connectedDevice) {
-      printer.autoReconnect();
-    }
-  }, [printer.connectedDevice, printer.autoReconnect]);
+    printer.autoReconnect();
+  }, [printer.autoReconnect]);
 
   return (
     <View style={{ flex: 1, padding: spacing.lg }}>
@@ -28,12 +26,68 @@ export default function PrinterSetupScreen() {
         >
           <ActivityIndicator color={colors.primary} size="small" />
           <Text style={{ color: colors.primary, fontSize: 14 }}>
-            Reconnecting to saved Bluetooth printer...
+            Connecting to printer...
           </Text>
         </View>
       ) : null}
 
-      {printer.connectedDevice ? (
+      <Pressable
+        onPress={printer.testPrint}
+        disabled={printer.isTestingPrint || printer.isReconnecting}
+        style={{
+          height: 48,
+          backgroundColor: colors.primary,
+          borderRadius: 8,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.lg,
+          opacity: printer.isTestingPrint || printer.isReconnecting ? 0.7 : 1,
+        }}
+      >
+        {printer.isTestingPrint ? (
+          <ActivityIndicator color={colors.white} />
+        ) : (
+          <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>
+            Test Print
+          </Text>
+        )}
+      </Pressable>
+
+      {printer.testResults.length > 0 ? (
+        <View
+          style={{
+            backgroundColor: colors.white,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            padding: spacing.lg,
+            marginBottom: spacing.lg,
+            gap: spacing.sm,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: spacing.xs }}>
+            Connection test results
+          </Text>
+          {printer.testResults.map((result) => (
+            <View key={result.method}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "600",
+                  color: result.success ? colors.success : colors.error,
+                }}
+              >
+                {result.success ? "OK" : "FAILED"} — {result.label}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+                {result.message}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {printer.isBuiltInSupported ? (
         <View
           style={{
             backgroundColor: colors.white,
@@ -45,16 +99,59 @@ export default function PrinterSetupScreen() {
           }}
         >
           <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-            Connected via Bluetooth
+            Handheld POS built-in printer
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.black, marginBottom: spacing.md, lineHeight: 20 }}>
+            Your EzPump / Handheld-POS device uses an internal thermal printer. The app connects
+            automatically on startup — no Bluetooth pairing needed.
+          </Text>
+          {printer.printerMode === "builtin" && printer.connectedDevice ? (
+            <>
+              <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
+                {printer.connectedDevice.name}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.success }}>
+                Ready to print receipts
+              </Text>
+            </>
+          ) : (
+            <Pressable
+              onPress={printer.connectBuiltIn}
+              disabled={printer.isReconnecting}
+              style={{
+                height: 44,
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: spacing.sm,
+                opacity: printer.isReconnecting ? 0.7 : 1,
+              }}
+            >
+              <Text style={{ color: colors.white, fontWeight: "600" }}>
+                Connect Built-in Printer
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      ) : null}
+
+      {printer.connectedDevice && printer.printerMode === "serial" ? (
+        <View
+          style={{
+            backgroundColor: colors.white,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            padding: spacing.lg,
+            marginBottom: spacing.lg,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
+            Connected via serial port
           </Text>
           <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
             {printer.connectedDevice.name}
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: spacing.md }}>
-            {printer.connectedDevice.id}
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.success, marginBottom: spacing.md }}>
-            This printer reconnects automatically when you reopen the app.
           </Text>
           <Pressable
             onPress={printer.disconnect}
@@ -72,6 +169,42 @@ export default function PrinterSetupScreen() {
         </View>
       ) : null}
 
+      {printer.connectedDevice && printer.printerMode === "bluetooth" ? (
+        <View
+          style={{
+            backgroundColor: colors.white,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            padding: spacing.lg,
+            marginBottom: spacing.lg,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
+            Connected via Bluetooth
+          </Text>
+          <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
+            {printer.connectedDevice.name}
+          </Text>
+          <Pressable
+            onPress={printer.disconnect}
+            style={{
+              height: 44,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.error,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.error, fontWeight: "600" }}>Disconnect</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
+        External Bluetooth printer (optional)
+      </Text>
       <Text
         style={{
           fontSize: 14,
@@ -80,7 +213,7 @@ export default function PrinterSetupScreen() {
           lineHeight: 20,
         }}
       >
-        Pair your 58mm POS thermal printer over Bluetooth. Turn the printer on and tap Scan.
+        Only needed if you use a separate Bluetooth thermal printer instead of the built-in one.
       </Text>
 
       <Pressable
@@ -88,8 +221,10 @@ export default function PrinterSetupScreen() {
         disabled={printer.isScanning}
         style={{
           height: 48,
-          backgroundColor: colors.primary,
+          backgroundColor: colors.white,
           borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.primary,
           alignItems: "center",
           justifyContent: "center",
           marginBottom: spacing.lg,
@@ -97,9 +232,9 @@ export default function PrinterSetupScreen() {
         }}
       >
         {printer.isScanning ? (
-          <ActivityIndicator color={colors.white} />
+          <ActivityIndicator color={colors.primary} />
         ) : (
-          <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>
+          <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "600" }}>
             Scan Bluetooth Printers
           </Text>
         )}
@@ -115,16 +250,7 @@ export default function PrinterSetupScreen() {
           }}
         >
           <Text style={{ color: colors.error, fontSize: 14 }}>{printer.error}</Text>
-          <Pressable onPress={printer.scanForPrinters} style={{ marginTop: spacing.sm }}>
-            <Text style={{ color: colors.primary, fontWeight: "600" }}>Retry</Text>
-          </Pressable>
         </View>
-      ) : null}
-
-      {!printer.bluetoothEnabled ? (
-        <Text style={{ color: colors.error, marginBottom: spacing.md }}>
-          Bluetooth is disabled. Please enable it in device settings.
-        </Text>
       ) : null}
 
       <FlatList
@@ -134,7 +260,7 @@ export default function PrinterSetupScreen() {
         ListEmptyComponent={
           !printer.isScanning ? (
             <Text style={{ textAlign: "center", color: colors.muted, marginTop: spacing.xl }}>
-              No Bluetooth printers found. Tap Scan to search.
+              No external Bluetooth printers found.
             </Text>
           ) : null
         }
@@ -155,9 +281,6 @@ export default function PrinterSetupScreen() {
             <View style={{ flex: 1, marginRight: spacing.md }}>
               <Text style={{ fontSize: 15, fontWeight: "600" }}>{item.name}</Text>
               <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{item.id}</Text>
-              {item.rssi !== null ? (
-                <Text style={{ fontSize: 11, color: colors.muted }}>Signal: {item.rssi} dBm</Text>
-              ) : null}
             </View>
             <Pressable
               onPress={() => printer.connectToPrinter(item)}

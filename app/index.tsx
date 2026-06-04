@@ -65,7 +65,7 @@ export default function HomeScreen() {
     try {
       const connected = await printer.ensureConnected();
       if (!connected) {
-        showToast("Connect your Bluetooth POS printer first.", "error");
+        showToast("Printer not ready. Open Printer settings to connect.", "error");
         router.push("/printer-setup");
         return;
       }
