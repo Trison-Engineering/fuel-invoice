@@ -46,9 +46,7 @@
     "typescript": "~5.8.3"
   },
   "overrides": {
-    "react-native-css-interop": "0.1.22",
-    "lefthook-windows-x64": "npm:lefthook-darwin-arm64@1.6.12",
-    "turbo-windows-64": "npm:turbo-darwin-arm64@1.13.4"
+    "react-native-css-interop": "0.1.22"
   },
   "private": true
 }
