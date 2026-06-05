@@ -6,8 +6,17 @@ import {
   printText,
 } from "react-native-nyx-printer";
 import type { ReceiptData as FuelReceiptData } from "../../utils/generateReceipt";
-import { formatCurrencyValue, formatDate, formatTime } from "../../utils/formatters";
-import { receiptWidth } from "../../constants/theme";
+import {
+  formatRateRs,
+  formatRow,
+  formatTotalRs,
+  formatVolumeLtr,
+  getPaymentLabel,
+  normalizePrintAddress,
+  RECEIPT_DIVIDER,
+} from "../../utils/receiptFormat";
+import { formatDate, formatTime } from "../../utils/formatters";
+import { printReceiptLogo } from "../../utils/printReceiptLogo";
 
 export interface ReceiptData {
   storeName: string;
@@ -27,8 +36,6 @@ export interface ReceiptData {
   total: number;
   paymentMethod: string;
   footer?: string;
-  /** Extra left-aligned lines printed after receipt header (fuel-specific fields). */
-  detailLines?: string[];
 }
 
 /** NYX printer service result codes (from SdkResult.java). */
@@ -38,8 +45,9 @@ const PRN_COVER_OPEN = -1201;
 const PRN_OVERHEAT = -1204;
 const DEVICE_NOT_CONNECT = -1100;
 
-const DIVIDER = "-".repeat(receiptWidth);
 const SERVICE_BIND_MS = 600;
+const MONOSPACE_FONT = 4;
+const FEED_LINES = 3;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,31 +69,22 @@ function assertResult(code: number, action: string): void {
   throw new Error(`${action} failed: ${status} (code ${code})`);
 }
 
-function padLine(left: string, right: string, width = receiptWidth): string {
-  const trimmedRight = right.trim();
-  const maxLeft = Math.max(1, width - trimmedRight.length - 1);
-  const trimmedLeft = left.length > maxLeft ? left.slice(0, maxLeft) : left;
-  const spaces = Math.max(1, width - trimmedLeft.length - trimmedRight.length);
-  return trimmedLeft + " ".repeat(spaces) + trimmedRight;
-}
-
-function formatWithStyle(
-  text: string,
-  options: {
-    align?: "left" | "center" | "right";
-    bold?: boolean;
-    large?: boolean;
-    small?: boolean;
-  }
-): NyxTextFormat {
+function createFormat(options: {
+  align?: "left" | "center" | "right";
+  bold?: boolean;
+  large?: boolean;
+  small?: boolean;
+  monospace?: boolean;
+}): NyxTextFormat {
   const format = new NyxTextFormat();
   format.align =
     options.align === "center" ? 1 : options.align === "right" ? 2 : 0;
   format.style = options.bold ? 1 : 0;
-  format.textSize = options.large ? 32 : options.small ? 20 : 24;
-  format.textScaleX = options.large ? 1.15 : 1;
-  format.textScaleY = options.large ? 1.15 : 1;
-  format.lineSpacing = 4;
+  format.textSize = options.large ? 30 : options.small ? 20 : 24;
+  format.textScaleX = options.large ? 1.2 : 1;
+  format.textScaleY = options.large ? 1.2 : 1;
+  format.lineSpacing = 6;
+  format.font = options.monospace !== false ? MONOSPACE_FONT : 0;
   return format;
 }
 
@@ -96,43 +95,16 @@ async function printLine(
     bold?: boolean;
     large?: boolean;
     small?: boolean;
+    monospace?: boolean;
   } = {}
 ): Promise<void> {
-  const format = formatWithStyle(text, options);
+  const format = createFormat(options);
   const code = await printText(text.endsWith("\n") ? text : `${text}\n`, format);
   assertResult(code, "Print");
 }
 
-export function mapFuelReceiptToNyx(data: FuelReceiptData): ReceiptData {
-  const detailLines: string[] = [
-    padLine("PRODUCT", data.productType.toUpperCase()),
-    padLine("VOLUME (LTR)", formatCurrencyValue(data.volume)),
-    padLine("RATE/LTR (Rs.)", formatCurrencyValue(data.fuelRate)),
-  ];
-
-  if (data.nozzleNo.trim()) {
-    detailLines.push(padLine("NOZZLE", data.nozzleNo));
-  }
-  if (data.vehicleNumber.trim()) {
-    detailLines.push(padLine("VEHICLE", data.vehicleNumber));
-  }
-  if (data.customerName.trim()) {
-    detailLines.push(padLine("CUSTOMER", data.customerName));
-  }
-
-  return {
-    storeName: data.stationName,
-    address: data.stationAddress,
-    date: formatDate(data.date),
-    time: formatTime(data.time),
-    receiptNo: data.invoiceNumber,
-    items: [],
-    subtotal: data.totalAmount,
-    total: data.totalAmount,
-    paymentMethod: data.paymentMethod === "None" ? "CASH" : data.paymentMethod.toUpperCase(),
-    footer: "THANKS FOR FUELLING WITH US",
-    detailLines,
-  };
+async function printDivider(): Promise<void> {
+  await printLine(RECEIPT_DIVIDER);
 }
 
 class NyxPrinterServiceImpl {
@@ -143,7 +115,6 @@ class NyxPrinterServiceImpl {
       throw new Error("Built-in NYX printer is only available on Android POS devices.");
     }
 
-    // Native module binds to net.nyx.printerservice on load; verify the bridge is reachable.
     await multiply(1, 1);
     await delay(SERVICE_BIND_MS);
     this.initialized = true;
@@ -161,7 +132,7 @@ class NyxPrinterServiceImpl {
     return mapStatusCode(code);
   }
 
-  async printReceipt(data: ReceiptData): Promise<void> {
+  private async assertPrinterReady(): Promise<void> {
     if (!this.initialized) {
       await this.initPrinter();
     }
@@ -173,6 +144,67 @@ class NyxPrinterServiceImpl {
     if (status.startsWith("Error")) {
       throw new Error(`Printer status: ${status}`);
     }
+  }
+
+  async printFuelReceipt(data: FuelReceiptData): Promise<void> {
+    await this.assertPrinterReady();
+
+    await printReceiptLogo({
+      logoDataUrl: data.logoDataUrl,
+      includeLogoInPrint: data.includeLogoInPrint,
+    });
+
+    const address = normalizePrintAddress(data.stationAddress);
+    const payment = getPaymentLabel(data.paymentMethod);
+
+    await printLine(data.stationName.toUpperCase(), {
+      align: "center",
+      bold: true,
+      large: true,
+    });
+
+    if (address) {
+      await printLine(address, { align: "center", small: true });
+    }
+
+    await printLine("FUEL RECEIPT", { align: "center", bold: true });
+    await printDivider();
+
+    await printLine(formatRow("RECEIPT NO:", data.invoiceNumber));
+    await printLine(formatRow("DATE:", formatDate(data.date)));
+    await printLine(formatRow("TIME:", formatTime(data.time)));
+    await printLine(formatRow("PAYMENT:", payment));
+    await printDivider();
+
+    await printLine(formatRow("PRODUCT:", data.productType.toUpperCase()));
+    await printLine(formatRow("VOLUME:", formatVolumeLtr(data.volume)));
+    await printLine(formatRow("RATE/LTR:", formatRateRs(data.fuelRate)));
+    await printDivider();
+
+    await printLine(formatRow("TOTAL AMOUNT:", formatTotalRs(data.totalAmount)), {
+      bold: true,
+    });
+    await printDivider();
+
+    if (data.vehicleNumber.trim()) {
+      await printLine(formatRow("VEHICLE NO:", data.vehicleNumber));
+      await printDivider();
+    }
+
+    await printLine("POWERED BY TRISON", { align: "center", small: true });
+    await printLine("THANKS FOR FUELLING WITH US", { align: "center", small: true });
+    await printLine("VISIT AGAIN", { align: "center", small: true });
+
+    for (let i = 0; i < FEED_LINES; i++) {
+      await printLine("");
+    }
+
+    const feedCode = await paperOut();
+    assertResult(feedCode, "Paper feed");
+  }
+
+  async printReceipt(data: ReceiptData): Promise<void> {
+    await this.assertPrinterReady();
 
     await printLine(data.storeName.toUpperCase(), {
       align: "center",
@@ -181,96 +213,62 @@ class NyxPrinterServiceImpl {
     });
 
     if (data.address?.trim()) {
-      for (const segment of wrapSegments(data.address, receiptWidth)) {
-        await printLine(segment, { align: "center", small: true });
-      }
+      await printLine(data.address, { align: "center", small: true });
     }
 
-    await printLine(DIVIDER);
-    await printLine(`Date: ${data.date}`);
-    await printLine(`Time: ${data.time}`);
-    await printLine(`Receipt No: ${data.receiptNo}`);
-    await printLine(DIVIDER);
+    await printLine("FUEL RECEIPT", { align: "center", bold: true });
+    await printDivider();
+    await printLine(formatRow("RECEIPT NO:", data.receiptNo));
+    await printLine(formatRow("DATE:", data.date));
+    await printLine(formatRow("TIME:", data.time));
+    await printLine(formatRow("PAYMENT:", data.paymentMethod));
+    await printDivider();
 
-    if (data.detailLines?.length) {
-      for (const line of data.detailLines) {
-        await printLine(line);
-      }
-      await printLine(DIVIDER);
+    for (const item of data.items) {
+      await printLine(formatRow("PRODUCT:", item.name.toUpperCase()));
+      await printLine(formatRow("VOLUME:", formatVolumeLtr(item.qty)));
+      await printLine(formatRow("RATE/LTR:", formatRateRs(item.price)));
     }
 
     if (data.items.length > 0) {
-      for (const item of data.items) {
-        await printLine(padLine(item.name, formatCurrencyValue(item.total)));
-        if (item.qty > 0) {
-          await printLine(
-            `  ${item.qty} x ${formatCurrencyValue(item.price)}`,
-            { small: true }
-          );
-        }
-      }
-      await printLine(DIVIDER);
-    }
-    await printLine(padLine("Subtotal", formatCurrencyValue(data.subtotal)));
-
-    if (data.tax != null && data.tax > 0) {
-      await printLine(padLine("Tax", formatCurrencyValue(data.tax)));
-    }
-    if (data.discount != null && data.discount > 0) {
-      await printLine(padLine("Discount", formatCurrencyValue(data.discount)));
+      await printDivider();
     }
 
-    await printLine(padLine("TOTAL", formatCurrencyValue(data.total)), { bold: true });
-    await printLine(DIVIDER);
-    await printLine(`Payment: ${data.paymentMethod}`, { align: "center" });
-    await printLine(data.footer ?? "Thank you", { align: "center" });
+    await printLine(formatRow("TOTAL AMOUNT:", formatTotalRs(data.total)), { bold: true });
+    await printDivider();
+    await printLine("POWERED BY TRISON", { align: "center", small: true });
+    await printLine(data.footer ?? "THANKS FOR FUELLING WITH US", {
+      align: "center",
+      small: true,
+    });
+    await printLine("VISIT AGAIN", { align: "center", small: true });
+
+    for (let i = 0; i < FEED_LINES; i++) {
+      await printLine("");
+    }
 
     const feedCode = await paperOut();
     assertResult(feedCode, "Paper feed");
-    await printLine("");
-    await printLine("");
   }
 
   async printTestReceipt(): Promise<void> {
-    await this.printReceipt({
-      storeName: "Fuel Receipt Test",
-      address: "EzPump Handheld POS",
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString(),
-      receiptNo: "TEST-001",
-      items: [
-        { name: "Petrol", qty: 10, price: 250, total: 2500 },
-        { name: "Diesel", qty: 5, price: 230, total: 1150 },
-      ],
-      subtotal: 3650,
-      tax: 0,
-      discount: 0,
-      total: 3650,
-      paymentMethod: "CASH",
-      footer: "NYX test print OK",
+    await this.printFuelReceipt({
+      stationName: "SUN FILLING STATION",
+      stationAddress: "PSO pump Bhini Interchange Ring Road Lahore",
+      invoiceNumber: "1003",
+      date: "2026-05-21",
+      time: "12:24",
+      paymentMethod: "Cash",
+      productType: "Diesel",
+      fuelRate: "411.75",
+      volume: "800",
+      totalAmount: 329400,
+      vehicleNumber: "AUA-919",
+      nozzleNo: "",
+      customerName: "",
+      includeLogoInPrint: true,
     });
   }
-
-  async printFuelReceipt(data: FuelReceiptData): Promise<void> {
-    await this.printReceipt(mapFuelReceiptToNyx(data));
-  }
-}
-
-function wrapSegments(text: string, width: number): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > width) {
-      if (current) lines.push(current);
-      current = word;
-    } else {
-      current = next;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.length ? lines : [text];
 }
 
 export const NyxPrinterService = new NyxPrinterServiceImpl();
