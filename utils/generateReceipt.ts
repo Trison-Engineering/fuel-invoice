@@ -1,11 +1,16 @@
-import { centerText, formatDate, formatTime } from "./formatters";
+import {
+  centerText,
+  formatDate,
+  formatTime,
+} from "./formatters";
 import {
   buildFuelReceiptTextLines,
-  formatRateRs,
   formatRow,
-  formatTotalRs,
   formatVolumeLtr,
+  formatRateRs,
+  formatTotalRs,
   getPaymentLabel,
+  mapFuelReceiptToPrintView,
   normalizePrintAddress,
   RECEIPT_DIVIDER,
 } from "./receiptFormat";
@@ -81,13 +86,14 @@ export function buildReceiptLines(data: ReceiptData): string[] {
 }
 
 export function generateEscPosBuffer(data: ReceiptData): Uint8Array {
-  const parts: Uint8Array[] = [cmdInit()];
+  const view = mapFuelReceiptToPrintView(data);
   const payment = getPaymentLabel(data.paymentMethod);
+  const parts: Uint8Array[] = [cmdInit()];
 
   parts.push(
     cmdAlign(1),
     cmdBold(true),
-    cmdLine(centerText(data.stationName.toUpperCase())),
+    cmdLine(centerText(view.storeName)),
     cmdBold(false)
   );
 
@@ -130,7 +136,7 @@ export function generateEscPosBuffer(data: ReceiptData): Uint8Array {
     cmdLine(centerText("VISIT AGAIN"))
   );
 
-  parts.push(cmdFeed(3), cmdCut());
+  parts.push(cmdFeed(4), cmdCut());
 
   return concatBytes(...parts);
 }

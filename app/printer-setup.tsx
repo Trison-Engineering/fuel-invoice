@@ -57,6 +57,22 @@ export default function PrinterSetupScreen() {
     }
   };
 
+  const handleCalibrationPrint = async () => {
+    setIsPrinting(true);
+    try {
+      await printer.printCalibration();
+      Alert.alert(
+        "Calibration printed",
+        "Count characters on the numbered line. If it wraps before 32, reduce LINE_WIDTH in utils/receiptFormat.ts."
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Calibration print failed";
+      Alert.alert("Print failed", message);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const printerStatusLabel = printer.printerStatus ?? "Checking...";
   const dotColor = statusColor(printerStatusLabel, printer.connectionStatus);
 
@@ -139,6 +155,24 @@ export default function PrinterSetupScreen() {
         ) : (
           <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Test Print</Text>
         )}
+      </Pressable>
+
+      <Pressable
+        onPress={handleCalibrationPrint}
+        disabled={isBusy}
+        style={{
+          height: 44,
+          backgroundColor: colors.white,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.md,
+          opacity: isBusy ? 0.7 : 1,
+        }}
+      >
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>Print width calibration (32 chars)</Text>
       </Pressable>
 
       <Pressable

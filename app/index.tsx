@@ -21,6 +21,8 @@ import { TextAreaField } from "../components/TextAreaField";
 import { LogoUploader } from "../components/LogoUploader";
 import { PrinterStatus } from "../components/PrinterStatus";
 import { Toast } from "../components/Toast";
+import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
+import type { ReceiptData } from "../utils/generateReceipt";
 import { colors, spacing } from "../constants/theme";
 
 export default function HomeScreen() {
@@ -32,6 +34,8 @@ export default function HomeScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<ReceiptData | null>(null);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" }>({
     visible: false,
     message: "",
@@ -61,9 +65,13 @@ export default function HomeScreen() {
     });
   }, [navigation, printer.connectedDevice, printer.connectionStatus, printer.connectionStatusLabel, router]);
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (!form.validate()) return;
+    setPreviewData(form.getReceiptData());
+    setShowPreview(true);
+  };
 
+  const handleConfirmPrint = async () => {
     setIsPrinting(true);
     try {
       const connected = await printer.ensureConnected();
@@ -72,7 +80,9 @@ export default function HomeScreen() {
         return;
       }
 
-      await printer.printReceipt(form.getReceiptData());
+      if (!previewData) return;
+      await printer.printReceipt(previewData);
+      setShowPreview(false);
       showToast("Receipt printed successfully");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Print failed";
@@ -361,6 +371,16 @@ export default function HomeScreen() {
           )}
         </Pressable>
       </View>
+
+      <ReceiptPreviewScreen
+        visible={showPreview}
+        data={previewData}
+        isPrinting={isPrinting}
+        onPrint={handleConfirmPrint}
+        onCancel={() => {
+          if (!isPrinting) setShowPreview(false);
+        }}
+      />
 
       <Toast
         visible={toast.visible}

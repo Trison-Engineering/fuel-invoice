@@ -90,6 +90,23 @@ export function usePrinter() {
     [ensureConnected, refreshStatus]
   );
 
+  const printCalibration = useCallback(async (): Promise<void> => {
+    setIsTestingPrint(true);
+    setError(null);
+    try {
+      const connected = await ensureConnected();
+      if (!connected) throw new Error("Printer not ready");
+      await NyxPrinterService.printCalibrationLine();
+      await refreshStatus();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Calibration print failed";
+      setError(message);
+      throw e;
+    } finally {
+      setIsTestingPrint(false);
+    }
+  }, [ensureConnected, refreshStatus]);
+
   const testPrint = useCallback(async (): Promise<void> => {
     setIsTestingPrint(true);
     setError(null);
@@ -126,6 +143,7 @@ export function usePrinter() {
     ensureConnected,
     printReceipt,
     testPrint,
+    printCalibration,
     initPrinter,
     refreshStatus,
     dismissError,

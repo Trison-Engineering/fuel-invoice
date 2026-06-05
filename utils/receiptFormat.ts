@@ -1,21 +1,40 @@
-import {
-  centerText,
-  formatCurrency,
-  formatDate,
-  formatTime,
-} from "./formatters";
-import { receiptWidth } from "../constants/theme";
+import { formatDate, formatTime } from "./formatters";
 import type { ReceiptData } from "./generateReceipt";
 
-export const RECEIPT_DIVIDER = "-".repeat(receiptWidth);
+/** 58mm paper @ NYX textSize 24 — max chars per line without wrapping. */
+export const LINE_WIDTH = 32;
 
-/** Column layout for 58mm paper (~32 monospace chars). */
-export function formatRow(label: string, value: string, width = receiptWidth): string {
-  const spaces = width - label.length - value.length;
-  return label + " ".repeat(Math.max(1, spaces)) + value;
+export const RECEIPT_DIVIDER = "-".repeat(LINE_WIDTH);
+
+export const CALIBRATION_LINE = "12345678901234567890123456789012";
+
+export function formatRow(label: string, value: string): string {
+  const totalWidth = LINE_WIDTH;
+  const valueStr = String(value);
+  const labelStr = String(label);
+
+  if (labelStr.length + valueStr.length >= totalWidth) {
+    const maxLabelWidth = totalWidth - valueStr.length - 1;
+    return labelStr.substring(0, Math.max(0, maxLabelWidth)) + " " + valueStr;
+  }
+
+  const spaces = totalWidth - labelStr.length - valueStr.length;
+  return labelStr + " ".repeat(spaces) + valueStr;
 }
 
-/** Strip branding prefixes/suffixes for the printed address line. */
+export function centerText(text: string): string {
+  const trimmed = text.substring(0, LINE_WIDTH);
+  if (trimmed.length >= LINE_WIDTH) {
+    return trimmed;
+  }
+  const spaces = Math.floor((LINE_WIDTH - trimmed.length) / 2);
+  return " ".repeat(spaces) + trimmed;
+}
+
+export function clipLine(text: string): string {
+  return text.substring(0, LINE_WIDTH);
+}
+
 export function normalizePrintAddress(address: string): string {
   return address
     .replace(/^PSO\s+pump\s+/i, "")
@@ -37,43 +56,80 @@ export function formatRateRs(rate: string | number): string {
 }
 
 export function formatTotalRs(amount: number): string {
-  return formatCurrency(amount);
+  return `Rs. ${amount.toFixed(2)}`;
 }
 
 export function getPaymentLabel(method: string): string {
   return method === "None" ? "CASH" : method.toUpperCase();
 }
 
-/** Text lines for preview / ESC-POS (logo printed separately). */
-export function buildFuelReceiptTextLines(data: ReceiptData): string[] {
-  const lines: string[] = [];
-  const address = normalizePrintAddress(data.stationAddress);
-  const payment = getPaymentLabel(data.paymentMethod);
+export interface FuelReceiptPrintView {
+  storeName: string;
+  address: string;
+  receiptNo: string;
+  date: string;
+  time: string;
+  paymentMethod: string;
+  product: string;
+  volume: string;
+  rate: string;
+  total: string;
+  vehicleNo: string;
+  logoDataUrl?: string | null;
+}
 
-  lines.push(centerText(data.stationName.toUpperCase()));
-  if (address) {
-    lines.push(centerText(address));
-  }
-  lines.push(centerText("FUEL RECEIPT"));
+export function mapFuelReceiptToPrintView(data: ReceiptData): FuelReceiptPrintView {
+  return {
+    storeName: data.stationName.toUpperCase(),
+    address: normalizePrintAddress(data.stationAddress),
+    receiptNo: data.invoiceNumber,
+    date: formatDate(data.date),
+    time: formatTime(data.time),
+    paymentMethod: getPaymentLabel(data.paymentMethod),
+    product: data.productType.toUpperCase(),
+    volume: formatVolumeLtr(data.volume),
+    rate: formatRateRs(data.fuelRate),
+    total: formatTotalRs(data.totalAmount),
+    vehicleNo: data.vehicleNumber,
+    logoDataUrl: data.logoDataUrl,
+  };
+}
+
+/** Monospace text lines for preview (header lines returned separately in UI). */
+export function buildFuelReceiptBodyLines(view: FuelReceiptPrintView): string[] {
+  const lines: string[] = [];
+
   lines.push(RECEIPT_DIVIDER);
-  lines.push(formatRow("RECEIPT NO:", data.invoiceNumber));
-  lines.push(formatRow("DATE:", formatDate(data.date)));
-  lines.push(formatRow("TIME:", formatTime(data.time)));
-  lines.push(formatRow("PAYMENT:", payment));
+  lines.push(formatRow("RECEIPT NO:", view.receiptNo));
+  lines.push(formatRow("DATE:", view.date));
+  lines.push(formatRow("TIME:", view.time));
+  lines.push(formatRow("PAYMENT:", view.paymentMethod));
   lines.push(RECEIPT_DIVIDER);
-  lines.push(formatRow("PRODUCT:", data.productType.toUpperCase()));
-  lines.push(formatRow("VOLUME:", formatVolumeLtr(data.volume)));
-  lines.push(formatRow("RATE/LTR:", formatRateRs(data.fuelRate)));
+  lines.push(formatRow("PRODUCT:", view.product));
+  lines.push(formatRow("VOLUME:", view.volume));
+  lines.push(formatRow("RATE/LTR:", view.rate));
   lines.push(RECEIPT_DIVIDER);
-  lines.push(formatRow("TOTAL AMOUNT:", formatTotalRs(data.totalAmount)));
+  lines.push(formatRow("TOTAL AMOUNT:", view.total));
   lines.push(RECEIPT_DIVIDER);
-  if (data.vehicleNumber.trim()) {
-    lines.push(formatRow("VEHICLE NO:", data.vehicleNumber));
+
+  if (view.vehicleNo.trim()) {
+    lines.push(formatRow("VEHICLE NO:", view.vehicleNo));
     lines.push(RECEIPT_DIVIDER);
   }
+
   lines.push(centerText("POWERED BY TRISON"));
   lines.push(centerText("THANKS FOR FUELLING WITH US"));
   lines.push(centerText("VISIT AGAIN"));
 
   return lines;
+}
+
+export function buildFuelReceiptTextLines(data: ReceiptData): string[] {
+  const view = mapFuelReceiptToPrintView(data);
+  return [
+    centerText(view.storeName),
+    centerText(view.address),
+    centerText("FUEL RECEIPT"),
+    ...buildFuelReceiptBodyLines(view),
+  ];
 }
