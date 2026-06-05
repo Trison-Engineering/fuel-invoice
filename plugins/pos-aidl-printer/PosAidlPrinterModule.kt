@@ -136,7 +136,7 @@ class PosAidlPrinterModule(reactContext: ReactApplicationContext) :
       }
     }
 
-    val installedPackages = findInstalledCandidatePackages(context)
+    val installedPackages = findInstalledCandidatePackages(context.packageManager)
     lastConnectError =
       buildString {
         append("Could not bind iPos printer service.")
