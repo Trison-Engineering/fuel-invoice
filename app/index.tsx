@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  Alert,
   Platform,
   Switch,
 } from "react-native";
@@ -49,14 +50,16 @@ export default function HomeScreen() {
             <Ionicons name="settings-outline" size={24} color={colors.primary} />
           </Pressable>
           <PrinterStatus
-            connected={!!printer.connectedDevice}
+            connected={printer.connectionStatus === "connected"}
+            connectionStatus={printer.connectionStatus}
+            connectionStatusLabel={printer.connectionStatusLabel}
             printerName={printer.connectedDevice?.name}
             onPress={() => router.push("/printer-setup")}
           />
         </View>
       ),
     });
-  }, [navigation, printer.connectedDevice, router]);
+  }, [navigation, printer.connectedDevice, printer.connectionStatus, printer.connectionStatusLabel, router]);
 
   const handlePrint = async () => {
     if (!form.validate()) return;
@@ -65,16 +68,15 @@ export default function HomeScreen() {
     try {
       const connected = await printer.ensureConnected();
       if (!connected) {
-        showToast("Printer not ready. Open Printer settings to connect.", "error");
-        router.push("/printer-setup");
+        Alert.alert("Printer not ready", "Could not connect to the built-in NYX printer. Open Printer settings to retry.");
         return;
       }
 
       await printer.printReceipt(form.getReceiptData());
-      showToast("Receipt printed");
+      showToast("Receipt printed successfully");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Print failed";
-      showToast(msg, "error");
+      Alert.alert("Print failed", msg);
     } finally {
       setIsPrinting(false);
     }

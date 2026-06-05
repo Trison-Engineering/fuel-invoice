@@ -3,11 +3,13 @@ const { withMainApplication } = require("@expo/config-plugins");
 const PACKAGE_IMPORTS = [
   "import com.fuelreceipt.app.posaidl.PosAidlPrinterPackage",
   "import com.fuelreceipt.app.posserial.PosSerialPrinterPackage",
+  "import com.fuelreceipt.app.posclassicbt.PosClassicBtPrinterPackage",
 ];
 
 const PACKAGE_LINES = [
   "packages.add(PosAidlPrinterPackage())",
   "packages.add(PosSerialPrinterPackage())",
+  "packages.add(PosClassicBtPrinterPackage())",
 ];
 
 function addPackagesToMainApplication(contents) {
