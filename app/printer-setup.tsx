@@ -1,5 +1,5 @@
-import { View, Text, Pressable, FlatList, ActivityIndicator } from "react-native";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, Pressable, ActivityIndicator, ScrollView, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { colors, spacing } from "../constants/theme";
@@ -23,18 +23,88 @@ function DismissButton({ onPress }: { onPress: () => void }) {
   );
 }
 
+function statusColor(status: string, connectionStatus: string): string {
+  if (connectionStatus !== "connected") return colors.error;
+  if (status === "Normal") return colors.success;
+  if (status === "Out of paper") return colors.error;
+  return colors.error;
+}
+
 export default function PrinterSetupScreen() {
   const printer = usePrinterContext();
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  const isBusy = printer.isInitializing || printer.isReconnecting || isPrinting;
+
+  const runInit = useCallback(() => {
+    printer.initPrinter().catch(() => undefined);
+  }, [printer]);
 
   useEffect(() => {
-    printer.autoReconnect().catch(() => {
-      // ignore — user can connect manually from this screen
-    });
-  }, [printer.autoReconnect]);
+    runInit();
+  }, [runInit]);
+
+  const handleTestPrint = async () => {
+    setIsPrinting(true);
+    try {
+      await printer.testPrint();
+      Alert.alert("Print complete", "Test receipt sent to the built-in printer.");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Test print failed";
+      Alert.alert("Print failed", message);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const printerStatusLabel = printer.printerStatus ?? "Checking...";
+  const dotColor = statusColor(printerStatusLabel, printer.connectionStatus);
 
   return (
-    <View style={{ flex: 1, padding: spacing.lg }}>
-      {printer.isReconnecting ? (
+    <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+      <View
+        style={{
+          backgroundColor: colors.white,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          padding: spacing.lg,
+          marginBottom: spacing.lg,
+        }}
+      >
+        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
+          EzPump Handheld POS
+        </Text>
+        <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
+          Connected to built-in printer via NYX service
+        </Text>
+        <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
+          Printer service: net.nyx.printerservice — no Bluetooth pairing or manual connection required.
+        </Text>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
+          {isBusy ? (
+            <ActivityIndicator color={colors.primary} size="small" />
+          ) : (
+            <View
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 5,
+                backgroundColor: dotColor,
+              }}
+            />
+          )}
+          <Text style={{ fontSize: 14, fontWeight: "600", color: dotColor }}>
+            {printer.connectionStatusLabel}
+          </Text>
+        </View>
+
+        <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 4 }}>Printer status</Text>
+        <Text style={{ fontSize: 15, fontWeight: "600", color: dotColor }}>{printerStatusLabel}</Text>
+      </View>
+
+      {printer.isInitializing ? (
         <View
           style={{
             flexDirection: "row",
@@ -47,210 +117,35 @@ export default function PrinterSetupScreen() {
           }}
         >
           <ActivityIndicator color={colors.primary} size="small" />
-          <Text style={{ color: colors.primary, fontSize: 14 }}>
-            Connecting to printer...
-          </Text>
+          <Text style={{ color: colors.primary, fontSize: 14 }}>Initializing NYX printer...</Text>
         </View>
       ) : null}
 
       <Pressable
-        onPress={printer.testPrint}
-        disabled={printer.isTestingPrint || printer.isReconnecting}
+        onPress={handleTestPrint}
+        disabled={isBusy}
         style={{
           height: 48,
           backgroundColor: colors.primary,
           borderRadius: 8,
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: spacing.lg,
-          opacity: printer.isTestingPrint || printer.isReconnecting ? 0.7 : 1,
+          marginBottom: spacing.md,
+          opacity: isBusy ? 0.7 : 1,
         }}
       >
-        {printer.isTestingPrint ? (
+        {isPrinting || printer.isTestingPrint ? (
           <ActivityIndicator color={colors.white} />
         ) : (
-          <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>
-            Test Print
-          </Text>
+          <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Test Print</Text>
         )}
       </Pressable>
 
-      {printer.testResults.length > 0 ? (
-        <View
-          style={{
-            backgroundColor: colors.white,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            padding: spacing.lg,
-            marginBottom: spacing.lg,
-            gap: spacing.sm,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: spacing.xs,
-            }}
-          >
-            <Text style={{ fontSize: 14, fontWeight: "600" }}>Connection test results</Text>
-            <DismissButton onPress={printer.clearTestResults} />
-          </View>
-          {printer.testResults.map((result) => (
-            <View key={result.method}>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "600",
-                  color: result.success ? colors.success : colors.error,
-                }}
-              >
-                {result.success ? "OK" : "FAILED"} — {result.label}
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-                {result.message}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {printer.isBuiltInSupported ? (
-        <View
-          style={{
-            backgroundColor: colors.white,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            padding: spacing.lg,
-            marginBottom: spacing.lg,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-            Handheld POS built-in printer
-          </Text>
-          <Text style={{ fontSize: 14, color: colors.black, marginBottom: spacing.md, lineHeight: 20 }}>
-            Your EzPump / Handheld-POS uses the built-in printer via the system iPos service.
-            The app connects automatically — no Bluetooth pairing needed for the internal printer.
-          </Text>
-          {printer.printerMode === "builtin" && printer.connectedDevice ? (
-            <>
-              <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
-                {printer.connectedDevice.name}
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.success }}>
-                Ready to print receipts
-              </Text>
-            </>
-          ) : (
-            <Pressable
-              onPress={printer.connectBuiltIn}
-              disabled={printer.isReconnecting}
-              style={{
-                height: 44,
-                backgroundColor: colors.primary,
-                borderRadius: 8,
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: spacing.sm,
-                opacity: printer.isReconnecting ? 0.7 : 1,
-              }}
-            >
-              <Text style={{ color: colors.white, fontWeight: "600" }}>
-                Connect Built-in Printer
-              </Text>
-            </Pressable>
-          )}
-        </View>
-      ) : null}
-
-      {printer.connectedDevice && printer.printerMode === "serial" ? (
-        <View
-          style={{
-            backgroundColor: colors.white,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            padding: spacing.lg,
-            marginBottom: spacing.lg,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-            Connected via serial port
-          </Text>
-          <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
-            {printer.connectedDevice.name}
-          </Text>
-          <Pressable
-            onPress={printer.disconnect}
-            style={{
-              height: 44,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.error,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text style={{ color: colors.error, fontWeight: "600" }}>Disconnect</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {printer.connectedDevice && printer.printerMode === "bluetooth" ? (
-        <View
-          style={{
-            backgroundColor: colors.white,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            padding: spacing.lg,
-            marginBottom: spacing.lg,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-            Connected via Bluetooth
-          </Text>
-          <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
-            {printer.connectedDevice.name}
-          </Text>
-          <Pressable
-            onPress={printer.disconnect}
-            style={{
-              height: 44,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.error,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text style={{ color: colors.error, fontWeight: "600" }}>Disconnect</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
-        External Bluetooth printer (optional)
-      </Text>
-      <Text
-        style={{
-          fontSize: 14,
-          color: colors.muted,
-          marginBottom: spacing.lg,
-          lineHeight: 20,
-        }}
-      >
-        Only needed if you use a separate Bluetooth thermal printer instead of the built-in one.
-      </Text>
-
       <Pressable
-        onPress={printer.scanForPrinters}
-        disabled={printer.isScanning}
+        onPress={runInit}
+        disabled={isBusy}
         style={{
-          height: 48,
+          height: 44,
           backgroundColor: colors.white,
           borderRadius: 8,
           borderWidth: 1,
@@ -258,16 +153,10 @@ export default function PrinterSetupScreen() {
           alignItems: "center",
           justifyContent: "center",
           marginBottom: spacing.lg,
-          opacity: printer.isScanning ? 0.7 : 1,
+          opacity: isBusy ? 0.7 : 1,
         }}
       >
-        {printer.isScanning ? (
-          <ActivityIndicator color={colors.primary} />
-        ) : (
-          <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "600" }}>
-            Scan Bluetooth Printers
-          </Text>
-        )}
+        <Text style={{ color: colors.primary, fontWeight: "600" }}>Refresh printer status</Text>
       </Pressable>
 
       {printer.error ? (
@@ -286,52 +175,6 @@ export default function PrinterSetupScreen() {
           <DismissButton onPress={printer.dismissError} />
         </View>
       ) : null}
-
-      <FlatList
-        data={printer.devices}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        ListEmptyComponent={
-          !printer.isScanning ? (
-            <Text style={{ textAlign: "center", color: colors.muted, marginTop: spacing.xl }}>
-              No external Bluetooth printers found.
-            </Text>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <View
-            style={{
-              backgroundColor: colors.white,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 12,
-              padding: spacing.lg,
-              marginBottom: spacing.sm,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <View style={{ flex: 1, marginRight: spacing.md }}>
-              <Text style={{ fontSize: 15, fontWeight: "600" }}>{item.name}</Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{item.id}</Text>
-            </View>
-            <Pressable
-              onPress={() => printer.connectToPrinter(item)}
-              disabled={printer.isConnecting}
-              style={{
-                paddingHorizontal: spacing.lg,
-                paddingVertical: spacing.sm,
-                backgroundColor: colors.primary,
-                borderRadius: 8,
-                opacity: printer.isConnecting ? 0.6 : 1,
-              }}
-            >
-              <Text style={{ color: colors.white, fontWeight: "600" }}>Connect</Text>
-            </Pressable>
-          </View>
-        )}
-      />
-    </View>
+    </ScrollView>
   );
 }

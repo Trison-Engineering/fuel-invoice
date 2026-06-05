@@ -32,7 +32,7 @@
     "nativewind": "4.1.23",
     "react": "19.0.0",
     "react-native": "0.79.6",
-    "react-native-ble-plx": "^3.5.0",
+    "react-native-nyx-printer": "file:vendor/react-native-nyx-printer-2.0.2.tgz",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
@@ -46,7 +46,9 @@
     "typescript": "~5.8.3"
   },
   "overrides": {
-    "react-native-css-interop": "0.1.22"
+    "react-native-css-interop": "0.1.22",
+    "lefthook-windows-x64": "npm:lefthook-darwin-arm64@1.6.12",
+    "turbo-windows-64": "npm:turbo-darwin-arm64@1.13.4"
   },
   "private": true
 }
