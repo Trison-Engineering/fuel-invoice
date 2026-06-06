@@ -10,6 +10,7 @@ const path = require("path");
 const PLUGIN_DIR = "plugins/unified-printer";
 const SUNMI_AIDL_SOURCE = path.join(PLUGIN_DIR, "aidl", "woyou");
 const KOTLIN_FILES = [
+  "BitmapScaler.kt",
   "DeviceDetector.kt",
   "NyxPrinterBridge.kt",
   "SunmiPrinterBridge.kt",

@@ -92,8 +92,9 @@ class NyxPrinterBridge(private val context: Context) {
   fun printBitmapBase64(base64Data: String, align: Int): Int {
     val service = printerService ?: return -1
     val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
-    val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+    val decoded = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
       ?: return -2
+    val bitmap = BitmapScaler.scaleToMax(decoded)
     return service.printBitmap(bitmap, 1, align)
   }
 

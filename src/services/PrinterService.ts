@@ -1,4 +1,5 @@
 import { NativeModules, Platform } from "react-native";
+import { LOGO_MAX_SIZE } from "../../constants/printerPaper";
 import type { ReceiptData as FuelReceiptData } from "../../utils/generateReceipt";
 import {
   CALIBRATION_LINE,
@@ -6,7 +7,6 @@ import {
   clipLine,
   formatRowForPrinter,
   LINE_WIDTH,
-  LOGO_BITMAP_WIDTH,
   mapFuelReceiptToPrintView,
   RECEIPT_DIVIDER,
   RECEIPT_FONT,
@@ -211,7 +211,7 @@ class PrinterServiceImpl {
     if (data.includeLogoInPrint && data.logoDataUrl) {
       await printLogo({
         logoUri: data.logoDataUrl,
-        width: LOGO_BITMAP_WIDTH,
+        maxSize: LOGO_MAX_SIZE,
         align: 1,
         includeLogoInPrint: data.includeLogoInPrint,
       }).catch(() => false);

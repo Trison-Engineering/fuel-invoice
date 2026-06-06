@@ -96,15 +96,10 @@ class SunmiPrinterBridge(private val context: Context) {
     val service = sunmiService ?: return -1
     return try {
       val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
-      var bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+      val decoded = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
         ?: return -2
 
-      val targetWidth = 384
-      if (bitmap.width > targetWidth) {
-        val scale = targetWidth.toFloat() / bitmap.width
-        val targetHeight = (bitmap.height * scale).toInt()
-        bitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
-      }
+      val bitmap = BitmapScaler.scaleToMax(decoded)
 
       service.setAlignment(align, null)
       service.printBitmap(bitmap, null)

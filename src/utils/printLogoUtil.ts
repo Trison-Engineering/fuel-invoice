@@ -1,12 +1,14 @@
 import { NativeModules } from "react-native";
 
+import { LOGO_MAX_SIZE } from "../../constants/printerPaper";
+
 const { UnifiedPrinterModule } = NativeModules;
 const SDK_OK = 0;
 
 export interface LogoPrintOptions {
   logoUri: string;
-  /** Target bitmap width in dots — defaults to 2" Sunmi paper width. */
-  width?: number;
+  /** Max width/height in dots — defaults to LOGO_MAX_SIZE (100). */
+  maxSize?: number;
   align?: number;
   includeLogoInPrint?: boolean;
 }

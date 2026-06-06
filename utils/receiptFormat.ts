@@ -1,5 +1,6 @@
 import {
   LOGO_BITMAP_WIDTH,
+  LOGO_MAX_SIZE,
   RECEIPT_FONT,
   RECEIPT_LINE_WIDTH,
 } from "../constants/printerPaper";
@@ -12,7 +13,7 @@ export const LINE_WIDTH = RECEIPT_LINE_WIDTH;
 
 export const PRINTER_LINE_WIDTH = RECEIPT_LINE_WIDTH;
 
-export { LOGO_BITMAP_WIDTH, RECEIPT_FONT };
+export { LOGO_BITMAP_WIDTH, LOGO_MAX_SIZE, RECEIPT_FONT };
 
 export const RECEIPT_DIVIDER = "-".repeat(LINE_WIDTH);
 

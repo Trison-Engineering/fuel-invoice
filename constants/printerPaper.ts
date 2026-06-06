@@ -15,8 +15,11 @@ export const RECEIPT_LINE_WIDTH = Math.max(
   Math.round(REFERENCE_LINE_CHARS * (PAPER_WIDTH_MM / REFERENCE_PAPER_MM))
 );
 
-/** Logo bitmap target width in dots (~2" printable area). */
-export const LOGO_BITMAP_WIDTH = Math.round(384 * (PAPER_WIDTH_MM / REFERENCE_PAPER_MM));
+/** Max logo width and height in dots when printing on thermal paper. */
+export const LOGO_MAX_SIZE = 100;
+
+/** @deprecated Use LOGO_MAX_SIZE — kept for existing imports. */
+export const LOGO_BITMAP_WIDTH = LOGO_MAX_SIZE;
 
 /** NYX textSize values tuned for 2" paper. */
 export const RECEIPT_FONT = {
