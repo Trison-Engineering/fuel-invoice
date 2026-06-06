@@ -8,8 +8,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PLUGIN_DIR = "plugins/unified-printer";
-const AIDL_SOURCE = path.join(PLUGIN_DIR, "aidl");
-const JAVA_SOURCE = path.join(PLUGIN_DIR, "java");
+const SUNMI_AIDL_SOURCE = path.join(PLUGIN_DIR, "aidl", "woyou");
 const KOTLIN_FILES = [
   "DeviceDetector.kt",
   "NyxPrinterBridge.kt",
@@ -37,8 +36,22 @@ function copyRecursive(src, dest) {
 }
 
 function copyUnifiedPrinterSources(projectRoot, platformRoot) {
-  copyRecursive(path.join(projectRoot, AIDL_SOURCE), path.join(platformRoot, "app", "src", "main", "aidl"));
-  copyRecursive(path.join(projectRoot, JAVA_SOURCE), path.join(platformRoot, "app", "src", "main", "java"));
+  // Sunmi AIDL only — NYX types come from react-native-nyx-printer (avoid duplicate AIDL).
+  copyRecursive(
+    path.join(projectRoot, SUNMI_AIDL_SOURCE),
+    path.join(platformRoot, "app", "src", "main", "aidl", "woyou")
+  );
+
+  // Remove legacy NYX AIDL/Java copied by earlier plugin versions (EAS reuses android/).
+  const stalePaths = [
+    path.join(platformRoot, "app", "src", "main", "aidl", "net"),
+    path.join(platformRoot, "app", "src", "main", "java", "net", "nyx"),
+  ];
+  for (const stalePath of stalePaths) {
+    if (fs.existsSync(stalePath)) {
+      fs.rmSync(stalePath, { recursive: true, force: true });
+    }
+  }
 
   const kotlinDest = path.join(
     platformRoot,
