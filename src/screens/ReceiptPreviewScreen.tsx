@@ -8,6 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from "react-native";
+import { RECEIPT_LINE_WIDTH } from "../../constants/printerPaper";
 import type { ReceiptData } from "../../utils/generateReceipt";
 import {
   buildFuelReceiptBodyLines,
@@ -34,6 +35,7 @@ export function ReceiptPreviewScreen({
 
   const view = mapFuelReceiptToPrintView(data);
   const bodyLines = buildFuelReceiptBodyLines(view);
+  const receiptPaperWidth = Math.round(280 * (RECEIPT_LINE_WIDTH / 32));
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
@@ -44,7 +46,7 @@ export function ReceiptPreviewScreen({
         </View>
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.receiptPaper}>
+          <View style={[styles.receiptPaper, { maxWidth: receiptPaperWidth, alignSelf: "center", width: "100%" }]}>
             {data.includeLogoInPrint ? (
               view.logoDataUrl ? (
                 <Image

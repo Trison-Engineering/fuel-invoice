@@ -12,7 +12,8 @@
     "build:ios:store": "eas build --platform ios --profile production",
     "build:ios:simulator": "eas build --platform ios --profile ios-simulator",
     "build:all": "eas build --platform all --profile production",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "node scripts/patch-nyx-printer.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

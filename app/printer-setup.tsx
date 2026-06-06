@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, ScrollView, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePrinterContext } from "../contexts/PrinterContext";
+import { PAPER_WIDTH_INCHES, RECEIPT_LINE_WIDTH } from "../constants/printerPaper";
 import { colors, spacing } from "../constants/theme";
 
 function DismissButton({ onPress }: { onPress: () => void }) {
@@ -63,7 +64,7 @@ export default function PrinterSetupScreen() {
       await printer.printCalibration();
       Alert.alert(
         "Calibration printed",
-        "Count characters on the numbered line. If it wraps before 32, reduce LINE_WIDTH in utils/receiptFormat.ts."
+        `Count characters on the numbered line (${RECEIPT_LINE_WIDTH} chars for ${PAPER_WIDTH_INCHES}" Sunmi paper). If it wraps early, reduce RECEIPT_LINE_WIDTH in constants/printerPaper.ts.`
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : "Calibration print failed";
@@ -172,7 +173,9 @@ export default function PrinterSetupScreen() {
           opacity: isBusy ? 0.7 : 1,
         }}
       >
-        <Text style={{ color: colors.muted, fontWeight: "600" }}>Print width calibration (32 chars)</Text>
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>
+          Print width calibration ({RECEIPT_LINE_WIDTH} chars, {PAPER_WIDTH_INCHES}" paper)
+        </Text>
       </Pressable>
 
       <Pressable

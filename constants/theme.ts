@@ -37,4 +37,4 @@ export const typography = {
   },
 };
 
-export const receiptWidth = 32;
+export { RECEIPT_LINE_WIDTH as receiptWidth } from "./printerPaper";

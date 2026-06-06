@@ -1,13 +1,22 @@
+import {
+  LOGO_BITMAP_WIDTH,
+  RECEIPT_FONT,
+  RECEIPT_LINE_WIDTH,
+} from "../constants/printerPaper";
 import { formatCurrency, formatVolume, safeStr } from "../src/utils/printerUtils";
 import { formatDate, formatTime } from "./formatters";
 import type { ReceiptData } from "./generateReceipt";
 
-/** 58mm paper @ NYX textSize 24 — max chars per line without wrapping. */
-export const LINE_WIDTH = 32;
+/** Chars per line on 2" Sunmi paper — used for preview and print. */
+export const LINE_WIDTH = RECEIPT_LINE_WIDTH;
+
+export const PRINTER_LINE_WIDTH = RECEIPT_LINE_WIDTH;
+
+export { LOGO_BITMAP_WIDTH, RECEIPT_FONT };
 
 export const RECEIPT_DIVIDER = "-".repeat(LINE_WIDTH);
 
-export const CALIBRATION_LINE = "12345678901234567890123456789012";
+export const CALIBRATION_LINE = "1".repeat(LINE_WIDTH);
 
 export function formatRow(label: string, value: unknown): string {
   const totalWidth = LINE_WIDTH;
@@ -21,6 +30,14 @@ export function formatRow(label: string, value: unknown): string {
 
   const spaces = totalWidth - labelStr.length - valueStr.length;
   return labelStr + " ".repeat(spaces) + valueStr;
+}
+
+/**
+ * Tab-separated row for NYX thermal printer on 2" paper.
+ * Space-padded lines wrap at spaces and push values to the next line.
+ */
+export function formatRowForPrinter(label: string, value: unknown): string {
+  return `${safeStr(label)}\t${safeStr(value)}`;
 }
 
 export function centerText(text: unknown): string {

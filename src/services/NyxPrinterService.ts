@@ -10,10 +10,12 @@ import {
   CALIBRATION_LINE,
   centerText,
   clipLine,
-  formatRow,
+  formatRowForPrinter,
   LINE_WIDTH,
+  LOGO_BITMAP_WIDTH,
   mapFuelReceiptToPrintView,
   RECEIPT_DIVIDER,
+  RECEIPT_FONT,
   type FuelReceiptPrintView,
 } from "../../utils/receiptFormat";
 import { printLogo } from "../utils/printLogoUtil";
@@ -25,12 +27,7 @@ const SERVICE_BIND_MS = 600;
 const MONOSPACE = 4;
 const FEED_LINES = 4;
 
-const FONT = {
-  body: 24,
-  heading: 28,
-  storeName: 32,
-  total: 28,
-} as const;
+const FONT = RECEIPT_FONT;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -99,18 +96,18 @@ async function printFuelReceiptContent(view: FuelReceiptPrintView): Promise<void
   });
 
   await printDivider();
-  await printBodyLine(formatRow("RECEIPT NO:", view.receiptNo));
-  await printBodyLine(formatRow("DATE:", view.date));
-  await printBodyLine(formatRow("TIME:", view.time));
-  await printBodyLine(formatRow("PAYMENT:", view.paymentMethod));
+  await printBodyLine(formatRowForPrinter("RECEIPT NO:", view.receiptNo));
+  await printBodyLine(formatRowForPrinter("DATE:", view.date));
+  await printBodyLine(formatRowForPrinter("TIME:", view.time));
+  await printBodyLine(formatRowForPrinter("PAYMENT:", view.paymentMethod));
   await printDivider();
 
-  await printBodyLine(formatRow("PRODUCT:", view.product));
-  await printBodyLine(formatRow("VOLUME:", view.volume));
-  await printBodyLine(formatRow("RATE/LTR:", view.rate));
+  await printBodyLine(formatRowForPrinter("PRODUCT:", view.product));
+  await printBodyLine(formatRowForPrinter("VOLUME:", view.volume));
+  await printBodyLine(formatRowForPrinter("RATE/LTR:", view.rate));
   await printDivider();
 
-  await nyxPrintLine(formatRow("TOTAL AMOUNT:", view.total), {
+  await nyxPrintLine(formatRowForPrinter("TOTAL AMOUNT:", view.total), {
     textSize: FONT.total,
     bold: true,
     align: 0,
@@ -118,7 +115,7 @@ async function printFuelReceiptContent(view: FuelReceiptPrintView): Promise<void
   await printDivider();
 
   if (view.vehicleNo.trim()) {
-    await printBodyLine(formatRow("VEHICLE NO:", view.vehicleNo));
+    await printBodyLine(formatRowForPrinter("VEHICLE NO:", view.vehicleNo));
     await printDivider();
   }
 
@@ -168,16 +165,12 @@ class NyxPrinterServiceImpl {
     await this.assertPrinterReady();
 
     if (data.includeLogoInPrint && data.logoDataUrl) {
-      try {
-        await printLogo({
-          logoUri: data.logoDataUrl,
-          width: 384,
-          align: 1,
-          includeLogoInPrint: data.includeLogoInPrint,
-        });
-      } catch (logoError) {
-        console.log("Logo skipped:", logoError);
-      }
+      await printLogo({
+        logoUri: data.logoDataUrl,
+        width: LOGO_BITMAP_WIDTH,
+        align: 1,
+        includeLogoInPrint: data.includeLogoInPrint,
+      }).catch(() => false);
     }
 
     const view = mapFuelReceiptToPrintView(data);
