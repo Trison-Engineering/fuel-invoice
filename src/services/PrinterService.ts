@@ -1,16 +1,15 @@
 import { NativeModules, Platform } from "react-native";
-import { LOGO_MAX_SIZE } from "../../constants/printerPaper";
+import { LOGO_MAX_SIZE, RECEIPT_LINE_SPACING } from "../../constants/printerPaper";
 import type { ReceiptData as FuelReceiptData } from "../../utils/generateReceipt";
+import { bufferToBase64, generateEscPosBuffer } from "../../utils/generateReceipt";
 import {
+  buildReceiptPrintPlan,
   CALIBRATION_LINE,
-  centerText,
-  clipLine,
-  formatRowForPrinter,
   LINE_WIDTH,
   mapFuelReceiptToPrintView,
   RECEIPT_DIVIDER,
   RECEIPT_FONT,
-  type FuelReceiptPrintView,
+  type ReceiptFontRole,
 } from "../../utils/receiptFormat";
 import { printLogo } from "../utils/printLogoUtil";
 import { safeStr } from "../utils/printerUtils";
@@ -55,7 +54,7 @@ function buildTextFormat(style: {
     textScaleX: 1,
     textScaleY: 1,
     letterSpacing: 0,
-    lineSpacing: 2,
+    lineSpacing: RECEIPT_LINE_SPACING,
     topPadding: 0,
     leftPadding: 0,
     style: style.bold ? 1 : 0,
@@ -92,6 +91,19 @@ type LineStyle = {
   bold?: boolean;
   align?: 0 | 1 | 2;
 };
+
+function fontSizeForRole(role: ReceiptFontRole | undefined): number {
+  switch (role) {
+    case "store":
+      return FONT.storeName;
+    case "heading":
+      return FONT.heading;
+    case "total":
+      return FONT.total;
+    default:
+      return FONT.body;
+  }
+}
 
 class PrinterServiceImpl {
   private initialized = false;
@@ -132,75 +144,81 @@ class PrinterServiceImpl {
 
   private async assertPrinterReady(): Promise<void> {
     if (!this.initialized) await this.init();
+    if (this.deviceType === "SUNMI") {
+      const connected = await UnifiedPrinterModule.isConnected();
+      if (!connected) throw new Error("Sunmi printer service not connected");
+      return;
+    }
     const status = await this.getPrinterStatus();
     if (status === "Out of paper") throw new Error("Printer is out of paper");
     if (status.startsWith("Error")) throw new Error(`Printer status: ${status}`);
   }
 
+  private async printSunmiRaw(data: FuelReceiptData): Promise<void> {
+    if (data.includeLogoInPrint && data.logoDataUrl) {
+      await printLogo({
+        logoUri: data.logoDataUrl,
+        maxSize: LOGO_MAX_SIZE,
+        align: 1,
+        includeLogoInPrint: data.includeLogoInPrint,
+      }).catch(() => false);
+    }
+
+    const buffer = generateEscPosBuffer(data);
+    const code = await UnifiedPrinterModule.printRawDataBase64(bufferToBase64(buffer));
+    assertResult(code, "Print", this.deviceType);
+  }
+
   private async printLine(text: unknown, style: LineStyle): Promise<void> {
-    const line = clipLine(safeStr(text));
+    const line = safeStr(text);
     const code = await UnifiedPrinterModule.printText(`${line}\n`, buildTextFormat(style));
     assertResult(code, "Print", this.deviceType);
   }
 
-  private async printBodyLine(text: unknown, bold = false): Promise<void> {
-    await this.printLine(text, { textSize: FONT.body, bold, align: 0 });
+  private async printPlannedLine(line: {
+    text: string;
+    align: 0 | 1 | 2;
+    bold?: boolean;
+    font?: ReceiptFontRole;
+  }): Promise<void> {
+    await this.printLine(line.text, {
+      textSize: fontSizeForRole(line.font),
+      bold: line.bold,
+      align: line.align,
+    });
   }
 
   private async printDivider(): Promise<void> {
-    await this.printBodyLine(RECEIPT_DIVIDER);
+    await this.printPlannedLine({ text: RECEIPT_DIVIDER, align: 0, font: "body" });
   }
 
-  private async printFuelReceiptContent(view: FuelReceiptPrintView): Promise<void> {
-    await this.printLine(view.storeName, {
-      textSize: FONT.storeName,
-      bold: true,
-      align: 1,
-    });
-
-    if (view.address) {
-      await this.printLine(view.address, { textSize: FONT.body, align: 1 });
+  private async printFuelReceiptContent(view: ReturnType<typeof mapFuelReceiptToPrintView>): Promise<void> {
+    for (const line of buildReceiptPrintPlan(view)) {
+      await this.printPlannedLine(line);
     }
-
-    await this.printLine("FUEL RECEIPT", {
-      textSize: FONT.heading,
-      bold: true,
-      align: 1,
-    });
-
-    await this.printDivider();
-    await this.printBodyLine(formatRowForPrinter("RECEIPT NO:", view.receiptNo));
-    await this.printBodyLine(formatRowForPrinter("DATE:", view.date));
-    await this.printBodyLine(formatRowForPrinter("TIME:", view.time));
-    await this.printBodyLine(formatRowForPrinter("PAYMENT:", view.paymentMethod));
-    await this.printDivider();
-
-    await this.printBodyLine(formatRowForPrinter("PRODUCT:", view.product));
-    await this.printBodyLine(formatRowForPrinter("VOLUME:", view.volume));
-    await this.printBodyLine(formatRowForPrinter("RATE/LTR:", view.rate));
-    await this.printDivider();
-
-    await this.printLine(formatRowForPrinter("TOTAL AMOUNT:", view.total), {
-      textSize: FONT.total,
-      bold: true,
-      align: 0,
-    });
-    await this.printDivider();
-
-    if (view.vehicleNo.trim()) {
-      await this.printBodyLine(formatRowForPrinter("VEHICLE NO:", view.vehicleNo));
-      await this.printDivider();
-    }
-
-    await this.printBodyLine(centerText("POWERED BY TRISON"));
-    await this.printBodyLine(centerText("THANKS FOR FUELLING WITH US"));
-    await this.printBodyLine(centerText("VISIT AGAIN"));
   }
 
   async printCalibrationLine(): Promise<void> {
     await this.assertPrinterReady();
-    await this.printBodyLine(`WIDTH TEST (${LINE_WIDTH} chars):`);
-    await this.printBodyLine(CALIBRATION_LINE);
+    if (this.deviceType === "SUNMI") {
+      const text = [
+        `WIDTH TEST (${LINE_WIDTH} chars):`,
+        CALIBRATION_LINE,
+        RECEIPT_DIVIDER,
+        "",
+      ].join("\n");
+      const bytes = new TextEncoder().encode(`\x1b\x40${text}\n\x1b\x64\x04`);
+      const code = await UnifiedPrinterModule.printRawDataBase64(bufferToBase64(bytes));
+      assertResult(code, "Print", this.deviceType);
+      return;
+    }
+
+    await this.printPlannedLine({
+      text: `Width Test (${LINE_WIDTH} chars):`,
+      align: 0,
+      font: "body",
+    });
+    await this.printPlannedLine({ text: CALIBRATION_LINE, align: 0, font: "body" });
     await this.printDivider();
     const feedCode = await UnifiedPrinterModule.paperOut(FEED_LINES);
     assertResult(feedCode, "Paper feed", this.deviceType);
@@ -208,6 +226,11 @@ class PrinterServiceImpl {
 
   async printFuelReceipt(data: FuelReceiptData): Promise<void> {
     await this.assertPrinterReady();
+
+    if (this.deviceType === "SUNMI") {
+      await this.printSunmiRaw(data);
+      return;
+    }
 
     if (data.includeLogoInPrint && data.logoDataUrl) {
       await printLogo({
@@ -222,7 +245,7 @@ class PrinterServiceImpl {
     await this.printFuelReceiptContent(view);
 
     for (let i = 0; i < FEED_LINES; i++) {
-      await this.printBodyLine("");
+      await this.printPlannedLine({ text: "", align: 0, font: "body" });
     }
 
     const feedCode = await UnifiedPrinterModule.paperOut(FEED_LINES);

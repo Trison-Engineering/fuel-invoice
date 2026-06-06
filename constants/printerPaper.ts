@@ -21,10 +21,13 @@ export const LOGO_MAX_SIZE = 100;
 /** @deprecated Use LOGO_MAX_SIZE — kept for existing imports. */
 export const LOGO_BITMAP_WIDTH = LOGO_MAX_SIZE;
 
-/** NYX textSize values tuned for 2" paper. */
+/** Text sizes (px) for NYX high-level print API — compact layout. */
 export const RECEIPT_FONT = {
-  body: 18,
-  heading: 20,
-  storeName: 22,
-  total: 20,
+  body: 14,
+  heading: 15,
+  storeName: 16,
+  total: 15,
 } as const;
+
+/** NYX / preview line spacing multiplier — lower = tighter rows. */
+export const RECEIPT_LINE_SPACING = 0;

@@ -103,6 +103,17 @@ class NyxPrinterBridge(private val context: Context) {
     return service.paperOut(80)
   }
 
+  fun printRawDataBase64(base64Data: String): Int {
+    val service = printerService ?: return -1
+    return try {
+      val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+      service.printEscposData(bytes)
+    } catch (e: Exception) {
+      Log.w(TAG, "NYX raw print error: ${e.message}")
+      -1
+    }
+  }
+
   companion object {
     private const val TAG = "NyxPrinterBridge"
   }

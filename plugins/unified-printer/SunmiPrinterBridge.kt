@@ -92,26 +92,29 @@ class SunmiPrinterBridge(private val context: Context) {
   fun isConnected(): Boolean = isConnected && (jiuiv5Service != null || stuService != null)
 
   fun initPrinter(): Boolean {
-    if (!waitForConnection()) return false
-    return try {
-      stuService?.initPrinter()
-      jiuiv5Service?.printerInit()
-      isConnected()
-    } catch (e: Exception) {
-      Log.w(TAG, "Sunmi init error: ${e.message}")
-      isConnected()
-    }
+    // Bind only — do not call printerInit/initPrinter (triggers device info self-print on V2s).
+    return waitForConnection()
   }
 
   fun getPrinterStatus(): Int {
     if (!isConnected()) return 0
+    // Avoid updatePrinterState() — some firmware builds echo printer params to paper.
+    return 1
+  }
+
+  fun printRawDataBase64(base64Data: String): Int {
+    if (!waitForConnection()) return -1
     return try {
-      jiuiv5Service?.updatePrinterState()
-        ?: stuService?.updatePrinterState()
-        ?: 0
+      val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+      when {
+        jiuiv5Service != null -> jiuiv5Service!!.sendRAWData(bytes, null)
+        stuService != null -> stuService!!.sendRAWData(bytes, null)
+        else -> return -1
+      }
+      0
     } catch (e: Exception) {
-      Log.w(TAG, "Sunmi status error: ${e.message}")
-      3
+      Log.w(TAG, "Sunmi raw print error: ${e.message}")
+      -1
     }
   }
 
@@ -178,8 +181,11 @@ class SunmiPrinterBridge(private val context: Context) {
   fun paperOut(lines: Int): Int {
     if (!waitForConnection()) return -1
     return try {
-      jiuiv5Service?.lineWrap(lines, null)
-      stuService?.lineWrap(lines, null)
+      when {
+        jiuiv5Service != null -> jiuiv5Service!!.lineWrap(lines, null)
+        stuService != null -> stuService!!.lineWrap(lines, null)
+        else -> return -1
+      }
       0
     } catch (e: Exception) {
       Log.w(TAG, "Sunmi feed error: ${e.message}")
@@ -190,8 +196,11 @@ class SunmiPrinterBridge(private val context: Context) {
   fun cutPaper(): Boolean {
     if (!isConnected()) return false
     return try {
-      jiuiv5Service?.cutPaper(null)
-      stuService?.cutPaper(null)
+      when {
+        jiuiv5Service != null -> jiuiv5Service!!.cutPaper(null)
+        stuService != null -> stuService!!.cutPaper(null)
+        else -> return false
+      }
       true
     } catch (e: Exception) {
       Log.w(TAG, "Sunmi cut error: ${e.message}")

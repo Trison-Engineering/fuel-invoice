@@ -8,11 +8,12 @@ import {
   Image,
   ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { RECEIPT_LINE_WIDTH } from "../../constants/printerPaper";
 import type { ReceiptData } from "../../utils/generateReceipt";
 import {
   buildFuelReceiptBodyLines,
-  centerText,
+  getReceiptHeaderLines,
   mapFuelReceiptToPrintView,
 } from "../../utils/receiptFormat";
 
@@ -34,46 +35,65 @@ export function ReceiptPreviewScreen({
   if (!data) return null;
 
   const view = mapFuelReceiptToPrintView(data);
+  const header = getReceiptHeaderLines(view);
   const bodyLines = buildFuelReceiptBodyLines(view);
   const receiptPaperWidth = Math.round(280 * (RECEIPT_LINE_WIDTH / 32));
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.previewHeader}>
           <Text style={styles.previewTitle}>Receipt Preview</Text>
           <Text style={styles.previewSubtitle}>Review before printing</Text>
         </View>
 
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <View style={[styles.receiptPaper, { maxWidth: receiptPaperWidth, alignSelf: "center", width: "100%" }]}>
-            {data.includeLogoInPrint && view.logoDataUrl ? (
-              <Image
-                source={{ uri: view.logoDataUrl }}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-            ) : null}
+        <View style={styles.scrollWrapper}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator
+            bounces
+          >
+            <View
+              style={[
+                styles.receiptPaper,
+                { maxWidth: receiptPaperWidth, alignSelf: "center", width: "100%" },
+              ]}
+            >
+              {data.includeLogoInPrint && view.logoDataUrl ? (
+                <Image
+                  source={{ uri: view.logoDataUrl }}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
+              ) : null}
 
-            <Text style={styles.storeName}>{view.storeName}</Text>
-            {view.address ? <Text style={styles.storeAddress}>{view.address}</Text> : null}
-            <Text style={styles.receiptTitle}>FUEL RECEIPT</Text>
-
-            {bodyLines.map((line, index) => {
-              const isTotal = line.startsWith("TOTAL AMOUNT:");
-              return (
-                <Text
-                  key={`${index}-${line}`}
-                  style={[styles.mono, isTotal && styles.totalText]}
-                >
-                  {line || " "}
+              {header.storeNameLines.map((line, index) => (
+                <Text key={`store-${index}`} style={styles.storeName}>
+                  {line}
                 </Text>
-              );
-            })}
+              ))}
+              {header.addressLines.map((line, index) => (
+                <Text key={`addr-${index}`} style={styles.storeAddress}>
+                  {line}
+                </Text>
+              ))}
+              <Text style={styles.receiptTitle}>{header.title}</Text>
 
-            <View style={styles.bottomSpace} />
-          </View>
-        </ScrollView>
+              {bodyLines.map((line, index) => {
+                const isTotal = line.trimStart().startsWith("Total Amount");
+                return (
+                  <Text
+                    key={`${index}-${line}`}
+                    style={[styles.mono, isTotal && styles.totalText]}
+                  >
+                    {line || " "}
+                  </Text>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity
@@ -96,7 +116,7 @@ export function ReceiptPreviewScreen({
             )}
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -108,8 +128,8 @@ const styles = StyleSheet.create({
   },
   previewHeader: {
     backgroundColor: "#1D4ED8",
-    padding: 16,
-    paddingTop: 48,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     alignItems: "center",
   },
   previewTitle: {
@@ -122,11 +142,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
+  scrollWrapper: {
+    flex: 1,
+    minHeight: 0,
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 8,
   },
   receiptPaper: {
     backgroundColor: "white",
@@ -146,40 +171,39 @@ const styles = StyleSheet.create({
   },
   storeName: {
     fontFamily: "monospace",
-    fontSize: 16,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 2,
-  },
-  storeAddress: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    textAlign: "center",
-    marginBottom: 2,
-  },
-  receiptTitle: {
-    fontFamily: "monospace",
     fontSize: 13,
     fontWeight: "bold",
     textAlign: "center",
-    marginBottom: 4,
+    marginBottom: 1,
+  },
+  storeAddress: {
+    fontFamily: "monospace",
+    fontSize: 10,
+    textAlign: "center",
+    marginBottom: 1,
+  },
+  receiptTitle: {
+    fontFamily: "monospace",
+    fontSize: 11,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 2,
   },
   mono: {
     fontFamily: "monospace",
-    fontSize: 11,
-    lineHeight: 18,
+    fontSize: 10,
+    lineHeight: 14,
     color: "#000",
   },
   totalText: {
     fontWeight: "bold",
-    fontSize: 12,
-  },
-  bottomSpace: {
-    height: 20,
+    fontSize: 10,
   },
   buttonContainer: {
     flexDirection: "row",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
     gap: 12,
     backgroundColor: "white",
     borderTopWidth: 1,

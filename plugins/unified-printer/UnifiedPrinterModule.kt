@@ -54,6 +54,26 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun printRawDataBase64(base64Data: String, promise: Promise) {
+    try {
+      val code =
+        when (activeType()) {
+          PrinterType.SUNMI -> sunmiBridge.printRawDataBase64(base64Data)
+          PrinterType.NYX -> nyxBridge.printRawDataBase64(base64Data)
+          PrinterType.UNKNOWN ->
+            if (sunmiBridge.isConnected()) {
+              sunmiBridge.printRawDataBase64(base64Data)
+            } else {
+              nyxBridge.printRawDataBase64(base64Data)
+            }
+        }
+      promise.resolve(code)
+    } catch (e: Exception) {
+      promise.reject("PRINT_ERROR", e.message, e)
+    }
+  }
+
+  @ReactMethod
   fun printText(content: String, textFormat: ReadableMap, promise: Promise) {
     try {
       val code =
