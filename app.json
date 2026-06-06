@@ -58,6 +58,7 @@
         }
       ],
       "./plugins/withNyxPrinter.js",
+      "./plugins/withUnifiedPrinter.js",
       "expo-asset",
       "expo-font",
       "@react-native-community/datetimepicker"

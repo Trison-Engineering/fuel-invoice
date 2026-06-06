@@ -76,6 +76,21 @@ export default function PrinterSetupScreen() {
 
   const printerStatusLabel = printer.printerStatus ?? "Checking...";
   const dotColor = statusColor(printerStatusLabel, printer.connectionStatus);
+  const deviceType = printer.deviceType ?? "UNKNOWN";
+
+  const deviceLabel =
+    deviceType === "SUNMI"
+      ? "Sunmi V2s_GL"
+      : deviceType === "NYX"
+        ? "EzPump Handheld-POS"
+        : "No printer detected";
+
+  const sdkLabel =
+    deviceType === "SUNMI"
+      ? "Sunmi Inner Printer SDK (woyou.stu.sdkservice)"
+      : deviceType === "NYX"
+        ? "NYX Printer Service (net.nyx.printerservice)"
+        : "Unknown SDK";
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
@@ -90,13 +105,16 @@ export default function PrinterSetupScreen() {
         }}
       >
         <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-          EzPump Handheld POS
+          Connected Device
         </Text>
-        <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
-          Connected to built-in printer via NYX service
+        <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
+          {deviceType === "UNKNOWN" ? "🔴" : "🟢"} {deviceLabel}
         </Text>
         <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
-          Printer service: net.nyx.printerservice — no Bluetooth pairing or manual connection required.
+          SDK: {sdkLabel}
+        </Text>
+        <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
+          Auto-detected on startup — no Bluetooth pairing or manual selection required.
         </Text>
 
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
@@ -134,7 +152,7 @@ export default function PrinterSetupScreen() {
           }}
         >
           <ActivityIndicator color={colors.primary} size="small" />
-          <Text style={{ color: colors.primary, fontSize: 14 }}>Initializing NYX printer...</Text>
+          <Text style={{ color: colors.primary, fontSize: 14 }}>Initializing printer...</Text>
         </View>
       ) : null}
 

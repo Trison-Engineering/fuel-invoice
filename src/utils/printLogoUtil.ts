@@ -1,8 +1,7 @@
-import * as FileSystem from "expo-file-system";
-import { paperOut, printBitmap } from "react-native-nyx-printer";
+import { NativeModules } from "react-native";
 
+const { UnifiedPrinterModule } = NativeModules;
 const SDK_OK = 0;
-const CHUNK_SIZE = 8192;
 
 export interface LogoPrintOptions {
   logoUri: string;
@@ -10,35 +9,6 @@ export interface LogoPrintOptions {
   width?: number;
   align?: number;
   includeLogoInPrint?: boolean;
-}
-
-function base64ToByteArray(base64: string): number[] {
-  const binary = atob(base64);
-  const bytes = new Array<number>(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/**
- * NYX native printBitmap expects ReadableArray of Strings (not numbers).
- * Passing number[] causes: java.lang.Double cannot be cast to java.lang.String
- */
-function bytesToBitmapArg(bytes: number[]): string[] {
-  const chunks: string[] = [];
-  let chunk = "";
-  for (let i = 0; i < bytes.length; i++) {
-    chunk += String.fromCharCode(bytes[i] & 0xff);
-    if (chunk.length >= CHUNK_SIZE) {
-      chunks.push(chunk);
-      chunk = "";
-    }
-  }
-  if (chunk.length > 0) {
-    chunks.push(chunk);
-  }
-  return chunks;
 }
 
 async function resolveBase64(logoUri: string): Promise<string | null> {
@@ -49,6 +19,7 @@ async function resolveBase64(logoUri: string): Promise<string | null> {
     return comma >= 0 ? logoUri.slice(comma + 1) : null;
   }
 
+  const FileSystem = await import("expo-file-system");
   if (logoUri.startsWith("file://")) {
     return FileSystem.readAsStringAsync(logoUri, {
       encoding: FileSystem.EncodingType.Base64,
@@ -75,9 +46,9 @@ async function resolveBase64(logoUri: string): Promise<string | null> {
 
 /** Print uploaded station logo; never throws — returns false on skip/failure. */
 export async function printLogo(options: LogoPrintOptions): Promise<boolean> {
-  const { logoUri, includeLogoInPrint = true } = options;
+  const { logoUri, align = 1, includeLogoInPrint = true } = options;
 
-  if (!includeLogoInPrint || !logoUri) {
+  if (!includeLogoInPrint || !logoUri || !UnifiedPrinterModule) {
     return false;
   }
 
@@ -88,16 +59,13 @@ export async function printLogo(options: LogoPrintOptions): Promise<boolean> {
       return false;
     }
 
-    const bytes = base64ToByteArray(base64Data);
-    const bitmapArg = bytesToBitmapArg(bytes);
-
-    const result = await printBitmap(bitmapArg as unknown as number[]);
-    if (result !== SDK_OK) {
-      console.log(`Logo print failed (code ${result})`);
+    await UnifiedPrinterModule.printBitmapBase64(base64Data, align);
+    const feedCode = await UnifiedPrinterModule.paperOut(1);
+    if (feedCode !== SDK_OK && feedCode < 0) {
+      console.log(`Logo feed failed (code ${feedCode})`);
       return false;
     }
 
-    await paperOut();
     return true;
   } catch (error) {
     console.log("Logo print failed, continuing without logo:", error);

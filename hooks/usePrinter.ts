@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
-import { NyxPrinterService } from "../src/services/NyxPrinterService";
+import { printerService, type DeviceType } from "../src/services/PrinterService";
 import type { ReceiptData } from "../utils/generateReceipt";
 
 export type PrinterConnectionStatus = "connected" | "disconnected" | "connecting";
 
-const NYX_DEVICE_NAME = "Built-in printer (NYX service)";
+const DEVICE_LABELS: Record<DeviceType, string> = {
+  SUNMI: "Sunmi V2s_GL (built-in printer)",
+  NYX: "EzPump Handheld-POS (NYX service)",
+  UNKNOWN: "Built-in printer",
+};
 
 export function usePrinter() {
   const [connectionStatus, setConnectionStatus] = useState<PrinterConnectionStatus>("disconnected");
   const [printerStatus, setPrinterStatus] = useState<string>("Checking...");
+  const [deviceType, setDeviceType] = useState<DeviceType>("UNKNOWN");
   const [isInitializing, setIsInitializing] = useState(false);
   const [isTestingPrint, setIsTestingPrint] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,14 +27,14 @@ export function usePrinter() {
         : "Printer Disconnected";
 
   const refreshStatus = useCallback(async (): Promise<string> => {
-    const status = await NyxPrinterService.getPrinterStatus();
+    const status = await printerService.getPrinterStatus();
     setPrinterStatus(status);
     return status;
   }, []);
 
   const initPrinter = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== "android") {
-      setError("NYX built-in printer requires an Android POS build.");
+      setError("Built-in printer requires an Android POS build.");
       setConnectionStatus("disconnected");
       return false;
     }
@@ -39,7 +44,8 @@ export function usePrinter() {
     setError(null);
 
     try {
-      await NyxPrinterService.initPrinter();
+      const type = await printerService.init();
+      setDeviceType(type);
       const status = await refreshStatus();
       if (status.startsWith("Error")) {
         setConnectionStatus("disconnected");
@@ -49,7 +55,7 @@ export function usePrinter() {
       setConnectionStatus("connected");
       return true;
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to initialize NYX printer";
+      const message = e instanceof Error ? e.message : "Failed to initialize printer";
       setError(message);
       setConnectionStatus("disconnected");
       return false;
@@ -84,7 +90,7 @@ export function usePrinter() {
         throw new Error(`Printer status: ${status}`);
       }
 
-      await NyxPrinterService.printFuelReceipt(data);
+      await printerService.printFuelReceipt(data);
       await refreshStatus();
     },
     [ensureConnected, refreshStatus]
@@ -96,7 +102,7 @@ export function usePrinter() {
     try {
       const connected = await ensureConnected();
       if (!connected) throw new Error("Printer not ready");
-      await NyxPrinterService.printCalibrationLine();
+      await printerService.printCalibrationLine();
       await refreshStatus();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Calibration print failed";
@@ -116,7 +122,7 @@ export function usePrinter() {
       if (!connected) {
         throw new Error("Printer not ready");
       }
-      await NyxPrinterService.printTestReceipt();
+      await printerService.printTestReceipt();
       await refreshStatus();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Test print failed";
@@ -131,8 +137,14 @@ export function usePrinter() {
     setError(null);
   }, []);
 
+  const connectedDeviceName = DEVICE_LABELS[deviceType];
+
   return {
-    connectedDevice: connectionStatus === "connected" ? { id: "nyx-builtin", name: NYX_DEVICE_NAME, rssi: null } : null,
+    connectedDevice:
+      connectionStatus === "connected"
+        ? { id: `${deviceType.toLowerCase()}-builtin`, name: connectedDeviceName, rssi: null }
+        : null,
+    deviceType,
     connectionStatus,
     connectionStatusLabel,
     printerStatus,
