@@ -16,7 +16,8 @@ import {
   RECEIPT_DIVIDER,
   type FuelReceiptPrintView,
 } from "../../utils/receiptFormat";
-import { printReceiptLogo } from "../../utils/printReceiptLogo";
+import { printLogo } from "../utils/printLogoUtil";
+import { safeStr } from "../utils/printerUtils";
 
 const SDK_OK = 0;
 const PRN_NO_PAPER = -1203;
@@ -53,7 +54,7 @@ type NyxLineStyle = {
   align?: 0 | 1 | 2;
 };
 
-async function nyxPrintLine(text: string, style: NyxLineStyle): Promise<void> {
+async function nyxPrintLine(text: unknown, style: NyxLineStyle): Promise<void> {
   const format = new NyxTextFormat();
   format.textSize = style.textSize;
   format.textScaleX = 1;
@@ -67,12 +68,12 @@ async function nyxPrintLine(text: string, style: NyxLineStyle): Promise<void> {
   format.font = MONOSPACE;
   format.underline = false;
 
-  const line = clipLine(text);
+  const line = clipLine(safeStr(text));
   const code = await printText(`${line}\n`, format);
   assertResult(code, "Print");
 }
 
-async function printBodyLine(text: string, bold = false): Promise<void> {
+async function printBodyLine(text: unknown, bold = false): Promise<void> {
   await nyxPrintLine(text, { textSize: FONT.body, bold, align: 0 });
 }
 
@@ -166,10 +167,18 @@ class NyxPrinterServiceImpl {
   async printFuelReceipt(data: FuelReceiptData): Promise<void> {
     await this.assertPrinterReady();
 
-    await printReceiptLogo({
-      logoDataUrl: data.logoDataUrl,
-      includeLogoInPrint: data.includeLogoInPrint,
-    });
+    if (data.includeLogoInPrint && data.logoDataUrl) {
+      try {
+        await printLogo({
+          logoUri: data.logoDataUrl,
+          width: 384,
+          align: 1,
+          includeLogoInPrint: data.includeLogoInPrint,
+        });
+      } catch (logoError) {
+        console.log("Logo skipped:", logoError);
+      }
+    }
 
     const view = mapFuelReceiptToPrintView(data);
     await printFuelReceiptContent(view);
@@ -195,7 +204,6 @@ class NyxPrinterServiceImpl {
       volume: "17",
       totalAmount: 6630,
       vehicleNumber: "ASX-428",
-      nozzleNo: "",
       customerName: "",
       includeLogoInPrint: false,
     });

@@ -1,23 +1,13 @@
 export interface FormData {
-  stationName: string;
-  stationAddress: string;
-  paymentMethod: string;
-  invoiceNumber: string;
-  productType: string;
   fuelRate: string;
   volume: string;
-  date: string;
-  time: string;
   vehicleNumber: string;
-  nozzleNo: string;
   customerName: string;
 }
 
 export type FormErrors = Partial<Record<keyof FormData, string>>;
 
 const ERROR_PRIORITY: (keyof FormData)[] = [
-  "stationName",
-  "stationAddress",
   "fuelRate",
   "volume",
   "vehicleNumber",
@@ -25,14 +15,6 @@ const ERROR_PRIORITY: (keyof FormData)[] = [
 
 export function validateForm(data: FormData): FormErrors {
   const errors: FormErrors = {};
-
-  if (!data.stationName.trim()) {
-    errors.stationName = "Station name is required";
-  }
-
-  if (!data.stationAddress.trim()) {
-    errors.stationAddress = "Station address is required";
-  }
 
   const fuelRate = parseFloat(data.fuelRate);
   if (!data.fuelRate.trim() || isNaN(fuelRate) || fuelRate <= 0) {

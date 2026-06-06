@@ -1,7 +1,7 @@
 import "../global.css";
 import { useEffect } from "react";
 import { Platform } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrinterProvider } from "../contexts/PrinterContext";
@@ -10,10 +10,25 @@ import { colors } from "../constants/theme";
 
 function AppBootstrap({ children }: { children: React.ReactNode }) {
   const hydrate = useStationStore((s) => s.hydrate);
+  const isHydrated = useStationStore((s) => s.isHydrated);
+  const stationName = useStationStore((s) => s.stationName);
+  const stationAddress = useStationStore((s) => s.stationAddress);
+  const router = useRouter();
+  const segments = useSegments();
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    const profileComplete = Boolean(stationName.trim() && stationAddress.trim());
+    if (profileComplete) return;
+    const onSettings = segments[0] === "settings";
+    if (!onSettings) {
+      router.replace("/settings?setup=1");
+    }
+  }, [isHydrated, stationName, stationAddress, segments, router]);
 
   return <>{children}</>;
 }

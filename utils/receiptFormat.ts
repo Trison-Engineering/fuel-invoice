@@ -1,3 +1,4 @@
+import { formatCurrency, formatVolume, safeStr } from "../src/utils/printerUtils";
 import { formatDate, formatTime } from "./formatters";
 import type { ReceiptData } from "./generateReceipt";
 
@@ -8,10 +9,10 @@ export const RECEIPT_DIVIDER = "-".repeat(LINE_WIDTH);
 
 export const CALIBRATION_LINE = "12345678901234567890123456789012";
 
-export function formatRow(label: string, value: string): string {
+export function formatRow(label: string, value: unknown): string {
   const totalWidth = LINE_WIDTH;
-  const valueStr = String(value);
-  const labelStr = String(label);
+  const valueStr = safeStr(value);
+  const labelStr = safeStr(label);
 
   if (labelStr.length + valueStr.length >= totalWidth) {
     const maxLabelWidth = totalWidth - valueStr.length - 1;
@@ -22,8 +23,8 @@ export function formatRow(label: string, value: string): string {
   return labelStr + " ".repeat(spaces) + valueStr;
 }
 
-export function centerText(text: string): string {
-  const trimmed = text.substring(0, LINE_WIDTH);
+export function centerText(text: unknown): string {
+  const trimmed = safeStr(text).substring(0, LINE_WIDTH);
   if (trimmed.length >= LINE_WIDTH) {
     return trimmed;
   }
@@ -31,8 +32,8 @@ export function centerText(text: string): string {
   return " ".repeat(spaces) + trimmed;
 }
 
-export function clipLine(text: string): string {
-  return text.substring(0, LINE_WIDTH);
+export function clipLine(text: unknown): string {
+  return safeStr(text).substring(0, LINE_WIDTH);
 }
 
 export function normalizePrintAddress(address: string): string {
@@ -42,21 +43,16 @@ export function normalizePrintAddress(address: string): string {
     .trim();
 }
 
-export function formatVolumeLtr(volume: string | number): string {
-  const num = typeof volume === "string" ? parseFloat(volume) : volume;
-  if (isNaN(num)) return "0 LTR";
-  const text = num % 1 === 0 ? String(Math.round(num)) : num.toFixed(2);
-  return `${text} LTR`;
+export function formatVolumeLtr(volume: unknown): string {
+  return `${formatVolume(volume)} LTR`;
 }
 
-export function formatRateRs(rate: string | number): string {
-  const num = typeof rate === "string" ? parseFloat(rate) : rate;
-  if (isNaN(num)) return "Rs. 0.00";
-  return `Rs. ${num.toFixed(2)}`;
+export function formatRateRs(rate: unknown): string {
+  return `Rs. ${formatCurrency(rate)}`;
 }
 
-export function formatTotalRs(amount: number): string {
-  return `Rs. ${amount.toFixed(2)}`;
+export function formatTotalRs(amount: unknown): string {
+  return `Rs. ${formatCurrency(amount)}`;
 }
 
 export function getPaymentLabel(method: string): string {
@@ -80,17 +76,17 @@ export interface FuelReceiptPrintView {
 
 export function mapFuelReceiptToPrintView(data: ReceiptData): FuelReceiptPrintView {
   return {
-    storeName: data.stationName.toUpperCase(),
-    address: normalizePrintAddress(data.stationAddress),
-    receiptNo: data.invoiceNumber,
-    date: formatDate(data.date),
-    time: formatTime(data.time),
-    paymentMethod: getPaymentLabel(data.paymentMethod),
-    product: data.productType.toUpperCase(),
+    storeName: safeStr(data.stationName).toUpperCase(),
+    address: normalizePrintAddress(safeStr(data.stationAddress)),
+    receiptNo: safeStr(data.invoiceNumber),
+    date: formatDate(safeStr(data.date)),
+    time: formatTime(safeStr(data.time)),
+    paymentMethod: getPaymentLabel(safeStr(data.paymentMethod)),
+    product: safeStr(data.productType).toUpperCase(),
     volume: formatVolumeLtr(data.volume),
     rate: formatRateRs(data.fuelRate),
     total: formatTotalRs(data.totalAmount),
-    vehicleNo: data.vehicleNumber,
+    vehicleNo: safeStr(data.vehicleNumber),
     logoDataUrl: data.logoDataUrl,
   };
 }

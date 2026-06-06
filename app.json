@@ -68,8 +68,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "d2c31d12-010a-47c5-9245-4ae8f465de4d"
+        "projectId": "8eb77ff7-a515-4c30-adeb-8b09b0b6671a"
       }
-    }
+    },
+    "owner": "trisonpetrolium"
   }
 }

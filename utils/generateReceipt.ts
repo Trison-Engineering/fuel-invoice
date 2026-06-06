@@ -1,3 +1,4 @@
+import { safeStr } from "../src/utils/printerUtils";
 import {
   centerText,
   formatDate,
@@ -27,7 +28,6 @@ export interface ReceiptData {
   volume: string;
   totalAmount: number;
   vehicleNumber: string;
-  nozzleNo: string;
   customerName: string;
   logoDataUrl?: string | null;
   includeLogoInPrint?: boolean;
@@ -106,7 +106,7 @@ export function generateEscPosBuffer(data: ReceiptData): Uint8Array {
   parts.push(cmdLine(RECEIPT_DIVIDER));
 
   parts.push(cmdAlign(0));
-  parts.push(cmdLine(formatRow("RECEIPT NO:", data.invoiceNumber)));
+  parts.push(cmdLine(formatRow("RECEIPT NO:", safeStr(data.invoiceNumber))));
   parts.push(cmdLine(formatRow("DATE:", formatDate(data.date))));
   parts.push(cmdLine(formatRow("TIME:", formatTime(data.time))));
   parts.push(cmdLine(formatRow("PAYMENT:", payment)));
