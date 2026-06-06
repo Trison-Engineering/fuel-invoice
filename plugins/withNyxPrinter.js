@@ -5,7 +5,6 @@ const path = require("path");
 const NYX_PACKAGE = "net.nyx.printerservice";
 const NYX_ACTION = "net.nyx.printerservice.IPrinterService";
 const AIDL_MARKER = "nyx-printer-aidl";
-
 function enableAidlInNyxBuildGradle(contents) {
   if (contents.includes(AIDL_MARKER) || /buildFeatures\s*\{[^}]*aidl\s+true/.test(contents)) {
     return contents;
@@ -97,7 +96,9 @@ module.exports = function withNyxPrinter(config) {
   return withDangerousMod(config, [
     "android",
     async (config) => {
-      patchNyxPrinterGradle(config.modRequest.projectRoot);
+      const projectRoot = config.modRequest.projectRoot;
+      patchNyxPrinterGradle(projectRoot);
+      require(path.join(projectRoot, "scripts", "patch-nyx-printer.js"));
       return config;
     },
   ]);

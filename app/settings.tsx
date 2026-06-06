@@ -1,7 +1,15 @@
-import { useState } from "react";
-import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator } from "react-native";
+import { useState, useLayoutEffect } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  Alert,
+  ActivityIndicator,
+  Switch,
+} from "react-native";
 import Constants from "expo-constants";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import { useStationStore } from "../stores/stationStore";
 import { FormSection } from "../components/FormSection";
 import { InputField } from "../components/InputField";
@@ -12,7 +20,17 @@ import { colors, spacing } from "../constants/theme";
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const { setup } = useLocalSearchParams<{ setup?: string }>();
+  const isInitialSetup = setup === "1";
   const station = useStationStore();
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: isInitialSetup ? "Station Setup" : "Settings",
+      headerBackVisible: !isInitialSetup,
+    });
+  }, [navigation, isInitialSetup]);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -28,6 +46,12 @@ export default function SettingsScreen() {
     setSaving(true);
     await station.saveProfile();
     setSaving(false);
+
+    if (isInitialSetup) {
+      router.replace("/");
+      return;
+    }
+
     setToast({ visible: true, message: "Profile saved", type: "success" });
   };
 
@@ -43,7 +67,7 @@ export default function SettingsScreen() {
           onPress: async () => {
             await station.clearAll();
             setToast({ visible: true, message: "All data cleared", type: "success" });
-            router.replace("/");
+            router.replace("/settings?setup=1");
           },
         },
       ]
@@ -53,6 +77,25 @@ export default function SettingsScreen() {
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 100 }}>
+        {isInitialSetup ? (
+          <View
+            style={{
+              backgroundColor: colors.primaryLight,
+              borderRadius: 8,
+              padding: spacing.md,
+              marginBottom: spacing.lg,
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: "600", color: colors.primary, marginBottom: 4 }}>
+              Welcome
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.black, lineHeight: 20 }}>
+              Set up your station profile to start printing fuel receipts. This information is saved
+              and used on every receipt.
+            </Text>
+          </View>
+        ) : null}
+
         <FormSection icon="business-outline" title="Station Profile">
           <InputField
             label="Station Name"
@@ -72,6 +115,24 @@ export default function SettingsScreen() {
 
         <FormSection icon="cloud-upload-outline" title="Station Logo">
           <LogoUploader logoDataUrl={station.logoDataUrl} onLogoChange={station.setLogoDataUrl} />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: spacing.sm,
+            }}
+          >
+            <Text style={{ fontSize: 14, color: colors.black, flex: 1 }}>
+              Include logo in print
+            </Text>
+            <Switch
+              value={station.includeLogoInPrint}
+              onValueChange={station.setIncludeLogoInPrint}
+              trackColor={{ false: colors.border, true: colors.primaryLight }}
+              thumbColor={station.includeLogoInPrint ? colors.primary : colors.muted}
+            />
+          </View>
         </FormSection>
 
         <Pressable
@@ -106,23 +167,27 @@ export default function SettingsScreen() {
           {saving ? (
             <ActivityIndicator color={colors.white} />
           ) : (
-            <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Save Profile</Text>
+            <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>
+              {isInitialSetup ? "Save & Continue" : "Save Profile"}
+            </Text>
           )}
         </Pressable>
 
-        <Pressable
-          onPress={handleClearAll}
-          style={{
-            height: 48,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: colors.error,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text style={{ color: colors.error, fontSize: 16, fontWeight: "600" }}>Clear All Data</Text>
-        </Pressable>
+        {!isInitialSetup ? (
+          <Pressable
+            onPress={handleClearAll}
+            style={{
+              height: 48,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.error,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.error, fontSize: 16, fontWeight: "600" }}>Clear All Data</Text>
+          </Pressable>
+        ) : null}
 
         <Text
           style={{

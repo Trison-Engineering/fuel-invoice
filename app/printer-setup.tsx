@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, ScrollView, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePrinterContext } from "../contexts/PrinterContext";
+import { PAPER_WIDTH_INCHES, RECEIPT_LINE_WIDTH } from "../constants/printerPaper";
 import { colors, spacing } from "../constants/theme";
 
 function DismissButton({ onPress }: { onPress: () => void }) {
@@ -57,8 +58,39 @@ export default function PrinterSetupScreen() {
     }
   };
 
+  const handleCalibrationPrint = async () => {
+    setIsPrinting(true);
+    try {
+      await printer.printCalibration();
+      Alert.alert(
+        "Calibration printed",
+        `Count characters on the numbered line (${RECEIPT_LINE_WIDTH} chars for ${PAPER_WIDTH_INCHES}" Sunmi paper). If it wraps early, reduce RECEIPT_LINE_WIDTH in constants/printerPaper.ts.`
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Calibration print failed";
+      Alert.alert("Print failed", message);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const printerStatusLabel = printer.printerStatus ?? "Checking...";
   const dotColor = statusColor(printerStatusLabel, printer.connectionStatus);
+  const deviceType = printer.deviceType ?? "UNKNOWN";
+
+  const deviceLabel =
+    deviceType === "SUNMI"
+      ? "Sunmi V2s_GL"
+      : deviceType === "NYX"
+        ? "EzPump Handheld-POS"
+        : "No printer detected";
+
+  const sdkLabel =
+    deviceType === "SUNMI"
+      ? "Sunmi Inner Printer SDK (woyou.stu.sdkservice)"
+      : deviceType === "NYX"
+        ? "NYX Printer Service (net.nyx.printerservice)"
+        : "Unknown SDK";
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
@@ -73,13 +105,16 @@ export default function PrinterSetupScreen() {
         }}
       >
         <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-          EzPump Handheld POS
+          Connected Device
         </Text>
-        <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.md }}>
-          Connected to built-in printer via NYX service
+        <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
+          {deviceType === "UNKNOWN" ? "🔴" : "🟢"} {deviceLabel}
         </Text>
         <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
-          Printer service: net.nyx.printerservice — no Bluetooth pairing or manual connection required.
+          SDK: {sdkLabel}
+        </Text>
+        <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
+          Auto-detected on startup — no Bluetooth pairing or manual selection required.
         </Text>
 
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
@@ -117,7 +152,7 @@ export default function PrinterSetupScreen() {
           }}
         >
           <ActivityIndicator color={colors.primary} size="small" />
-          <Text style={{ color: colors.primary, fontSize: 14 }}>Initializing NYX printer...</Text>
+          <Text style={{ color: colors.primary, fontSize: 14 }}>Initializing printer...</Text>
         </View>
       ) : null}
 
@@ -139,6 +174,26 @@ export default function PrinterSetupScreen() {
         ) : (
           <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Test Print</Text>
         )}
+      </Pressable>
+
+      <Pressable
+        onPress={handleCalibrationPrint}
+        disabled={isBusy}
+        style={{
+          height: 44,
+          backgroundColor: colors.white,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.md,
+          opacity: isBusy ? 0.7 : 1,
+        }}
+      >
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>
+          Print width calibration ({RECEIPT_LINE_WIDTH} chars, {PAPER_WIDTH_INCHES}" paper)
+        </Text>
       </Pressable>
 
       <Pressable

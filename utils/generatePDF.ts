@@ -54,8 +54,7 @@ function estimateHeightMm(data: ReceiptData, addressLineCount: number): number {
   rowCount += 3; // receipt no, date, time
   rowCount += 3; // product, volume, rate
   rowCount += 1; // total
-  rowCount += 1; // vehicle
-  if (data.customerName.trim()) rowCount += 1;
+  if (data.vehicleNumber.trim()) rowCount += 1;
   rowCount += 4; // footer lines
 
   const logoMm = data.logoDataUrl ? LOGO_HEIGHT_MM : 0;
@@ -101,13 +100,11 @@ function buildHtmlReceipt(data: ReceiptData): { html: string; heightMm: number }
   parts.push(pdfRow("TOTAL AMOUNT:", formatTotalRs(data.totalAmount)));
 
   parts.push(dashedSeparator());
-  parts.push(pdfRow("VEHICLE NO:", data.vehicleNumber));
-
-  if (data.customerName.trim()) {
-    parts.push(pdfRow("CUSTOMER:", data.customerName));
+  if (data.vehicleNumber.trim()) {
+    parts.push(pdfRow("VEHICLE NO:", data.vehicleNumber));
+    parts.push(dashedSeparator());
   }
 
-  parts.push(dashedSeparator());
   parts.push('<div class="center footer">SAVE FUEL YAANI SAVE MONEY</div>');
   parts.push('<div class="center footer">THANKS FOR FUELLING WITH US</div>');
   parts.push('<div class="center footer">VISIT AGAIN</div>');

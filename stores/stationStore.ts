@@ -16,6 +16,7 @@ interface StationState extends StationProfile {
   setPaymentMethod: (method: string) => void;
   setLogoDataUrl: (url: string | null) => void;
   setIncludeLogoInPrint: (include: boolean) => void;
+  isProfileComplete: () => boolean;
   hydrate: () => Promise<void>;
   saveProfile: () => Promise<void>;
   clearAll: () => Promise<void>;
@@ -39,12 +40,18 @@ export const useStationStore = create<StationState>((set, get) => ({
   setLogoDataUrl: (logoDataUrl) => set({ logoDataUrl }),
   setIncludeLogoInPrint: (includeLogoInPrint) => set({ includeLogoInPrint }),
 
+  isProfileComplete: () => {
+    const { stationName, stationAddress } = get();
+    return Boolean(stationName.trim() && stationAddress.trim());
+  },
+
   hydrate: async () => {
     const profile = await getItem<StationProfile>(StorageKeys.STATION_PROFILE);
     const includeLogo = await getItem<boolean>(StorageKeys.INCLUDE_LOGO_IN_PRINT);
     if (profile) {
       set({
         ...profile,
+        paymentMethod: "Cash",
         includeLogoInPrint: includeLogo ?? profile.includeLogoInPrint ?? false,
         isHydrated: true,
       });
@@ -58,7 +65,7 @@ export const useStationStore = create<StationState>((set, get) => ({
     const profile: StationProfile = {
       stationName: state.stationName,
       stationAddress: state.stationAddress,
-      paymentMethod: state.paymentMethod,
+      paymentMethod: "Cash",
       logoDataUrl: state.logoDataUrl,
       includeLogoInPrint: state.includeLogoInPrint,
     };

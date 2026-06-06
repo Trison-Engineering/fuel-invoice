@@ -1,13 +1,8 @@
-import { centerText, formatDate, formatTime } from "./formatters";
+import { safeStr } from "../src/utils/printerUtils";
 import {
-  buildFuelReceiptTextLines,
-  formatRateRs,
-  formatRow,
-  formatTotalRs,
-  formatVolumeLtr,
-  getPaymentLabel,
-  normalizePrintAddress,
-  RECEIPT_DIVIDER,
+  buildReceiptPrintPlan,
+  mapFuelReceiptToPrintView,
+  type ReceiptPrintLine,
 } from "./receiptFormat";
 
 export interface ReceiptData {
@@ -22,7 +17,6 @@ export interface ReceiptData {
   volume: string;
   totalAmount: number;
   vehicleNumber: string;
-  nozzleNo: string;
   customerName: string;
   logoDataUrl?: string | null;
   includeLogoInPrint?: boolean;
@@ -52,8 +46,17 @@ function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   return result;
 }
 
-function cmdInit(): Uint8Array {
-  return new Uint8Array([ESC, 0x40]);
+function cmdInitCompact(): Uint8Array {
+  return new Uint8Array([
+    ESC,
+    0x40,
+    ESC,
+    0x4d,
+    1,
+    ESC,
+    0x33,
+    18,
+  ]);
 }
 
 function cmdAlign(align: 0 | 1 | 2): Uint8Array {
@@ -76,62 +79,28 @@ function cmdCut(): Uint8Array {
   return new Uint8Array([GS, 0x56, 0x00]);
 }
 
+function appendPrintLine(parts: Uint8Array[], line: ReceiptPrintLine): void {
+  parts.push(cmdAlign(line.align));
+  if (line.bold) parts.push(cmdBold(true));
+  parts.push(cmdLine(line.text));
+  if (line.bold) parts.push(cmdBold(false));
+}
+
 export function buildReceiptLines(data: ReceiptData): string[] {
-  return buildFuelReceiptTextLines(data);
+  const view = mapFuelReceiptToPrintView(data);
+  return buildReceiptPrintPlan(view).map((line) => line.text);
 }
 
 export function generateEscPosBuffer(data: ReceiptData): Uint8Array {
-  const parts: Uint8Array[] = [cmdInit()];
-  const payment = getPaymentLabel(data.paymentMethod);
+  const view = mapFuelReceiptToPrintView(data);
+  const plan = buildReceiptPrintPlan(view);
+  const parts: Uint8Array[] = [cmdInitCompact()];
 
-  parts.push(
-    cmdAlign(1),
-    cmdBold(true),
-    cmdLine(centerText(data.stationName.toUpperCase())),
-    cmdBold(false)
-  );
-
-  const address = normalizePrintAddress(data.stationAddress);
-  if (address) {
-    parts.push(cmdLine(centerText(address)));
+  for (const line of plan) {
+    appendPrintLine(parts, line);
   }
-
-  parts.push(cmdBold(true), cmdLine(centerText("FUEL RECEIPT")), cmdBold(false));
-  parts.push(cmdLine(RECEIPT_DIVIDER));
-
-  parts.push(cmdAlign(0));
-  parts.push(cmdLine(formatRow("RECEIPT NO:", data.invoiceNumber)));
-  parts.push(cmdLine(formatRow("DATE:", formatDate(data.date))));
-  parts.push(cmdLine(formatRow("TIME:", formatTime(data.time))));
-  parts.push(cmdLine(formatRow("PAYMENT:", payment)));
-  parts.push(cmdLine(RECEIPT_DIVIDER));
-
-  parts.push(cmdLine(formatRow("PRODUCT:", data.productType.toUpperCase())));
-  parts.push(cmdLine(formatRow("VOLUME:", formatVolumeLtr(data.volume))));
-  parts.push(cmdLine(formatRow("RATE/LTR:", formatRateRs(data.fuelRate))));
-  parts.push(cmdLine(RECEIPT_DIVIDER));
-
-  parts.push(
-    cmdBold(true),
-    cmdLine(formatRow("TOTAL AMOUNT:", formatTotalRs(data.totalAmount))),
-    cmdBold(false)
-  );
-  parts.push(cmdLine(RECEIPT_DIVIDER));
-
-  if (data.vehicleNumber.trim()) {
-    parts.push(cmdLine(formatRow("VEHICLE NO:", data.vehicleNumber)));
-    parts.push(cmdLine(RECEIPT_DIVIDER));
-  }
-
-  parts.push(
-    cmdAlign(1),
-    cmdLine(centerText("POWERED BY TRISON")),
-    cmdLine(centerText("THANKS FOR FUELLING WITH US")),
-    cmdLine(centerText("VISIT AGAIN"))
-  );
 
   parts.push(cmdFeed(3), cmdCut());
-
   return concatBytes(...parts);
 }
 

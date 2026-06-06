@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useLayoutEffect } from "react";
+import React, { useState, useCallback, useLayoutEffect, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   View,
@@ -7,20 +7,17 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
-  Platform,
-  Switch,
 } from "react-native";
 import { useRouter, useNavigation } from "expo-router";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFormState } from "../hooks/useFormState";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { FormSection } from "../components/FormSection";
 import { InputField } from "../components/InputField";
 import { SelectField } from "../components/SelectField";
-import { TextAreaField } from "../components/TextAreaField";
-import { LogoUploader } from "../components/LogoUploader";
 import { PrinterStatus } from "../components/PrinterStatus";
 import { Toast } from "../components/Toast";
+import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
+import type { ReceiptData } from "../utils/generateReceipt";
 import { colors, spacing } from "../constants/theme";
 
 export default function HomeScreen() {
@@ -29,9 +26,9 @@ export default function HomeScreen() {
   const printer = usePrinterContext();
   const form = useFormState();
 
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<ReceiptData | null>(null);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" }>({
     visible: false,
     message: "",
@@ -41,6 +38,13 @@ export default function HomeScreen() {
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
     setToast({ visible: true, message, type });
   }, []);
+
+  useEffect(() => {
+    if (!form.station.isHydrated) return;
+    if (!form.station.isProfileComplete()) {
+      router.replace("/settings?setup=1");
+    }
+  }, [form.station.isHydrated, form.station.stationName, form.station.stationAddress, router]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -61,18 +65,29 @@ export default function HomeScreen() {
     });
   }, [navigation, printer.connectedDevice, printer.connectionStatus, printer.connectionStatusLabel, router]);
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
+    if (!form.station.isProfileComplete()) {
+      Alert.alert("Station setup required", "Please complete your station profile in Settings first.");
+      router.push("/settings?setup=1");
+      return;
+    }
     if (!form.validate()) return;
+    setPreviewData(form.getReceiptData());
+    setShowPreview(true);
+  };
 
+  const handleConfirmPrint = async () => {
     setIsPrinting(true);
     try {
       const connected = await printer.ensureConnected();
       if (!connected) {
-        Alert.alert("Printer not ready", "Could not connect to the built-in NYX printer. Open Printer settings to retry.");
+        Alert.alert("Printer not ready", "Could not connect to the built-in printer. Open Printer settings to retry.");
         return;
       }
 
-      await printer.printReceipt(form.getReceiptData());
+      if (!previewData) return;
+      await printer.printReceipt(previewData);
+      setShowPreview(false);
       showToast("Receipt printed successfully");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Print failed";
@@ -82,19 +97,7 @@ export default function HomeScreen() {
     }
   };
 
-  const parseDate = (iso: string) => {
-    const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d);
-  };
-
-  const parseTime = (time24: string) => {
-    const [h, min] = time24.split(":").map(Number);
-    const d = new Date();
-    d.setHours(h, min, 0, 0);
-    return d;
-  };
-
-  const fieldWrapper = (field: string, y: number, children: React.ReactNode) => (
+  const fieldWrapper = (field: string, children: React.ReactNode) => (
     <View
       onLayout={(e) => form.registerFieldRef(field, e.nativeEvent.layout.y)}
       key={field}
@@ -111,6 +114,14 @@ export default function HomeScreen() {
     );
   }
 
+  if (!form.station.isProfileComplete()) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -119,58 +130,7 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {fieldWrapper(
-          "stationName",
-          0,
-          <FormSection icon="business-outline" title="Station Details" subtitle="Saved for future receipts">
-            <InputField
-              label="Station Name"
-              required
-              value={form.station.stationName}
-              onChangeText={(v) => {
-                form.station.setStationName(v);
-                form.clearFieldError("stationName");
-                form.station.saveProfile();
-              }}
-              error={form.errors.stationName}
-              placeholder="Enter station name"
-            />
-            <TextAreaField
-              label="Station Address"
-              required
-              value={form.station.stationAddress}
-              onChangeText={(v) => {
-                form.station.setStationAddress(v);
-                form.clearFieldError("stationAddress");
-                form.station.saveProfile();
-              }}
-              error={form.errors.stationAddress}
-              placeholder="Enter station address"
-            />
-          </FormSection>
-        )}
-
-        <FormSection icon="card-outline" title="Payment Info">
-          <SelectField
-            label="Payment Method"
-            value={form.station.paymentMethod}
-            options={["Cash", "Card", "None"]}
-            onChange={(v) => {
-              form.station.setPaymentMethod(v);
-              form.station.saveProfile();
-            }}
-          />
-          <InputField
-            label="Invoice Number"
-            value={form.invoiceNumber}
-            onChangeText={form.setInvoiceNumber}
-            keyboardType="number-pad"
-            placeholder="1000-9999"
-          />
-        </FormSection>
-
-        {fieldWrapper(
           "fuelRate",
-          0,
           <FormSection icon="receipt-outline" title="Fuel Details">
             <SelectField
               label="Product Type"
@@ -201,133 +161,22 @@ export default function HomeScreen() {
               value={form.totalDisplay}
               editable={false}
             />
-            <View>
-              <Text style={{ fontSize: 14, fontWeight: "500", marginBottom: 6 }}>Date</Text>
-              <Pressable
-                onPress={() => setShowDatePicker(true)}
-                style={{
-                  height: 44,
-                  justifyContent: "center",
-                  paddingHorizontal: spacing.md,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.white,
-                }}
-              >
-                <Text style={{ fontSize: 14 }}>{form.date}</Text>
-              </Pressable>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={parseDate(form.date)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(_, selected) => {
-                    setShowDatePicker(Platform.OS === "ios");
-                    if (selected) {
-                      const y = selected.getFullYear();
-                      const m = String(selected.getMonth() + 1).padStart(2, "0");
-                      const d = String(selected.getDate()).padStart(2, "0");
-                      form.setDate(`${y}-${m}-${d}`);
-                    }
-                  }}
-                />
-              )}
-            </View>
-            <View>
-              <Text style={{ fontSize: 14, fontWeight: "500", marginBottom: 6 }}>Time</Text>
-              <Pressable
-                onPress={() => setShowTimePicker(true)}
-                style={{
-                  height: 44,
-                  justifyContent: "center",
-                  paddingHorizontal: spacing.md,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.white,
-                }}
-              >
-                <Text style={{ fontSize: 14 }}>{form.time}</Text>
-              </Pressable>
-              {showTimePicker && (
-                <DateTimePicker
-                  value={parseTime(form.time)}
-                  mode="time"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  is24Hour
-                  onChange={(_, selected) => {
-                    setShowTimePicker(Platform.OS === "ios");
-                    if (selected) {
-                      const h = String(selected.getHours()).padStart(2, "0");
-                      const min = String(selected.getMinutes()).padStart(2, "0");
-                      form.setTime(`${h}:${min}`);
-                    }
-                  }}
-                />
-              )}
-            </View>
           </FormSection>
         )}
 
         {fieldWrapper(
           "vehicleNumber",
-          0,
-          <FormSection icon="person-outline" title="Customer / Vehicle">
+          <FormSection icon="car-outline" title="Vehicle (optional)">
             <InputField
               label="Vehicle Number"
-              required
               value={form.vehicleNumber}
               onChangeText={form.updateVehicleNumber}
               error={form.errors.vehicleNumber}
-              placeholder="e.g. ASX-428"
+              placeholder="e.g. ASX-428 (optional)"
               autoCapitalize="characters"
-            />
-            <InputField
-              label="Nozzle Number"
-              value={form.nozzleNo}
-              onChangeText={form.setNozzleNo}
-              placeholder="Optional"
-            />
-            <InputField
-              label="Customer Name"
-              value={form.customerName}
-              onChangeText={form.setCustomerName}
-              placeholder="Optional"
             />
           </FormSection>
         )}
-
-        <FormSection icon="cloud-upload-outline" title="Station Logo">
-          <LogoUploader
-            logoDataUrl={form.station.logoDataUrl}
-            onLogoChange={(url) => {
-              form.station.setLogoDataUrl(url);
-              form.station.saveProfile();
-            }}
-          />
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: spacing.sm,
-            }}
-          >
-            <Text style={{ fontSize: 14, color: colors.black, flex: 1 }}>
-              Include logo in print
-            </Text>
-            <Switch
-              value={form.station.includeLogoInPrint}
-              onValueChange={(v) => {
-                form.station.setIncludeLogoInPrint(v);
-                form.station.saveProfile();
-              }}
-              trackColor={{ false: colors.border, true: colors.primaryLight }}
-              thumbColor={form.station.includeLogoInPrint ? colors.primary : colors.muted}
-            />
-          </View>
-        </FormSection>
       </ScrollView>
 
       <View
@@ -361,6 +210,16 @@ export default function HomeScreen() {
           )}
         </Pressable>
       </View>
+
+      <ReceiptPreviewScreen
+        visible={showPreview}
+        data={previewData}
+        isPrinting={isPrinting}
+        onPrint={handleConfirmPrint}
+        onCancel={() => {
+          if (!isPrinting) setShowPreview(false);
+        }}
+      />
 
       <Toast
         visible={toast.visible}
