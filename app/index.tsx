@@ -81,7 +81,7 @@ export default function HomeScreen() {
     try {
       const connected = await printer.ensureConnected();
       if (!connected) {
-        Alert.alert("Printer not ready", "Could not connect to the built-in NYX printer. Open Printer settings to retry.");
+        Alert.alert("Printer not ready", "Could not connect to the built-in printer. Open Printer settings to retry.");
         return;
       }
 
@@ -166,21 +166,14 @@ export default function HomeScreen() {
 
         {fieldWrapper(
           "vehicleNumber",
-          <FormSection icon="person-outline" title="Customer / Vehicle">
+          <FormSection icon="car-outline" title="Vehicle (optional)">
             <InputField
               label="Vehicle Number"
-              required
               value={form.vehicleNumber}
               onChangeText={form.updateVehicleNumber}
               error={form.errors.vehicleNumber}
-              placeholder="e.g. ASX-428"
+              placeholder="e.g. ASX-428 (optional)"
               autoCapitalize="characters"
-            />
-            <InputField
-              label="Customer Name"
-              value={form.customerName}
-              onChangeText={form.setCustomerName}
-              placeholder="Optional"
             />
           </FormSection>
         )}

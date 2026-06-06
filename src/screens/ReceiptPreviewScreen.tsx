@@ -47,16 +47,12 @@ export function ReceiptPreviewScreen({
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.receiptPaper, { maxWidth: receiptPaperWidth, alignSelf: "center", width: "100%" }]}>
-            {data.includeLogoInPrint ? (
-              view.logoDataUrl ? (
-                <Image
-                  source={{ uri: view.logoDataUrl }}
-                  style={styles.logoImage}
-                  resizeMode="contain"
-                />
-              ) : (
-                <Text style={styles.noLogoText}>No logo uploaded</Text>
-              )
+            {data.includeLogoInPrint && view.logoDataUrl ? (
+              <Image
+                source={{ uri: view.logoDataUrl }}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             ) : null}
 
             <Text style={styles.storeName}>{view.storeName}</Text>
@@ -146,13 +142,6 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     alignSelf: "center",
-    marginBottom: 8,
-  },
-  noLogoText: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    textAlign: "center",
-    color: "#888",
     marginBottom: 8,
   },
   storeName: {

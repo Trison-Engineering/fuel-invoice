@@ -83,7 +83,8 @@ function mapStatusCode(code: number, deviceType: DeviceType): string {
 
 function assertResult(code: number, action: string, deviceType: DeviceType): void {
   if (code === SDK_OK) return;
-  throw new Error(`${action} failed: ${mapStatusCode(code, deviceType)} (code ${code})`);
+  const label = code < 0 ? "Error" : mapStatusCode(code, deviceType);
+  throw new Error(`${action} failed: ${label} (code ${code})`);
 }
 
 type LineStyle = {
@@ -110,7 +111,7 @@ class PrinterServiceImpl {
     console.log(`Printer initialized for device: ${type}`);
 
     await UnifiedPrinterModule.initPrinter();
-    await delay(SERVICE_BIND_MS);
+    await delay(this.deviceType === "SUNMI" ? 2000 : SERVICE_BIND_MS);
     this.initialized = true;
     return this.deviceType;
   }

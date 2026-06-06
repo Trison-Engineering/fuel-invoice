@@ -12,6 +12,7 @@ enum class PrinterType {
 
 object DeviceDetector {
   private const val SUNMI_PACKAGE = "woyou.stu.sdkservice"
+  private const val SUNMI_PACKAGE_LEGACY = "woyou.aidlservice.jiuiv5"
   private const val NYX_PACKAGE = "net.nyx.printerservice"
 
   fun detectPrinterType(context: Context): PrinterType {
@@ -30,7 +31,9 @@ object DeviceDetector {
       return PrinterType.SUNMI
     }
 
-    if (isPackageInstalled(SUNMI_PACKAGE, context)) {
+    if (isPackageInstalled(SUNMI_PACKAGE, context) ||
+      isPackageInstalled(SUNMI_PACKAGE_LEGACY, context)
+    ) {
       return PrinterType.SUNMI
     }
 

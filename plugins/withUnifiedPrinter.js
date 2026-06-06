@@ -20,7 +20,9 @@ const KOTLIN_FILES = [
 const AIDL_MARKER = "unified-printer-aidl";
 
 const SUNMI_PACKAGE = "woyou.stu.sdkservice";
+const SUNMI_PACKAGE_LEGACY = "woyou.aidlservice.jiuiv5";
 const SUNMI_ACTION = "woyou.stu.sdkservice.sdkservice";
+const SUNMI_ACTION_LEGACY = "woyou.aidlservice.jiuiv5.IWoyouService";
 const NYX_PACKAGE = "net.nyx.printerservice";
 
 function copyRecursive(src, dest) {
@@ -132,20 +134,22 @@ function ensureManifestQueries(manifest) {
     queries.intent = [];
   }
 
-  for (const packageName of [SUNMI_PACKAGE, NYX_PACKAGE]) {
+  for (const packageName of [SUNMI_PACKAGE, SUNMI_PACKAGE_LEGACY, NYX_PACKAGE]) {
     const exists = queries.package.some((entry) => entry.$?.["android:name"] === packageName);
     if (!exists) {
       queries.package.push({ $: { "android:name": packageName } });
     }
   }
 
-  const intentExists = queries.intent.some((entry) =>
-    entry.action?.some((a) => a.$?.["android:name"] === SUNMI_ACTION)
-  );
-  if (!intentExists) {
-    queries.intent.push({
-      action: [{ $: { "android:name": SUNMI_ACTION } }],
-    });
+  for (const action of [SUNMI_ACTION, SUNMI_ACTION_LEGACY]) {
+    const intentExists = queries.intent.some((entry) =>
+      entry.action?.some((a) => a.$?.["android:name"] === action)
+    );
+    if (!intentExists) {
+      queries.intent.push({
+        action: [{ $: { "android:name": action } }],
+      });
+    }
   }
 
   return manifest;

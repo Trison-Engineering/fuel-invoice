@@ -23,7 +23,6 @@ export function useFormState() {
   const [fuelRate, setFuelRate] = useState("");
   const [volume, setVolume] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
-  const [customerName, setCustomerName] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
 
   const fieldRefs = useRef<Record<string, unknown>>({});
@@ -43,9 +42,8 @@ export function useFormState() {
       fuelRate,
       volume,
       vehicleNumber,
-      customerName,
     }),
-    [fuelRate, volume, vehicleNumber, customerName]
+    [fuelRate, volume, vehicleNumber]
   );
 
   const clearFieldError = useCallback((field: keyof FormData) => {
@@ -98,7 +96,7 @@ export function useFormState() {
       volume,
       totalAmount,
       vehicleNumber,
-      customerName,
+      customerName: "",
       logoDataUrl: station.logoDataUrl,
       includeLogoInPrint: station.includeLogoInPrint,
     };
@@ -109,7 +107,6 @@ export function useFormState() {
     volume,
     totalAmount,
     vehicleNumber,
-    customerName,
   ]);
 
   const registerFieldRef = useCallback((field: string, y: number) => {
@@ -148,8 +145,6 @@ export function useFormState() {
     updateVolume,
     vehicleNumber,
     updateVehicleNumber,
-    customerName,
-    setCustomerName,
     clearFieldError,
     validate: runValidation,
     getReceiptData,
