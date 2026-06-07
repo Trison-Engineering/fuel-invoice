@@ -13,6 +13,7 @@ import { RECEIPT_LINE_WIDTH } from "../../constants/printerPaper";
 import type { ReceiptData } from "../../utils/generateReceipt";
 import {
   buildFuelReceiptBodyLines,
+  getReceiptFooterLines,
   getReceiptHeaderLines,
   mapFuelReceiptToPrintView,
 } from "../../utils/receiptFormat";
@@ -37,7 +38,8 @@ export function ReceiptPreviewScreen({
   const view = mapFuelReceiptToPrintView(data);
   const header = getReceiptHeaderLines(view);
   const bodyLines = buildFuelReceiptBodyLines(view);
-  const receiptPaperWidth = Math.round(280 * (RECEIPT_LINE_WIDTH / 32));
+  const footerLines = getReceiptFooterLines();
+  const receiptPaperWidth = Math.round(320 * (RECEIPT_LINE_WIDTH / 32));
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
@@ -68,17 +70,19 @@ export function ReceiptPreviewScreen({
                 />
               ) : null}
 
-              {header.storeNameLines.map((line, index) => (
-                <Text key={`store-${index}`} style={styles.storeName}>
-                  {line}
-                </Text>
-              ))}
-              {header.addressLines.map((line, index) => (
-                <Text key={`addr-${index}`} style={styles.storeAddress}>
-                  {line}
-                </Text>
-              ))}
-              <Text style={styles.receiptTitle}>{header.title}</Text>
+              <View style={styles.headerBlock}>
+                {header.storeNameLines.map((line, index) => (
+                  <Text key={`store-${index}`} style={styles.storeName}>
+                    {line}
+                  </Text>
+                ))}
+                {header.addressLines.map((line, index) => (
+                  <Text key={`addr-${index}`} style={styles.storeAddress}>
+                    {line}
+                  </Text>
+                ))}
+                <Text style={styles.receiptTitle}>{header.title}</Text>
+              </View>
 
               {bodyLines.map((line, index) => {
                 const isTotal = line.trimStart().startsWith("Total Amount");
@@ -91,6 +95,14 @@ export function ReceiptPreviewScreen({
                   </Text>
                 );
               })}
+
+              <View style={styles.footerBlock}>
+                {footerLines.map((line, index) => (
+                  <Text key={`footer-${index}`} style={styles.footerText}>
+                    {line}
+                  </Text>
+                ))}
+              </View>
             </View>
           </ScrollView>
         </View>
@@ -169,35 +181,51 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 8,
   },
+  headerBlock: {
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 2,
+  },
   storeName: {
+    fontFamily: "monospace",
+    fontSize: 15,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 0,
+  },
+  storeAddress: {
+    fontFamily: "monospace",
+    fontSize: 11,
+    textAlign: "center",
+    marginBottom: 0,
+  },
+  receiptTitle: {
     fontFamily: "monospace",
     fontSize: 13,
     fontWeight: "bold",
     textAlign: "center",
-    marginBottom: 1,
-  },
-  storeAddress: {
-    fontFamily: "monospace",
-    fontSize: 10,
-    textAlign: "center",
-    marginBottom: 1,
-  },
-  receiptTitle: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 2,
+    marginBottom: 0,
   },
   mono: {
     fontFamily: "monospace",
-    fontSize: 10,
-    lineHeight: 14,
+    fontSize: 11,
+    lineHeight: 18,
     color: "#000",
   },
   totalText: {
     fontWeight: "bold",
-    fontSize: 10,
+    fontSize: 12,
+  },
+  footerBlock: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  footerText: {
+    fontFamily: "monospace",
+    fontSize: 11,
+    textAlign: "center",
+    color: "#000",
   },
   buttonContainer: {
     flexDirection: "row",
