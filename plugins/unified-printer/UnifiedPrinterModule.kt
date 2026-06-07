@@ -182,6 +182,35 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  /** Sunmi only — basic AIDL diagnostic print (initPrinter + printText + lineWrap). */
+  @ReactMethod
+  fun printDiagnostic(promise: Promise) {
+    Thread {
+      try {
+        val code =
+          when (activeType()) {
+            PrinterType.SUNMI -> sunmiBridge.printDiagnostic()
+            PrinterType.UNKNOWN ->
+              if (sunmiBridge.isConnected()) {
+                sunmiBridge.printDiagnostic()
+              } else {
+                -1
+              }
+            else -> -1
+          }
+        if (code == 0) {
+          promise.resolve("Diagnostic print sent")
+        } else if (code == -1) {
+          promise.reject("NOT_CONNECTED", "Sunmi printer service not connected")
+        } else {
+          promise.reject("DIAGNOSTIC_ERROR", "Diagnostic print failed (code $code)")
+        }
+      } catch (e: Exception) {
+        promise.reject("DIAGNOSTIC_ERROR", e.message, e)
+      }
+    }.start()
+  }
+
   private fun activeType(): PrinterType {
     if (printerType != PrinterType.UNKNOWN) {
       return printerType

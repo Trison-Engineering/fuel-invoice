@@ -282,6 +282,20 @@ class PrinterServiceImpl {
     assertResult(feedCode, "Paper feed", this.deviceType);
   }
 
+  async printDiagnostic(): Promise<string> {
+    await this.assertPrinterReady();
+    const isSunmi = await this.resolveSunmiDevice();
+    if (!isSunmi) {
+      throw new Error("Diagnostic print is only available on Sunmi devices");
+    }
+    if (!UnifiedPrinterModule.printDiagnostic) {
+      throw new Error("printDiagnostic is not available in this build");
+    }
+    const result = await UnifiedPrinterModule.printDiagnostic();
+    console.log(`Sunmi diagnostic result: ${result}`);
+    return String(result);
+  }
+
   async printTestReceipt(): Promise<void> {
     await this.printFuelReceipt({
       stationName: "SUN FILLING STATION",

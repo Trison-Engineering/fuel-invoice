@@ -7,6 +7,7 @@ const POS_PRINTER_PACKAGES = [
   "com.zkc.helper",
   "com.sunmi.printerhelper",
   "woyou.aidlservice.jiuiv5",
+  "woyou.stu.sdkservice",
   "com.sunmi.peripheral.printer",
   "net.nyx.printerservice",
   "com.android.printspooler",
