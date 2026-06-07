@@ -1,7 +1,6 @@
 import {
   buildReceiptPrintPlan,
   mapFuelReceiptToPrintView,
-  type ReceiptFontRole,
   type ReceiptPrintLine,
 } from "./receiptFormat";
 import {
@@ -63,8 +62,9 @@ function cmdBold(on: boolean): Uint8Array {
   return new Uint8Array([ESC, 0x45, on ? 1 : 0]);
 }
 
-function fontSizePx(role: ReceiptFontRole | undefined): number {
-  switch (role) {
+function resolveFontSizePx(line: ReceiptPrintLine): number {
+  if (line.fontSizePx != null) return line.fontSizePx;
+  switch (line.font) {
     case "store":
       return RECEIPT_FONT.storeName;
     case "heading":
@@ -77,10 +77,10 @@ function fontSizePx(role: ReceiptFontRole | undefined): number {
 }
 
 /** Map receipt font px to ESC/POS GS ! size for 58 mm paper. */
-function cmdCharSize(role: ReceiptFontRole | undefined): Uint8Array {
-  const px = fontSizePx(role);
-  if (px >= 32) return new Uint8Array([GS, 0x21, 0x11]);
-  if (px >= 22) return new Uint8Array([GS, 0x21, 0x01]);
+function cmdCharSizeFromPx(px: number): Uint8Array {
+  if (px >= 40) return new Uint8Array([GS, 0x21, 0x11]);
+  if (px >= 32) return new Uint8Array([GS, 0x21, 0x10]);
+  if (px >= 28) return new Uint8Array([GS, 0x21, 0x01]);
   return new Uint8Array([GS, 0x21, 0x00]);
 }
 
@@ -98,11 +98,11 @@ function cmdCut(): Uint8Array {
 
 function appendPrintLine(parts: Uint8Array[], line: ReceiptPrintLine): void {
   parts.push(cmdAlign(line.align));
-  parts.push(cmdCharSize(line.font));
+  parts.push(cmdCharSizeFromPx(resolveFontSizePx(line)));
   if (line.bold) parts.push(cmdBold(true));
   parts.push(cmdLine(line.text));
   if (line.bold) parts.push(cmdBold(false));
-  parts.push(cmdCharSize(undefined));
+  parts.push(cmdCharSizeFromPx(RECEIPT_FONT.body));
 }
 
 export function buildReceiptLines(data: ReceiptData): string[] {

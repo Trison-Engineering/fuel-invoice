@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RECEIPT_LINE_WIDTH } from "../../constants/printerPaper";
+import { LOGO_PREVIEW_SIZE, RECEIPT_LINE_WIDTH } from "../../constants/printerPaper";
 import type { ReceiptData } from "../../utils/generateReceipt";
 import {
   buildFuelReceiptBodyLines,
@@ -26,6 +26,9 @@ interface ReceiptPreviewScreenProps {
   onCancel: () => void;
 }
 
+/** 58 mm paper ≈ 320 logical px at 32 chars/line. */
+const RECEIPT_PAPER_WIDTH = Math.round(320 * (RECEIPT_LINE_WIDTH / 32));
+
 export function ReceiptPreviewScreen({
   visible,
   data,
@@ -39,7 +42,6 @@ export function ReceiptPreviewScreen({
   const header = getReceiptHeaderLines(view);
   const bodyLines = buildFuelReceiptBodyLines(view);
   const footerLines = getReceiptFooterLines();
-  const receiptPaperWidth = Math.round(320 * (RECEIPT_LINE_WIDTH / 32));
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
@@ -56,12 +58,7 @@ export function ReceiptPreviewScreen({
             showsVerticalScrollIndicator
             bounces
           >
-            <View
-              style={[
-                styles.receiptPaper,
-                { maxWidth: receiptPaperWidth, alignSelf: "center", width: "100%" },
-              ]}
-            >
+            <View style={[styles.receiptPaper, { maxWidth: RECEIPT_PAPER_WIDTH }]}>
               {data.includeLogoInPrint && view.logoDataUrl ? (
                 <Image
                   source={{ uri: view.logoDataUrl }}
@@ -71,11 +68,23 @@ export function ReceiptPreviewScreen({
               ) : null}
 
               <View style={styles.headerBlock}>
-                {header.storeNameLines.map((line, index) => (
-                  <Text key={`store-${index}`} style={styles.storeName}>
-                    {line}
+                {header.storeNameLines.length === 1 ? (
+                  <Text
+                    style={[styles.storeName, { fontSize: header.storeFontSize }]}
+                    numberOfLines={2}
+                  >
+                    {header.storeName}
                   </Text>
-                ))}
+                ) : (
+                  header.storeNameLines.map((line, index) => (
+                    <Text
+                      key={`store-${index}`}
+                      style={[styles.storeName, { fontSize: header.storeFontSize }]}
+                    >
+                      {line}
+                    </Text>
+                  ))
+                )}
                 {header.addressLines.map((line, index) => (
                   <Text key={`addr-${index}`} style={styles.storeAddress}>
                     {line}
@@ -133,6 +142,8 @@ export function ReceiptPreviewScreen({
   );
 }
 
+const MONO = "monospace";
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -164,57 +175,67 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingBottom: 8,
+    alignItems: "center",
   },
   receiptPaper: {
     backgroundColor: "white",
     borderRadius: 4,
-    padding: 16,
+    padding: 12,
+    paddingHorizontal: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 4,
+    width: "100%",
+    alignSelf: "center",
   },
   logoImage: {
-    width: 100,
-    height: 100,
+    width: LOGO_PREVIEW_SIZE,
+    height: LOGO_PREVIEW_SIZE,
     alignSelf: "center",
     marginBottom: 8,
+    borderRadius: 8,
   },
   headerBlock: {
     width: "100%",
     alignItems: "center",
-    marginBottom: 2,
+    marginBottom: 4,
   },
   storeName: {
-    fontFamily: "monospace",
-    fontSize: 15,
+    fontFamily: MONO,
     fontWeight: "bold",
     textAlign: "center",
-    marginBottom: 0,
+    marginBottom: 2,
+    color: "#000",
   },
   storeAddress: {
-    fontFamily: "monospace",
-    fontSize: 11,
+    fontFamily: MONO,
+    fontSize: 10,
     textAlign: "center",
-    marginBottom: 0,
+    marginBottom: 1,
+    color: "#333",
   },
   receiptTitle: {
-    fontFamily: "monospace",
-    fontSize: 13,
+    fontFamily: MONO,
+    fontSize: 12,
     fontWeight: "bold",
     textAlign: "center",
-    marginBottom: 0,
+    marginBottom: 4,
+    marginTop: 2,
+    color: "#000",
   },
   mono: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    lineHeight: 18,
+    fontFamily: MONO,
+    fontSize: 10,
+    lineHeight: 16,
     color: "#000",
   },
   totalText: {
+    fontFamily: MONO,
+    fontSize: 11,
     fontWeight: "bold",
-    fontSize: 12,
+    lineHeight: 18,
   },
   footerBlock: {
     width: "100%",
@@ -222,8 +243,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   footerText: {
-    fontFamily: "monospace",
-    fontSize: 11,
+    fontFamily: MONO,
+    fontSize: 10,
     textAlign: "center",
     color: "#000",
   },

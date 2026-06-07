@@ -105,6 +105,13 @@ function fontSizeForRole(role: ReceiptFontRole | undefined): number {
   }
 }
 
+function fontSizeForLine(line: {
+  font?: ReceiptFontRole;
+  fontSizePx?: number;
+}): number {
+  return line.fontSizePx ?? fontSizeForRole(line.font);
+}
+
 class PrinterServiceImpl {
   private initialized = false;
   private deviceType: DeviceType = "UNKNOWN";
@@ -180,9 +187,10 @@ class PrinterServiceImpl {
     align: 0 | 1 | 2;
     bold?: boolean;
     font?: ReceiptFontRole;
+    fontSizePx?: number;
   }): Promise<void> {
     await this.printLine(line.text, {
-      textSize: fontSizeForRole(line.font),
+      textSize: fontSizeForLine(line),
       bold: line.bold,
       align: line.align,
     });

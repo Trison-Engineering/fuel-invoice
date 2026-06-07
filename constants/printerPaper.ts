@@ -1,11 +1,12 @@
 /**
  * Sunmi V2s / EzPump — 58 mm thermal roll (384-dot printable width).
  *
- * Characters per line (Sunmi spec):
- *   24px small  → ~32 chars
- *   32px normal → ~24 chars
- *   40px large  → ~18 chars
- *   48px xlarge → ~16 chars
+ * Characters per line (device spec):
+ *   24px → 32 chars
+ *   28px → 26 chars
+ *   32px → 22 chars
+ *   40px → 18 chars
+ *   48px → 14 chars
  */
 export const PAPER_WIDTH_MM = 58;
 export const PAPER_WIDTH_INCHES = Math.round((PAPER_WIDTH_MM / 25.4) * 10) / 10;
@@ -16,20 +17,21 @@ export const SUNMI_BITMAP_WIDTH = 384;
 /** Paper roll outer diameter (mm). */
 export const PAPER_ROLL_DIAMETER_MM = 40;
 
-/** Chars per line at each Sunmi font tier. */
+/** Chars per line at each font tier. */
 export const SUNMI_CHARS_PER_LINE = {
-  small: 32,
-  normal: 24,
+  xsmall: 32,
+  small: 26,
+  normal: 22,
   large: 18,
-  xlarge: 16,
+  xlarge: 14,
 } as const;
 
-/** NYX textSize values — original sizes, validated on 58 mm paper. */
+/** NYX / Sunmi textSize values for receipt body and headings. */
 export const RECEIPT_FONT = {
-  body: 18,
-  heading: 20,
-  storeName: 22,
-  total: 20,
+  body: 24,
+  heading: 24,
+  storeName: 32,
+  total: 24,
 } as const;
 
 /** Resolve monospace chars that fit one line for a given font size (px). */
@@ -37,20 +39,48 @@ export function charsPerLineForFontSize(fontSize: number): number {
   if (fontSize >= 48) return SUNMI_CHARS_PER_LINE.xlarge;
   if (fontSize >= 40) return SUNMI_CHARS_PER_LINE.large;
   if (fontSize >= 32) return SUNMI_CHARS_PER_LINE.normal;
-  return SUNMI_CHARS_PER_LINE.small;
+  if (fontSize >= 28) return SUNMI_CHARS_PER_LINE.small;
+  return SUNMI_CHARS_PER_LINE.xsmall;
 }
 
-/** Body row width at 24px-tier on 58 mm paper. */
-export const RECEIPT_LINE_WIDTH = SUNMI_CHARS_PER_LINE.small;
+/** Body row width at 24px on 58 mm paper. */
+export const RECEIPT_LINE_WIDTH = SUNMI_CHARS_PER_LINE.xsmall;
 
-/** Header wrap width (store name / address at ~32px normal tier). */
+/** @deprecated Use RECEIPT_LINE_WIDTH — header wrap is now dynamic per font size. */
 export const RECEIPT_HEADER_LINE_WIDTH = SUNMI_CHARS_PER_LINE.normal;
 
-/** Max logo width and height in dots when printing on thermal paper. */
-export const LOGO_MAX_SIZE = 100;
+/** Logo display size in receipt preview (screen px). */
+export const LOGO_PREVIEW_SIZE = 80;
 
-/** @deprecated Use LOGO_MAX_SIZE — kept for existing imports. */
-export const LOGO_BITMAP_WIDTH = LOGO_MAX_SIZE;
+/** Max logo width on thermal paper (dots). */
+export const LOGO_BITMAP_WIDTH = SUNMI_BITMAP_WIDTH;
+
+/** Max logo height on thermal paper (dots). */
+export const LOGO_MAX_HEIGHT = 150;
+
+/** @deprecated Use LOGO_MAX_HEIGHT — kept for existing imports. */
+export const LOGO_MAX_SIZE = LOGO_MAX_HEIGHT;
+
+/** Pick printer font size so the store name fits on one line when possible. */
+export function getStoreFontSize(name: string): number {
+  const length = name.trim().length;
+  if (length <= 14) return 48;
+  if (length <= 18) return 40;
+  if (length <= 22) return 32;
+  if (length <= 26) return 28;
+  if (length <= 32) return 24;
+  return 24;
+}
+
+/** Preview screen font size scaled for mobile display. */
+export function getPreviewStoreFontSize(name: string): number {
+  const length = name.trim().length;
+  if (length <= 14) return 18;
+  if (length <= 18) return 16;
+  if (length <= 22) return 14;
+  if (length <= 26) return 13;
+  return 12;
+}
 
 /** Line spacing between receipt rows (NYX API units). */
 export const RECEIPT_LINE_SPACING = 2;
