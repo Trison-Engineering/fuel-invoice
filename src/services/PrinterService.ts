@@ -11,7 +11,7 @@ import {
   RECEIPT_FONT,
   type ReceiptFontRole,
 } from "../../utils/receiptFormat";
-import { printLogo } from "../utils/printLogoUtil";
+import { printLogo, resolveLogoBase64 } from "../utils/printLogoUtil";
 import { safeStr } from "../utils/printerUtils";
 
 const { UnifiedPrinterModule } = NativeModules;
@@ -161,18 +161,38 @@ class PrinterServiceImpl {
     if (status.startsWith("Error")) throw new Error(`Printer status: ${status}`);
   }
 
+  private async resolveSunmiDevice(): Promise<boolean> {
+    if (this.deviceType === "SUNMI") return true;
+    const type = (await UnifiedPrinterModule.getDeviceType()) as DeviceType;
+    if (type === "SUNMI") {
+      this.deviceType = "SUNMI";
+      return true;
+    }
+    if (type === "UNKNOWN") {
+      const connected = await UnifiedPrinterModule.isConnected();
+      if (connected) {
+        this.deviceType = "SUNMI";
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async printSunmiRaw(data: FuelReceiptData): Promise<void> {
+    const buffer = generateEscPosBuffer(data, { sunmi: true });
+    const receiptBase64 = bufferToBase64(buffer);
+
+    let logoBase64: string | null = null;
     if (data.includeLogoInPrint && data.logoDataUrl) {
-      await printLogo({
-        logoUri: data.logoDataUrl,
-        maxSize: LOGO_MAX_SIZE,
-        align: 1,
-        includeLogoInPrint: data.includeLogoInPrint,
-      }).catch(() => false);
+      logoBase64 = await resolveLogoBase64(data.logoDataUrl).catch(() => null);
     }
 
-    const buffer = generateEscPosBuffer(data);
-    const code = await UnifiedPrinterModule.printRawDataBase64(bufferToBase64(buffer));
+    const code =
+      logoBase64 && UnifiedPrinterModule.printSunmiReceipt
+        ? await UnifiedPrinterModule.printSunmiReceipt(logoBase64, receiptBase64)
+        : await UnifiedPrinterModule.printRawDataBase64(receiptBase64);
+
+    console.log(`Sunmi print result code: ${code}, bytes: ${buffer.length}`);
     assertResult(code, "Print", this.deviceType);
   }
 
@@ -208,7 +228,8 @@ class PrinterServiceImpl {
 
   async printCalibrationLine(): Promise<void> {
     await this.assertPrinterReady();
-    if (this.deviceType === "SUNMI") {
+    const isSunmi = await this.resolveSunmiDevice();
+    if (isSunmi) {
       const text = [
         `WIDTH TEST (${LINE_WIDTH} chars):`,
         CALIBRATION_LINE,
@@ -235,7 +256,8 @@ class PrinterServiceImpl {
   async printFuelReceipt(data: FuelReceiptData): Promise<void> {
     await this.assertPrinterReady();
 
-    if (this.deviceType === "SUNMI") {
+    const isSunmi = await this.resolveSunmiDevice();
+    if (isSunmi) {
       await this.printSunmiRaw(data);
       return;
     }

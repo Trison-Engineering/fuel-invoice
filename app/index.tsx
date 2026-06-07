@@ -35,6 +35,10 @@ export default function HomeScreen() {
     type: "success",
   });
 
+  const hideToast = useCallback(() => {
+    setToast((t) => ({ ...t, visible: false }));
+  }, []);
+
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
     setToast({ visible: true, message, type });
   }, []);
@@ -225,7 +229,7 @@ export default function HomeScreen() {
         visible={toast.visible}
         message={toast.message}
         type={toast.type}
-        onHide={() => setToast((t) => ({ ...t, visible: false }))}
+        onHide={hideToast}
       />
     </View>
   );

@@ -49,8 +49,11 @@ function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   return result;
 }
 
-/** 58 mm Sunmi — default font (~32 chars/line), normal line spacing. */
-function cmdInitReceipt(): Uint8Array {
+function cmdInitReceipt(sunmi: boolean = false): Uint8Array {
+  if (sunmi) {
+    // Sunmi V2s: ESC @ + enable multi-byte mode (required before raw ESC/POS text).
+    return new Uint8Array([ESC, 0x40, 0x1c, 0x26, ESC, 0x33, ESC_POS_LINE_SPACING]);
+  }
   return new Uint8Array([ESC, 0x40, ESC, 0x33, ESC_POS_LINE_SPACING]);
 }
 
@@ -110,16 +113,21 @@ export function buildReceiptLines(data: ReceiptData): string[] {
   return buildReceiptPrintPlan(view).map((line) => line.text);
 }
 
-export function generateEscPosBuffer(data: ReceiptData): Uint8Array {
+export function generateEscPosBuffer(data: ReceiptData, options?: { sunmi?: boolean }): Uint8Array {
+  const sunmi = options?.sunmi ?? false;
   const view = mapFuelReceiptToPrintView(data);
   const plan = buildReceiptPrintPlan(view);
-  const parts: Uint8Array[] = [cmdInitReceipt()];
+  const parts: Uint8Array[] = [cmdInitReceipt(sunmi)];
 
   for (const line of plan) {
     appendPrintLine(parts, line);
   }
 
-  parts.push(cmdFeed(4), cmdCut());
+  parts.push(cmdFeed(sunmi ? 6 : 4));
+  if (!sunmi) {
+    parts.push(cmdCut());
+  }
+
   return concatBytes(...parts);
 }
 

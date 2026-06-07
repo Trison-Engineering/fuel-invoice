@@ -29,12 +29,12 @@ class SunmiPrinterBridge(private val context: Context) {
       override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         try {
           when (name?.packageName) {
-            PACKAGE_JIUIV5 -> jiuiv5Service = Jiuiv5Service.Stub.asInterface(service)
             PACKAGE_STU -> stuService = StuService.Stub.asInterface(service)
+            PACKAGE_JIUIV5 -> jiuiv5Service = Jiuiv5Service.Stub.asInterface(service)
             else -> {
-              jiuiv5Service = runCatching { Jiuiv5Service.Stub.asInterface(service) }.getOrNull()
-              if (jiuiv5Service == null) {
-                stuService = runCatching { StuService.Stub.asInterface(service) }.getOrNull()
+              stuService = runCatching { StuService.Stub.asInterface(service) }.getOrNull()
+              if (stuService == null) {
+                jiuiv5Service = runCatching { Jiuiv5Service.Stub.asInterface(service) }.getOrNull()
               }
             }
           }
@@ -92,120 +92,176 @@ class SunmiPrinterBridge(private val context: Context) {
   fun isConnected(): Boolean = isConnected && (jiuiv5Service != null || stuService != null)
 
   fun initPrinter(): Boolean {
-    // Bind only — do not call printerInit/initPrinter (triggers device info self-print on V2s).
+    // Bind only — never call printerInit/initPrinter (triggers device info self-print on V2s).
     return waitForConnection()
   }
 
   fun getPrinterStatus(): Int {
     if (!isConnected()) return 0
-    // Avoid updatePrinterState() — some firmware builds echo printer params to paper.
+    // Never call updatePrinterState() — V2s firmware echoes POS-V2s / Version / Density to paper.
     return 1
+  }
+
+  /**
+   * Sunmi AIDL must run on the main thread. RN invokes native modules from a pool thread.
+   */
+  private fun runOnMainSync(timeoutMs: Long = 15000, block: () -> Int): Int {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+      return block()
+    }
+    val latch = CountDownLatch(1)
+    var result = -1
+    mainHandler.post {
+      try {
+        result = block()
+      } catch (e: Exception) {
+        Log.w(TAG, "Sunmi main-thread print error: ${e.message}")
+        result = -1
+      } finally {
+        latch.countDown()
+      }
+    }
+    latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+    return result
+  }
+
+  /** sendRAWData must be called directly — it does not flush from enterPrinterBuffer on V2s. */
+  private fun sendRawBytes(bytes: ByteArray) {
+    when {
+      stuService != null -> stuService!!.sendRAWData(bytes, null)
+      jiuiv5Service != null -> jiuiv5Service!!.sendRAWData(bytes, null)
+      else -> throw IllegalStateException("Sunmi printer service not connected")
+    }
+  }
+
+  private fun printBitmapDirect(bitmap: Bitmap) {
+    when {
+      stuService != null -> stuService!!.printBitmap(bitmap, null)
+      jiuiv5Service != null -> jiuiv5Service!!.printBitmap(bitmap, null)
+      else -> throw IllegalStateException("Sunmi printer service not connected")
+    }
+  }
+
+  /**
+   * Print logo (optional) + ESC/POS receipt.
+   * Never use printText / setAlignment / lineWrap — they print diagnostics on V2s.
+   */
+  fun printReceiptBase64(logoBase64: String?, receiptBase64: String): Int {
+    if (!waitForConnection()) return -1
+    return runOnMainSync {
+      try {
+        val receiptBytes = Base64.decode(receiptBase64, Base64.DEFAULT)
+        val logoBitmap = decodeLogoBitmap(logoBase64)
+
+        logoBitmap?.let { bitmap ->
+          printBitmapDirect(bitmap)
+          sendRawBytes(byteArrayOf(0x0a, 0x0a))
+          bitmap.recycle()
+        }
+
+        Log.d(TAG, "Sunmi sendRAWData receipt bytes=${receiptBytes.size}")
+        sendRawBytes(receiptBytes)
+        0
+      } catch (e: Exception) {
+        Log.w(TAG, "Sunmi receipt print error: ${e.message}")
+        -1
+      }
+    }
   }
 
   fun printRawDataBase64(base64Data: String): Int {
     if (!waitForConnection()) return -1
-    return try {
-      val bytes = Base64.decode(base64Data, Base64.DEFAULT)
-      when {
-        jiuiv5Service != null -> jiuiv5Service!!.sendRAWData(bytes, null)
-        stuService != null -> stuService!!.sendRAWData(bytes, null)
-        else -> return -1
+    return runOnMainSync {
+      try {
+        val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+        Log.d(TAG, "Sunmi sendRAWData bytes=${bytes.size}")
+        sendRawBytes(bytes)
+        0
+      } catch (e: Exception) {
+        Log.w(TAG, "Sunmi raw print error: ${e.message}")
+        -1
       }
-      0
-    } catch (e: Exception) {
-      Log.w(TAG, "Sunmi raw print error: ${e.message}")
-      -1
     }
   }
 
+  /**
+   * NYX compatibility — Sunmi V2s must not use AIDL printText (prints device diagnostics).
+   */
   fun printText(content: String, textFormat: ReadableMap): Int {
-    if (!waitForConnection()) return -1
-    return try {
-      val align = textFormat.getInt("align")
-      val fontSize = textFormat.getInt("textSize").toFloat()
-      val bold = textFormat.getInt("style") == 1
-      val text = if (content.endsWith("\n")) content else "$content\n"
+    Log.w(TAG, "printText redirected to raw ESC/POS on Sunmi")
+    return printTextAsRawEscPos(content, textFormat)
+  }
 
-      when {
-        jiuiv5Service != null -> {
-          val service = jiuiv5Service!!
-          service.setAlignment(align, null)
-          service.setFontSize(fontSize, null)
-          if (bold) service.setPrinterStyle(ENABLE_BOLD, "true")
-          service.printText(text, null)
-          if (bold) service.setPrinterStyle(ENABLE_BOLD, "false")
+  private fun printTextAsRawEscPos(content: String, textFormat: ReadableMap): Int {
+    if (!waitForConnection()) return -1
+    return runOnMainSync {
+      try {
+        val align = textFormat.getInt("align").coerceIn(0, 2)
+        val bold = textFormat.getInt("style") == 1
+        val text = if (content.endsWith("\n")) content else "$content\n"
+
+        val parts = ArrayList<Byte>()
+        parts.add(0x1b.toByte())
+        parts.add(0x40.toByte())
+        parts.add(0x1b.toByte())
+        parts.add(0x61.toByte())
+        parts.add(align.toByte())
+        if (bold) {
+          parts.add(0x1b.toByte())
+          parts.add(0x45.toByte())
+          parts.add(0x01.toByte())
         }
-        stuService != null -> {
-          val service = stuService!!
-          service.setAlignment(align, null)
-          service.setFontSize(fontSize, null)
-          if (bold) service.setPrinterStyle(ENABLE_BOLD, "true")
-          service.printText(text, null)
-          if (bold) service.setPrinterStyle(ENABLE_BOLD, "false")
+        for (ch in text) {
+          val code = ch.code
+          if (code in 0..255) parts.add(code.toByte())
         }
-        else -> return -1
+        if (bold) {
+          parts.add(0x1b.toByte())
+          parts.add(0x45.toByte())
+          parts.add(0x00.toByte())
+        }
+
+        sendRawBytes(parts.toByteArray())
+        0
+      } catch (e: Exception) {
+        Log.w(TAG, "Sunmi raw text print error: ${e.message}")
+        -1
       }
-      0
-    } catch (e: Exception) {
-      Log.w(TAG, "Sunmi print error: ${e.message}")
-      -1
     }
   }
 
-  fun printBitmapBase64(base64Data: String, align: Int): Int {
+  fun printBitmapBase64(base64Data: String, @Suppress("UNUSED_PARAMETER") align: Int): Int {
     if (!waitForConnection()) return -1
-    return try {
-      val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
-      val decoded = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-        ?: return -2
-      val bitmap = BitmapScaler.scaleForReceipt(decoded)
-
-      when {
-        jiuiv5Service != null -> {
-          jiuiv5Service!!.setAlignment(align, null)
-          jiuiv5Service!!.printBitmap(bitmap, null)
-        }
-        stuService != null -> {
-          stuService!!.setAlignment(align, null)
-          stuService!!.printBitmap(bitmap, null)
-        }
-        else -> return -1
+    return runOnMainSync {
+      try {
+        val bitmap = decodeLogoBitmap(base64Data) ?: return@runOnMainSync -2
+        printBitmapDirect(bitmap)
+        sendRawBytes(byteArrayOf(0x0a))
+        bitmap.recycle()
+        0
+      } catch (e: Exception) {
+        Log.w(TAG, "Sunmi bitmap error: ${e.message}")
+        -1
       }
-      0
-    } catch (e: Exception) {
-      Log.w(TAG, "Sunmi bitmap error: ${e.message}")
-      -1
     }
   }
 
   fun paperOut(lines: Int): Int {
-    if (!waitForConnection()) return -1
-    return try {
-      when {
-        jiuiv5Service != null -> jiuiv5Service!!.lineWrap(lines, null)
-        stuService != null -> stuService!!.lineWrap(lines, null)
-        else -> return -1
-      }
-      0
-    } catch (e: Exception) {
-      Log.w(TAG, "Sunmi feed error: ${e.message}")
-      -1
-    }
+    if (lines <= 0) return 0
+    val feed = lines.coerceIn(1, 255).toByte()
+    return printRawDataBase64(Base64.encodeToString(byteArrayOf(0x1b, 0x64, feed), Base64.NO_WRAP))
   }
 
   fun cutPaper(): Boolean {
     if (!isConnected()) return false
-    return try {
-      when {
-        jiuiv5Service != null -> jiuiv5Service!!.cutPaper(null)
-        stuService != null -> stuService!!.cutPaper(null)
-        else -> return false
-      }
-      true
-    } catch (e: Exception) {
-      Log.w(TAG, "Sunmi cut error: ${e.message}")
-      false
-    }
+    return printRawDataBase64(Base64.encodeToString(byteArrayOf(0x1d, 0x56, 0x00), Base64.NO_WRAP)) == 0
+  }
+
+  private fun decodeLogoBitmap(base64Data: String?): Bitmap? {
+    if (base64Data.isNullOrBlank()) return null
+    val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
+    val decoded = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size) ?: return null
+    return BitmapScaler.scaleForReceipt(decoded)
   }
 
   private data class BindTarget(val packageName: String, val action: String)
@@ -214,12 +270,11 @@ class SunmiPrinterBridge(private val context: Context) {
     private const val TAG = "SunmiPrinterBridge"
     private const val PACKAGE_JIUIV5 = "woyou.aidlservice.jiuiv5"
     private const val PACKAGE_STU = "woyou.stu.sdkservice"
-    private const val ENABLE_BOLD = 0
 
     private val BIND_TARGETS =
       listOf(
-        BindTarget(PACKAGE_JIUIV5, "woyou.aidlservice.jiuiv5.IWoyouService"),
         BindTarget(PACKAGE_STU, "woyou.stu.sdkservice.sdkservice"),
+        BindTarget(PACKAGE_JIUIV5, "woyou.aidlservice.jiuiv5.IWoyouService"),
       )
   }
 }

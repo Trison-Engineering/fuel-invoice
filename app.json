@@ -49,6 +49,7 @@
       ]
     },
     "plugins": [
+      "expo-dev-client",
       "expo-router",
       [
         "expo-image-picker",

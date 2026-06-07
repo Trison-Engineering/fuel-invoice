@@ -73,6 +73,27 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  /** Sunmi only — logo + ESC/POS receipt in one buffered print job. */
+  @ReactMethod
+  fun printSunmiReceipt(logoBase64: String?, receiptBase64: String, promise: Promise) {
+    try {
+      val code =
+        when (activeType()) {
+          PrinterType.SUNMI -> sunmiBridge.printReceiptBase64(logoBase64, receiptBase64)
+          PrinterType.UNKNOWN ->
+            if (sunmiBridge.isConnected()) {
+              sunmiBridge.printReceiptBase64(logoBase64, receiptBase64)
+            } else {
+              -1
+            }
+          else -> -1
+        }
+      promise.resolve(code)
+    } catch (e: Exception) {
+      promise.reject("PRINT_ERROR", e.message, e)
+    }
+  }
+
   @ReactMethod
   fun printText(content: String, textFormat: ReadableMap, promise: Promise) {
     try {
