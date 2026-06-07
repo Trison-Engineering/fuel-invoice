@@ -1,7 +1,6 @@
 import { NativeModules, Platform } from "react-native";
 import { LOGO_MAX_SIZE, RECEIPT_LINE_SPACING } from "../../constants/printerPaper";
 import type { ReceiptData as FuelReceiptData } from "../../utils/generateReceipt";
-import { bufferToBase64, generateEscPosBuffer } from "../../utils/generateReceipt";
 import {
   buildReceiptPrintPlan,
   CALIBRATION_LINE,
@@ -11,7 +10,7 @@ import {
   RECEIPT_FONT,
   type ReceiptFontRole,
 } from "../../utils/receiptFormat";
-import { printLogo, resolveLogoBase64 } from "../utils/printLogoUtil";
+import { printLogo } from "../utils/printLogoUtil";
 import { safeStr } from "../utils/printerUtils";
 
 const { UnifiedPrinterModule } = NativeModules;
@@ -178,24 +177,6 @@ class PrinterServiceImpl {
     return false;
   }
 
-  private async printSunmiRaw(data: FuelReceiptData): Promise<void> {
-    const buffer = generateEscPosBuffer(data, { sunmi: true });
-    const receiptBase64 = bufferToBase64(buffer);
-
-    let logoBase64: string | null = null;
-    if (data.includeLogoInPrint && data.logoDataUrl) {
-      logoBase64 = await resolveLogoBase64(data.logoDataUrl).catch(() => null);
-    }
-
-    const code =
-      logoBase64 && UnifiedPrinterModule.printSunmiReceipt
-        ? await UnifiedPrinterModule.printSunmiReceipt(logoBase64, receiptBase64)
-        : await UnifiedPrinterModule.printRawDataBase64(receiptBase64);
-
-    console.log(`Sunmi print result code: ${code}, bytes: ${buffer.length}`);
-    assertResult(code, "Print", this.deviceType);
-  }
-
   private async printLine(text: unknown, style: LineStyle): Promise<void> {
     const line = safeStr(text);
     const code = await UnifiedPrinterModule.printText(`${line}\n`, buildTextFormat(style));
@@ -228,19 +209,6 @@ class PrinterServiceImpl {
 
   async printCalibrationLine(): Promise<void> {
     await this.assertPrinterReady();
-    const isSunmi = await this.resolveSunmiDevice();
-    if (isSunmi) {
-      const text = [
-        `WIDTH TEST (${LINE_WIDTH} chars):`,
-        CALIBRATION_LINE,
-        RECEIPT_DIVIDER,
-        "",
-      ].join("\n");
-      const bytes = new TextEncoder().encode(`\x1b\x40${text}\n\x1b\x64\x04`);
-      const code = await UnifiedPrinterModule.printRawDataBase64(bufferToBase64(bytes));
-      assertResult(code, "Print", this.deviceType);
-      return;
-    }
 
     await this.printPlannedLine({
       text: `Width Test (${LINE_WIDTH} chars):`,
@@ -255,12 +223,6 @@ class PrinterServiceImpl {
 
   async printFuelReceipt(data: FuelReceiptData): Promise<void> {
     await this.assertPrinterReady();
-
-    const isSunmi = await this.resolveSunmiDevice();
-    if (isSunmi) {
-      await this.printSunmiRaw(data);
-      return;
-    }
 
     if (data.includeLogoInPrint && data.logoDataUrl) {
       await printLogo({

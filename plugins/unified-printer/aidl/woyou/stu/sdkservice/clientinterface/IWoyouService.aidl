@@ -21,5 +21,6 @@ interface IWoyouService {
   void cutPaper(ICallback callback);
   void enterPrinterBuffer(boolean clean);
   void exitPrinterBuffer(boolean commit);
+  void exitPrinterBufferWithCallback(boolean commit, ICallback callback);
   void commitPrinterBuffer();
 }

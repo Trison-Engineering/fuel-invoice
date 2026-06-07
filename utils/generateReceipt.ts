@@ -49,11 +49,8 @@ function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   return result;
 }
 
-function cmdInitReceipt(sunmi: boolean = false): Uint8Array {
-  if (sunmi) {
-    // Sunmi V2s: ESC @ + enable multi-byte mode (required before raw ESC/POS text).
-    return new Uint8Array([ESC, 0x40, 0x1c, 0x26, ESC, 0x33, ESC_POS_LINE_SPACING]);
-  }
+function cmdInitReceipt(): Uint8Array {
+  // ESC @ init + line spacing — native Sunmi code adds lineWrap(4) after raw send.
   return new Uint8Array([ESC, 0x40, ESC, 0x33, ESC_POS_LINE_SPACING]);
 }
 
@@ -117,7 +114,7 @@ export function generateEscPosBuffer(data: ReceiptData, options?: { sunmi?: bool
   const sunmi = options?.sunmi ?? false;
   const view = mapFuelReceiptToPrintView(data);
   const plan = buildReceiptPrintPlan(view);
-  const parts: Uint8Array[] = [cmdInitReceipt(sunmi)];
+  const parts: Uint8Array[] = [cmdInitReceipt()];
 
   for (const line of plan) {
     appendPrintLine(parts, line);
