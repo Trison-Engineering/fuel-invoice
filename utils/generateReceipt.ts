@@ -50,7 +50,6 @@ function concatBytes(...arrays: Uint8Array[]): Uint8Array {
 }
 
 function cmdInitReceipt(): Uint8Array {
-  // ESC @ init + line spacing — native Sunmi code adds lineWrap(4) after raw send.
   return new Uint8Array([ESC, 0x40, ESC, 0x33, ESC_POS_LINE_SPACING]);
 }
 

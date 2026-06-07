@@ -9,14 +9,13 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LOGO_PREVIEW_SIZE, RECEIPT_LINE_WIDTH } from "../../constants/printerPaper";
 import type { ReceiptData } from "../../utils/generateReceipt";
 import {
-  buildFuelReceiptBodyLines,
-  getReceiptFooterLines,
-  getReceiptHeaderLines,
+  centerText,
   mapFuelReceiptToPrintView,
+  splitAddressLines,
 } from "../../utils/receiptFormat";
+import { formatCurrency, formatVolume } from "../utils/printerUtils";
 
 interface ReceiptPreviewScreenProps {
   visible: boolean;
@@ -26,8 +25,36 @@ interface ReceiptPreviewScreenProps {
   onCancel: () => void;
 }
 
-/** 58 mm paper ≈ 320 logical px at 32 chars/line. */
-const RECEIPT_PAPER_WIDTH = Math.round(320 * (RECEIPT_LINE_WIDTH / 32));
+const RECEIPT_WIDTH = 220;
+const PREVIEW_LINE_WIDTH = 32;
+
+function ReceiptRow({
+  label,
+  value,
+  bold = false,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+}) {
+  return (
+    <View style={styles.row}>
+      <Text style={[styles.rowLabel, bold && styles.rowBold]}>{label}</Text>
+      <Text style={[styles.rowValue, bold && styles.rowBold]}>{value}</Text>
+    </View>
+  );
+}
+
+function ReceiptDivider() {
+  return <View style={styles.divider} />;
+}
+
+const getStoreFontSize = (name: string): number => {
+  if (name.length <= 16) return 12;
+  if (name.length <= 22) return 11;
+  if (name.length <= 28) return 10;
+  return 9;
+};
 
 export function ReceiptPreviewScreen({
   visible,
@@ -39,82 +66,96 @@ export function ReceiptPreviewScreen({
   if (!data) return null;
 
   const view = mapFuelReceiptToPrintView(data);
-  const header = getReceiptHeaderLines(view);
-  const bodyLines = buildFuelReceiptBodyLines(view);
-  const footerLines = getReceiptFooterLines();
+  const storeName = view.storeName.toUpperCase();
+  const addressLines = splitAddressLines(view.address, PREVIEW_LINE_WIDTH);
+  const logoUri =
+    data.includeLogoInPrint && view.logoDataUrl ? view.logoDataUrl : null;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
-      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <View style={styles.previewHeader}>
-          <Text style={styles.previewTitle}>Receipt Preview</Text>
-          <Text style={styles.previewSubtitle}>Review before printing</Text>
+      <SafeAreaView style={styles.screenContainer} edges={["top", "bottom"]}>
+        <View style={styles.headerBar}>
+          <Text style={styles.headerTitle}>Receipt Preview</Text>
+          <Text style={styles.headerSubtitle}>Review before printing</Text>
         </View>
 
-        <View style={styles.scrollWrapper}>
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator
-            bounces
-          >
-            <View style={[styles.receiptPaper, { maxWidth: RECEIPT_PAPER_WIDTH }]}>
-              {data.includeLogoInPrint && view.logoDataUrl ? (
-                <Image
-                  source={{ uri: view.logoDataUrl }}
-                  style={styles.logoImage}
-                  resizeMode="contain"
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.receiptPaper}>
+            {logoUri ? (
+              <View style={styles.logoContainer}>
+                <Image source={{ uri: logoUri }} style={styles.logoImage} />
+              </View>
+            ) : null}
+
+            <Text
+              style={[styles.storeName, { fontSize: getStoreFontSize(storeName) }]}
+            >
+              {storeName}
+            </Text>
+
+            {addressLines.map((line, i) => (
+              <Text key={`addr-${i}`} style={styles.storeAddress}>
+                {line}
+              </Text>
+            ))}
+
+            <Text style={styles.receiptTitle}>FUEL RECEIPT</Text>
+
+            <ReceiptDivider />
+
+            <ReceiptRow label="receiptNo:" value={view.receiptNo} />
+            <ReceiptRow label="date:" value={view.date} />
+            <ReceiptRow label="time:" value={view.time} />
+            <ReceiptRow
+              label="payment:"
+              value={view.paymentMethod.toUpperCase()}
+            />
+
+            <ReceiptDivider />
+
+            <ReceiptRow label="product:" value={view.product.toUpperCase()} />
+            <ReceiptRow
+              label="volume:"
+              value={`${formatVolume(data.volume)} LTR`}
+            />
+            <ReceiptRow
+              label="rateLtr:"
+              value={`Rs. ${formatCurrency(data.fuelRate)}`}
+            />
+
+            <ReceiptDivider />
+
+            <ReceiptRow
+              label="totalAmount:"
+              value={`Rs. ${formatCurrency(data.totalAmount)}`}
+              bold
+            />
+
+            <ReceiptDivider />
+
+            {view.vehicleNo ? (
+              <>
+                <ReceiptRow
+                  label="vehicleNo:"
+                  value={view.vehicleNo.toUpperCase()}
                 />
-              ) : null}
+                <ReceiptDivider />
+              </>
+            ) : null}
 
-              <View style={styles.headerBlock}>
-                {header.storeNameLines.length === 1 ? (
-                  <Text
-                    style={[styles.storeName, { fontSize: header.storeFontSize }]}
-                    numberOfLines={2}
-                  >
-                    {header.storeName}
-                  </Text>
-                ) : (
-                  header.storeNameLines.map((line, index) => (
-                    <Text
-                      key={`store-${index}`}
-                      style={[styles.storeName, { fontSize: header.storeFontSize }]}
-                    >
-                      {line}
-                    </Text>
-                  ))
-                )}
-                {header.addressLines.map((line, index) => (
-                  <Text key={`addr-${index}`} style={styles.storeAddress}>
-                    {line}
-                  </Text>
-                ))}
-                <Text style={styles.receiptTitle}>{header.title}</Text>
-              </View>
+            <Text style={styles.footerText}>
+              {centerText("POWERED BY TRISON", PREVIEW_LINE_WIDTH)}
+            </Text>
 
-              {bodyLines.map((line, index) => {
-                const isTotal = line.trimStart().startsWith("Total Amount");
-                return (
-                  <Text
-                    key={`${index}-${line}`}
-                    style={[styles.mono, isTotal && styles.totalText]}
-                  >
-                    {line || " "}
-                  </Text>
-                );
-              })}
+            <View style={styles.bottomSpacer} />
+          </View>
 
-              <View style={styles.footerBlock}>
-                {footerLines.map((line, index) => (
-                  <Text key={`footer-${index}`} style={styles.footerText}>
-                    {line}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          </ScrollView>
-        </View>
+          <View style={styles.receiptShadow} />
+        </ScrollView>
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity
@@ -133,7 +174,7 @@ export function ReceiptPreviewScreen({
             {isPrinting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.printText}>Print Receipt</Text>
+              <Text style={styles.printText}>🖨 Print Receipt</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -142,139 +183,159 @@ export function ReceiptPreviewScreen({
   );
 }
 
-const MONO = "monospace";
-
 const styles = StyleSheet.create({
-  container: {
+  screenContainer: {
     flex: 1,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "#e8e8e8",
   },
-  previewHeader: {
-    backgroundColor: "#1D4ED8",
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  headerBar: {
+    backgroundColor: "#1a3a8f",
+    padding: 16,
     alignItems: "center",
   },
-  previewTitle: {
+  headerTitle: {
     color: "white",
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "bold",
   },
-  previewSubtitle: {
-    color: "#dbeafe",
-    fontSize: 13,
-    marginTop: 4,
-  },
-  scrollWrapper: {
-    flex: 1,
-    minHeight: 0,
+  headerSubtitle: {
+    color: "#aac4ff",
+    fontSize: 12,
+    marginTop: 2,
   },
   scrollView: {
     flex: 1,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 8,
+  scrollContainer: {
     alignItems: "center",
+    paddingVertical: 24,
+    paddingHorizontal: 16,
   },
   receiptPaper: {
+    width: RECEIPT_WIDTH,
     backgroundColor: "white",
-    borderRadius: 4,
-    padding: 12,
+    borderRadius: 2,
     paddingHorizontal: 8,
+    paddingVertical: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-    width: "100%",
-    alignSelf: "center",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+    marginBottom: 8,
+    alignItems: "stretch",
+  },
+  logoContainer: {
+    alignItems: "center",
+    marginBottom: 6,
+    paddingBottom: 4,
   },
   logoImage: {
-    width: LOGO_PREVIEW_SIZE,
-    height: LOGO_PREVIEW_SIZE,
-    alignSelf: "center",
-    marginBottom: 8,
-    borderRadius: 8,
-  },
-  headerBlock: {
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 4,
+    width: 56,
+    height: 56,
+    resizeMode: "contain",
   },
   storeName: {
-    fontFamily: MONO,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 2,
-    color: "#000",
-  },
-  storeAddress: {
-    fontFamily: MONO,
-    fontSize: 10,
-    textAlign: "center",
-    marginBottom: 1,
-    color: "#333",
-  },
-  receiptTitle: {
-    fontFamily: MONO,
-    fontSize: 12,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 4,
-    marginTop: 2,
-    color: "#000",
-  },
-  mono: {
-    fontFamily: MONO,
-    fontSize: 10,
-    lineHeight: 16,
-    color: "#000",
-  },
-  totalText: {
-    fontFamily: MONO,
+    fontFamily: "Courier New",
     fontSize: 11,
     fontWeight: "bold",
-    lineHeight: 18,
-  },
-  footerBlock: {
-    width: "100%",
-    alignItems: "center",
-    marginTop: 2,
-  },
-  footerText: {
-    fontFamily: MONO,
-    fontSize: 10,
     textAlign: "center",
     color: "#000",
+    marginBottom: 1,
+    letterSpacing: 0.5,
+  },
+  storeAddress: {
+    fontFamily: "Courier New",
+    fontSize: 9,
+    textAlign: "center",
+    color: "#333",
+    marginBottom: 1,
+  },
+  receiptTitle: {
+    fontFamily: "Courier New",
+    fontSize: 10,
+    fontWeight: "bold",
+    textAlign: "center",
+    color: "#000",
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
+  divider: {
+    width: "100%",
+    borderBottomWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#000",
+    marginVertical: 3,
+  },
+  row: {
+    flexDirection: "row",
+    width: "100%",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginVertical: 1,
+  },
+  rowLabel: {
+    fontFamily: "Courier New",
+    fontSize: 9,
+    color: "#000",
+    flexShrink: 1,
+  },
+  rowValue: {
+    fontFamily: "Courier New",
+    fontSize: 9,
+    color: "#000",
+    textAlign: "right",
+    flexShrink: 0,
+    marginLeft: 4,
+  },
+  rowBold: {
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  footerText: {
+    fontFamily: "Courier New",
+    fontSize: 9,
+    textAlign: "center",
+    color: "#333",
+    lineHeight: 14,
+  },
+  bottomSpacer: {
+    height: 8,
+  },
+  receiptShadow: {
+    width: RECEIPT_WIDTH - 20,
+    height: 6,
+    backgroundColor: "#ccc",
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
   },
   buttonContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    padding: 16,
+    paddingBottom: 32,
     gap: 12,
     backgroundColor: "white",
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: "#e0e0e0",
   },
   cancelButton: {
     flex: 1,
-    padding: 16,
+    padding: 14,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ddd",
     alignItems: "center",
+    backgroundColor: "white",
   },
   cancelText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#666",
   },
   printButton: {
     flex: 2,
-    padding: 16,
+    padding: 14,
     borderRadius: 8,
-    backgroundColor: "#1D4ED8",
+    backgroundColor: "#1a3a8f",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -282,7 +343,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   printText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "white",
     fontWeight: "bold",
   },

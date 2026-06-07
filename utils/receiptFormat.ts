@@ -23,11 +23,7 @@ export const RECEIPT_DIVIDER = "-".repeat(LINE_WIDTH);
 
 export const CALIBRATION_LINE = "1".repeat(LINE_WIDTH);
 
-export const RECEIPT_FOOTER_TEXT = [
-  "Powered By Trison",
-  "Thanks For Fuelling With Us",
-  "Visit Again",
-] as const;
+export const RECEIPT_FOOTER_TEXT = ["Powered By Trison"] as const;
 
 export type ReceiptAlign = 0 | 1 | 2;
 

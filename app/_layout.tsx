@@ -7,6 +7,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { PrinterProvider } from "../contexts/PrinterContext";
 import { useStationStore } from "../stores/stationStore";
 import { colors } from "../constants/theme";
+import { logPrinterNativeModules } from "../src/services/printerNativeModule";
 
 function AppBootstrap({ children }: { children: React.ReactNode }) {
   const hydrate = useStationStore((s) => s.hydrate);
@@ -63,6 +64,12 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      logPrinterNativeModules();
+    }
+  }, []);
+
   return (
     <SafeAreaProvider>
       <PrinterProvider>

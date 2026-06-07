@@ -13,7 +13,8 @@ const KOTLIN_FILES = [
   "BitmapScaler.kt",
   "DeviceDetector.kt",
   "NyxPrinterBridge.kt",
-  "SunmiPrinterBridge.kt",
+  "SunmiPrinterEngine.kt",
+  "SunmiPrinterModule.kt",
   "UnifiedPrinterModule.kt",
   "UnifiedPrinterPackage.kt",
 ];
