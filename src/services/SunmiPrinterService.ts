@@ -10,10 +10,7 @@ import {
 export interface SunmiReceiptData {
   storeName: string;
   address: string;
-  receiptNo: string;
-  date: string;
-  time: string;
-  payment: string;
+  dateTime: string;
   product: string;
   volume: string;
   rate: string;
@@ -56,17 +53,13 @@ export async function printSunmiReceipt(data: SunmiReceiptData): Promise<void> {
     );
   }
 
-  // Best-effort connection check — native printReceipt retries bind/wait up to 8s
   await waitForPrinterConnection(3);
 
   await printer.printReceipt(
     safeStr(data.logoBase64),
     safeStr(data.storeName),
     safeStr(data.address),
-    safeStr(data.receiptNo),
-    safeStr(data.date),
-    safeStr(data.time),
-    safeStr(data.payment),
+    safeStr(data.dateTime),
     safeStr(data.product),
     safeStr(data.volume),
     safeStr(data.rate),
@@ -83,14 +76,13 @@ export async function printSunmiReceiptFromFuelData(data: ReceiptData): Promise<
     logoBase64 = (await resolveLogoBase64(data.logoDataUrl).catch(() => null)) ?? "";
   }
 
+  const dateTime = `${view.date}  ${view.time}`;
+
   await printSunmiReceipt({
     logoBase64,
     storeName: view.storeName,
     address: view.address,
-    receiptNo: view.receiptNo,
-    date: view.date,
-    time: view.time,
-    payment: view.paymentMethod,
+    dateTime,
     product: view.product,
     volume: formatVolume(data.volume),
     rate: formatCurrency(data.fuelRate),

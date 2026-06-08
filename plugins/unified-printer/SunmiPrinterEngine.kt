@@ -175,6 +175,18 @@ class SunmiPrinterEngine private constructor(context: Context) {
         Thread.sleep(4500)
         printerReady = true
         Log.d(TAG, "absorber complete printer ready")
+
+        try {
+          val api = printApi
+          if (api != null && api.usesHighLevelAidl()) {
+            val diagBytes = buildDiagnosticBytes()
+            api.sendRAWData(diagBytes)
+            Log.d(TAG, "Diagnostic slip sent via RAW")
+          }
+        } catch (e: Exception) {
+          Log.e(TAG, "Diagnostic print failed: ${e.message}")
+        }
+
         emit("CONNECTED")
       } catch (e: Exception) {
         Log.e(TAG, "absorber error: ${e.message}")
@@ -205,10 +217,7 @@ class SunmiPrinterEngine private constructor(context: Context) {
     logoBase64: String?,
     storeName: String,
     address: String,
-    receiptNo: String,
-    date: String,
-    time: String,
-    payment: String,
+    dateTime: String,
     product: String,
     volume: String,
     rate: String,
@@ -222,7 +231,7 @@ class SunmiPrinterEngine private constructor(context: Context) {
     Log.d(TAG, "Starting receipt print via ${api.serviceLabel()}...")
 
     var logo: Bitmap? = null
-    if (!logoBase64.isNullOrBlank()) {
+    if (!logoBase64.isNullOrBlank() && !api.usesHighLevelAidl()) {
       try {
         logo = processLogoForPrinting(logoBase64)
       } catch (logoErr: Exception) {
@@ -232,13 +241,9 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
     if (api.usesHighLevelAidl()) {
       api.printReceiptHighLevel(
-        logo,
         storeName,
         address,
-        receiptNo,
-        date,
-        time,
-        payment,
+        dateTime,
         product,
         volume,
         rate,
@@ -250,10 +255,7 @@ class SunmiPrinterEngine private constructor(context: Context) {
         buildReceiptEscPos(
           storeName,
           address,
-          receiptNo,
-          date,
-          time,
-          payment,
+          dateTime,
           product,
           volume,
           rate,
@@ -320,8 +322,8 @@ class SunmiPrinterEngine private constructor(context: Context) {
   fun printTestLine() {
     val api = printApi ?: throw IllegalStateException("Not connected")
     if (api.usesHighLevelAidl()) {
-      api.printText("${centerPad("Printer Connected OK")}\n")
-      api.lineWrap(3)
+      Log.d(TAG, "printTestLine via RAW (${api.serviceLabel()})")
+      api.sendRAWData(buildDiagnosticBytes())
       return
     }
     val escPos =
@@ -336,112 +338,23 @@ class SunmiPrinterEngine private constructor(context: Context) {
   private fun buildReceiptEscPos(
     storeName: String,
     address: String,
-    receiptNo: String,
-    date: String,
-    time: String,
-    payment: String,
+    dateTime: String,
     product: String,
     volume: String,
     rate: String,
     total: String,
     vehicleNo: String,
   ): ByteArray {
-    val parts = ArrayList<Byte>()
-    appendEscInit(parts)
-    appendEscAlign(parts, 1)
-    appendEscBold(parts, true)
-    appendEscCharSize(
-      parts,
-      when {
-        storeName.length <= 14 -> 0x11
-        storeName.length <= 18 -> 0x10
-        storeName.length <= 24 -> 0x01
-        else -> 0x00
-      },
+    return buildReceiptBytes(
+      storeName,
+      address,
+      dateTime,
+      product,
+      volume,
+      rate,
+      total,
+      vehicleNo,
     )
-    appendEscLine(parts, storeName.uppercase())
-    appendEscBold(parts, false)
-    appendEscCharSize(parts, 0x00)
-
-    for (addressLine in wrapText(address, LINE_WIDTH)) {
-      appendEscAlign(parts, 1)
-      appendEscLine(parts, addressLine)
-    }
-
-    appendEscAlign(parts, 1)
-    appendEscBold(parts, true)
-    appendEscLine(parts, "FUEL RECEIPT")
-    appendEscBold(parts, false)
-    appendEscCharSize(parts, 0x00)
-
-    appendEscAlign(parts, 0)
-    appendEscLine(parts, DIVIDER)
-    appendEscLine(parts, formatRow("RECEIPT NO:", receiptNo))
-    appendEscLine(parts, formatRow("DATE:", date))
-    appendEscLine(parts, formatRow("TIME:", time))
-    appendEscLine(parts, formatRow("PAYMENT:", payment.uppercase()))
-    appendEscLine(parts, DIVIDER)
-    appendEscLine(parts, formatRow("PRODUCT:", product.uppercase()))
-    appendEscLine(parts, formatRow("VOLUME:", "${volume.uppercase()} LTR"))
-    appendEscLine(parts, formatRow("RATE/LTR:", "Rs. $rate"))
-    appendEscLine(parts, DIVIDER)
-    appendEscBold(parts, true)
-    appendEscLine(parts, formatRow("TOTAL AMOUNT:", "Rs. $total"))
-    appendEscBold(parts, false)
-    appendEscLine(parts, DIVIDER)
-
-    if (vehicleNo.isNotBlank()) {
-      appendEscLine(parts, formatRow("VEHICLE NO:", vehicleNo.uppercase()))
-      appendEscLine(parts, DIVIDER)
-    }
-
-    appendEscAlign(parts, 1)
-    appendEscLine(parts, centerPad("POWERED BY TRISON"))
-    appendEscFeed(parts, 5)
-    return parts.toByteArray()
-  }
-
-  private fun appendEscInit(parts: ArrayList<Byte>) {
-    parts.add(0x1B)
-    parts.add(0x40)
-  }
-
-  private fun appendEscAlign(parts: ArrayList<Byte>, align: Int) {
-    parts.add(0x1B)
-    parts.add(0x61)
-    parts.add(align.coerceIn(0, 2).toByte())
-  }
-
-  private fun appendEscBold(parts: ArrayList<Byte>, on: Boolean) {
-    parts.add(0x1B)
-    parts.add(0x45)
-    parts.add(if (on) 0x01 else 0x00)
-  }
-
-  private fun appendEscCharSize(parts: ArrayList<Byte>, size: Int) {
-    parts.add(0x1D)
-    parts.add(0x21)
-    parts.add(size.toByte())
-  }
-
-  private fun appendEscFeed(parts: ArrayList<Byte>, lines: Int) {
-    parts.add(0x1B)
-    parts.add(0x64)
-    parts.add(lines.coerceIn(0, 255).toByte())
-  }
-
-  private fun appendEscText(parts: ArrayList<Byte>, text: String) {
-    for (ch in text) {
-      val code = ch.code
-      if (code in 0..255) {
-        parts.add(code.toByte())
-      }
-    }
-  }
-
-  private fun appendEscLine(parts: ArrayList<Byte>, text: String) {
-    appendEscText(parts, text)
-    parts.add(0x0A)
   }
 
   private interface SunmiPrintApi {
@@ -459,15 +372,11 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
     fun printBitmap(bitmap: Bitmap)
 
-    /** jiuiv5: high-level AIDL + selective sendRAWData for bold/size. */
+    /** jiuiv5: single sendRAWData ESC/POS receipt (no text buffer). */
     fun printReceiptHighLevel(
-      logo: Bitmap?,
       storeName: String,
       address: String,
-      receiptNo: String,
-      date: String,
-      time: String,
-      payment: String,
+      dateTime: String,
       product: String,
       volume: String,
       rate: String,
@@ -518,13 +427,9 @@ class SunmiPrinterEngine private constructor(context: Context) {
     }
 
     override fun printReceiptHighLevel(
-      logo: Bitmap?,
       storeName: String,
       address: String,
-      receiptNo: String,
-      date: String,
-      time: String,
-      payment: String,
+      dateTime: String,
       product: String,
       volume: String,
       rate: String,
@@ -557,8 +462,12 @@ class SunmiPrinterEngine private constructor(context: Context) {
     override fun usesHighLevelAidl(): Boolean = true
 
     override fun printHelloWorld() {
-      printText("${centerPad("Hello World")}\n")
-      lineWrap(4)
+      Log.d(TAG, "printHelloWorld via RAW (${serviceLabel()})")
+      val out = java.io.ByteArrayOutputStream()
+      out.write(byteArrayOf(0x1B, 0x40))
+      out.write("${centerPad("Hello World")}\n".toByteArray(Charsets.UTF_8))
+      out.write(byteArrayOf(0x1B, 0x64, 0x05))
+      sendRAWData(out.toByteArray())
     }
 
     override fun printText(text: String) {
@@ -590,86 +499,32 @@ class SunmiPrinterEngine private constructor(context: Context) {
     }
 
     override fun printReceiptHighLevel(
-      logo: Bitmap?,
       storeName: String,
       address: String,
-      receiptNo: String,
-      date: String,
-      time: String,
-      payment: String,
+      dateTime: String,
       product: String,
       volume: String,
       rate: String,
       total: String,
       vehicleNo: String,
     ) {
-      Log.d(TAG, "printReceiptHighLevel (${serviceLabel()})")
+      Log.d(TAG, "Starting RAW ESC/POS print...")
 
-      Log.d(TAG, "calling enterPrinterBuffer")
-      service.enterPrinterBuffer(true)
-      Log.d(TAG, "enterPrinterBuffer done")
+      val bytes =
+        buildReceiptBytes(
+          storeName,
+          address,
+          dateTime,
+          product,
+          volume,
+          rate,
+          total,
+          vehicleNo,
+        )
 
-      fun printlnLine(text: String) {
-        printText("$text\n")
-      }
-
-      if (logo != null) {
-        printBitmap(logo)
-        lineWrap(1)
-      }
-
-      printlnLine(centerPad(storeName.uppercase()))
-
-      val words = address.trim().split("\\s+".toRegex())
-      var addressLine = ""
-      for (word in words) {
-        val candidate = if (addressLine.isEmpty()) word else "$addressLine $word"
-        if (candidate.length <= LINE_WIDTH) {
-          addressLine = candidate
-        } else {
-          if (addressLine.isNotEmpty()) {
-            printlnLine(centerPad(addressLine))
-          }
-          addressLine = word
-        }
-      }
-      if (addressLine.isNotEmpty()) {
-        printlnLine(centerPad(addressLine))
-      }
-
-      printlnLine(centerPad("FUEL RECEIPT"))
-
-      printlnLine(DIVIDER)
-      printlnLine(formatRow("RECEIPT NO:", receiptNo))
-      printlnLine(formatRow("DATE:", date))
-      printlnLine(formatRow("TIME:", time))
-      printlnLine(formatRow("PAYMENT:", payment.uppercase()))
-      printlnLine(DIVIDER)
-      printlnLine(formatRow("PRODUCT:", product.uppercase()))
-      printlnLine(formatRow("VOLUME:", "${volume.uppercase()} LTR"))
-      printlnLine(formatRow("RATE/LTR:", "Rs. $rate"))
-      printlnLine(DIVIDER)
-
-      sendRAWData(ESC_BOLD_ON)
-      printlnLine(formatRow("TOTAL AMOUNT:", "Rs. $total"))
-      sendRAWData(ESC_BOLD_OFF)
-      printlnLine(DIVIDER)
-
-      if (vehicleNo.isNotBlank()) {
-        printlnLine(formatRow("VEHICLE NO:", vehicleNo.uppercase()))
-        printlnLine(DIVIDER)
-      }
-
-      printlnLine(centerPad("POWERED BY TRISON"))
-
-      Log.d(TAG, "before sendRAWData flush ESC d 5")
-      sendRAWData(byteArrayOf(0x1B, 0x64, 0x05))
-      Log.d(TAG, "after sendRAWData flush ESC d 5")
-
-      Log.d(TAG, "calling exitPrinterBuffer")
-      service.exitPrinterBuffer(true)
-      Log.d(TAG, "exitPrinterBuffer done")
-      Thread.sleep(100)
+      Log.d(TAG, "Sending ${bytes.size} bytes via sendRAWData")
+      service.sendRAWData(bytes, null)
+      Log.d(TAG, "sendRAWData complete")
     }
   }
 
@@ -719,8 +574,89 @@ class SunmiPrinterEngine private constructor(context: Context) {
     private const val LINE_WIDTH = 32
     private const val DIVIDER = "--------------------------------"
 
-    private val ESC_BOLD_ON = byteArrayOf(0x1B, 0x45, 0x01)
-    private val ESC_BOLD_OFF = byteArrayOf(0x1B, 0x45, 0x00)
+    private fun buildReceiptBytes(
+      storeName: String,
+      address: String,
+      dateTime: String,
+      product: String,
+      volume: String,
+      rate: String,
+      total: String,
+      vehicleNo: String,
+    ): ByteArray {
+      val LINE = 32
+      val DIV = "-".repeat(LINE)
+
+      fun center(text: String): String {
+        if (text.length >= LINE) return text
+        val sp = (LINE - text.length) / 2
+        return " ".repeat(sp) + text
+      }
+
+      fun row(label: String, value: String): String {
+        val totalLen = label.length + value.length
+        if (totalLen >= LINE) {
+          val max = LINE - value.length - 1
+          return label.substring(0, max.coerceAtLeast(1)) + " " + value
+        }
+        val spaces = LINE - totalLen
+        return label + " ".repeat(spaces) + value
+      }
+
+      val lines = mutableListOf<String>()
+
+      lines.add(center(storeName.uppercase()))
+
+      val words = address.split(" ")
+      var addrLine = ""
+      for (word in words) {
+        val test = if (addrLine.isEmpty()) word else "$addrLine $word"
+        if (test.length <= LINE) {
+          addrLine = test
+        } else {
+          if (addrLine.isNotEmpty()) lines.add(center(addrLine))
+          addrLine = word
+        }
+      }
+      if (addrLine.isNotEmpty()) lines.add(center(addrLine))
+
+      lines.add(center("FUEL RECEIPT"))
+      lines.add(DIV)
+      lines.add(row("DATE:", dateTime))
+      lines.add(DIV)
+      lines.add(row("PRODUCT:", product))
+      lines.add(row("VOLUME:", "$volume LTR"))
+      lines.add(row("RATE/LTR:", "Rs. $rate"))
+      lines.add(DIV)
+      lines.add(row("TOTAL AMOUNT:", "Rs. $total"))
+      lines.add(DIV)
+
+      if (vehicleNo.isNotBlank()) {
+        lines.add(row("VEHICLE NO:", vehicleNo))
+        lines.add(DIV)
+      }
+
+      lines.add(center("POWERED BY TRISON"))
+
+      val out = java.io.ByteArrayOutputStream()
+      out.write(byteArrayOf(0x1B, 0x40))
+      for (line in lines) {
+        out.write((line + "\n").toByteArray(Charsets.UTF_8))
+      }
+      out.write(byteArrayOf(0x1B, 0x64, 0x05))
+      return out.toByteArray()
+    }
+
+    private fun buildDiagnosticBytes(): ByteArray {
+      val out = java.io.ByteArrayOutputStream()
+      out.write(byteArrayOf(0x1B, 0x40))
+      out.write("--------------------------------\n".toByteArray())
+      out.write("   PRINTER CONNECTED OK\n".toByteArray())
+      out.write("   Sunmi V2s_GL Ready\n".toByteArray())
+      out.write("--------------------------------\n".toByteArray())
+      out.write(byteArrayOf(0x1B, 0x64, 0x03))
+      return out.toByteArray()
+    }
 
     private fun centerPad(text: String, width: Int = LINE_WIDTH): String {
       if (text.length >= width) return text
