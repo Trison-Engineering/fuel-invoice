@@ -34,9 +34,34 @@ class SunmiPrinterEngine private constructor(context: Context) {
   private var connectLatch = CountDownLatch(1)
   private var pendingLegacy = false
 
+  @Volatile
+  private var printerReady = false
+
+  private var statusEmitter: ((String) -> Unit)? = null
+  private val pendingStatus = ArrayDeque<String>()
+
+  fun setStatusEmitter(emitter: (String) -> Unit) {
+    statusEmitter = emitter
+    while (pendingStatus.isNotEmpty()) {
+      emitter(pendingStatus.removeFirst())
+    }
+  }
+
+  private fun emit(status: String) {
+    mainHandler.post {
+      val emitter = statusEmitter
+      if (emitter != null) {
+        emitter(status)
+      } else {
+        pendingStatus.addLast(status)
+      }
+    }
+  }
+
   private val connection =
     object : ServiceConnection {
       override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+        printerReady = false
         printApi =
           try {
             if (pendingLegacy) {
@@ -55,10 +80,21 @@ class SunmiPrinterEngine private constructor(context: Context) {
         )
         Log.d(TAG, "printerService is: ${if (printApi != null) "NOT NULL" else "NULL"}")
         connectLatch.countDown()
+
+        val api = printApi
+        if (api != null && pendingLegacy) {
+          emit("WARMING_UP")
+          startAbsorberPrint()
+        } else if (api != null) {
+          printerReady = true
+          emit("CONNECTED")
+        }
       }
 
       override fun onServiceDisconnected(name: ComponentName?) {
         printApi = null
+        printerReady = false
+        emit("DISCONNECTED")
         connectLatch = CountDownLatch(1)
         Log.w(TAG, "Sunmi service disconnected, retrying in 3s")
         mainHandler.postDelayed({ bindService() }, 3000)
@@ -130,6 +166,40 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
   fun getStatusCode(): Int = if (isConnected()) 1 else 0
 
+  /** jiuiv5: wait for firmware diagnostic to finish on its own — no print commands. */
+  private fun startAbsorberPrint() {
+    Thread {
+      try {
+        Log.d(TAG, "absorber started - waiting for firmware diagnostic to complete")
+        Thread.sleep(4000)
+        printerReady = true
+        Log.d(TAG, "absorber complete printer ready")
+        emit("CONNECTED")
+      } catch (e: Exception) {
+        Log.e(TAG, "absorber error: ${e.message}")
+        printerReady = true
+        emit("CONNECTED")
+      }
+    }.start()
+  }
+
+  private fun waitForPrinterReady() {
+    if (printerReady) return
+    val deadline = System.currentTimeMillis() + 10_000
+    while (System.currentTimeMillis() < deadline) {
+      if (printerReady) return
+      try {
+        Thread.sleep(200)
+      } catch (e: InterruptedException) {
+        Thread.currentThread().interrupt()
+        break
+      }
+    }
+    if (!printerReady) {
+      throw IllegalStateException("NOT_READY")
+    }
+  }
+
   fun printReceipt(
     logoBase64: String?,
     storeName: String,
@@ -145,6 +215,8 @@ class SunmiPrinterEngine private constructor(context: Context) {
     vehicleNo: String,
   ) {
     val api = printApi ?: throw IllegalStateException("Sunmi printer service not connected")
+
+    waitForPrinterReady()
 
     Log.d(TAG, "Starting receipt print via ${api.serviceLabel()}...")
 

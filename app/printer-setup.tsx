@@ -24,8 +24,13 @@ function DismissButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-function statusColor(status: string, connectionStatus: string): string {
-  if (connectionStatus !== "connected") return colors.error;
+function statusColor(
+  status: string,
+  connectionStatus: string,
+  connectionStatusColor: string
+): string {
+  if (connectionStatus === "warming_up") return connectionStatusColor;
+  if (connectionStatus !== "connected") return connectionStatusColor;
   if (status === "Normal") return colors.success;
   if (status === "Out of paper") return colors.error;
   return colors.error;
@@ -109,7 +114,11 @@ export default function PrinterSetupScreen() {
   };
 
   const printerStatusLabel = printer.printerStatus ?? "Checking...";
-  const dotColor = statusColor(printerStatusLabel, printer.connectionStatus);
+  const dotColor = statusColor(
+    printerStatusLabel,
+    printer.connectionStatus,
+    printer.connectionStatusColor
+  );
   const deviceType = printer.deviceType ?? "UNKNOWN";
 
   const deviceLabel =

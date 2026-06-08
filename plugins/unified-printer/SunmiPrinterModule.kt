@@ -4,13 +4,29 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class SunmiPrinterModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
   private val engine = SunmiPrinterEngine.getInstance(reactContext)
 
+  init {
+    engine.setStatusEmitter { status ->
+      reactApplicationContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("SunmiPrinterStatus", status)
+    }
+  }
+
   override fun getName(): String = "SunmiPrinterModule"
+
+  /** Required for NativeEventEmitter subscription on Android. */
+  @ReactMethod
+  fun addListener(eventName: String) {}
+
+  @ReactMethod
+  fun removeListeners(count: Int) {}
 
   @ReactMethod
   fun initPrinter(promise: Promise) {

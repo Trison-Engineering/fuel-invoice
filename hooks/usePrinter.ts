@@ -1,16 +1,37 @@
 import { useCallback, useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import { printerService, type DeviceType } from "../src/services/PrinterService";
 import { hasNativePrinterModule, waitForPrinterConnection } from "../src/services/printerNativeModule";
 import type { ReceiptData } from "../utils/generateReceipt";
 
-export type PrinterConnectionStatus = "connected" | "disconnected" | "connecting";
+export type PrinterConnectionStatus =
+  | "connected"
+  | "disconnected"
+  | "connecting"
+  | "warming_up";
 
 const DEVICE_LABELS: Record<DeviceType, string> = {
   SUNMI: "Sunmi V2s_GL (built-in printer)",
   NYX: "EzPump Handheld-POS (NYX service)",
   UNKNOWN: "Built-in printer",
 };
+
+const SUNMI_STATUS_EVENT = "SunmiPrinterStatus";
+
+function mapSunmiNativeStatus(status: string): PrinterConnectionStatus | null {
+  switch (status) {
+    case "WARMING_UP":
+      return "warming_up";
+    case "CONNECTED":
+      return "connected";
+    case "DISCONNECTED":
+      return "disconnected";
+    case "CONNECTING":
+      return "connecting";
+    default:
+      return null;
+  }
+}
 
 export function usePrinter() {
   const [connectionStatus, setConnectionStatus] = useState<PrinterConnectionStatus>("disconnected");
@@ -23,9 +44,32 @@ export function usePrinter() {
   const connectionStatusLabel =
     connectionStatus === "connected"
       ? "Printer Connected"
-      : connectionStatus === "connecting"
-        ? "Connecting..."
-        : "Printer Disconnected";
+      : connectionStatus === "warming_up"
+        ? "Printer warming up..."
+        : connectionStatus === "connecting"
+          ? "Connecting..."
+          : "Printer Disconnected";
+
+  const connectionStatusColor =
+    connectionStatus === "connected"
+      ? "#16A34A"
+      : connectionStatus === "warming_up"
+        ? "#D97706"
+        : connectionStatus === "connecting"
+          ? "#6B7280"
+          : "#DC2626";
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || !NativeModules.SunmiPrinterModule) return;
+
+    const emitter = new NativeEventEmitter(NativeModules.SunmiPrinterModule);
+    const subscription = emitter.addListener(SUNMI_STATUS_EVENT, (status: string) => {
+      const mapped = mapSunmiNativeStatus(status);
+      if (mapped) setConnectionStatus(mapped);
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const refreshStatus = useCallback(async (): Promise<string> => {
     const status = await printerService.getPrinterStatus();
@@ -56,6 +100,11 @@ export function usePrinter() {
 
       const connected = await waitForPrinterConnection(8);
       const status = await refreshStatus();
+
+      if (type === "SUNMI" && connected) {
+        // Sunmi jiuiv5: WARMING_UP -> CONNECTED events drive UI during 4s firmware wait.
+        return true;
+      }
 
       if (connected && (status === "Normal" || status === "Preparing")) {
         setConnectionStatus("connected");
@@ -88,7 +137,7 @@ export function usePrinter() {
   const ensureConnected = useCallback(async (): Promise<boolean> => {
     const connected = await waitForPrinterConnection(8);
     if (connected) {
-      setConnectionStatus("connected");
+      setConnectionStatus((prev) => (prev === "warming_up" ? prev : "connected"));
       await refreshStatus();
       return true;
     }
@@ -193,12 +242,13 @@ export function usePrinter() {
 
   return {
     connectedDevice:
-      connectionStatus === "connected"
+      connectionStatus === "connected" || connectionStatus === "warming_up"
         ? { id: `${deviceType.toLowerCase()}-builtin`, name: connectedDeviceName, rssi: null }
         : null,
     deviceType,
     connectionStatus,
     connectionStatusLabel,
+    connectionStatusColor,
     printerStatus,
     isInitializing,
     isReconnecting: isInitializing,
