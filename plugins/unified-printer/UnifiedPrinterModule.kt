@@ -20,7 +20,7 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
     promise.resolve(printerType.name)
   }
 
-  /** Sunmi: bind only. NYX: normal init. Never AIDL initPrinter on V2s. */
+  /** Sunmi: request bind only. NYX: normal init. Never AIDL initPrinter on V2s. */
   @ReactMethod
   fun initPrinter(promise: Promise) {
     try {

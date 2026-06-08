@@ -18,7 +18,7 @@ import {
   printSunmiReceiptFromFuelData,
   printSunmiTestLine,
 } from "./SunmiPrinterService";
-import { getPrinterModule, hasNativePrinterModule, waitForPrinterConnection } from "./printerNativeModule";
+import { hasNativePrinterModule } from "./printerNativeModule";
 
 /** Device detection + NYX paths — always UnifiedPrinterModule. */
 const getUnifiedModule = () => {
@@ -150,11 +150,8 @@ class PrinterServiceImpl {
     console.log(`Printer initialized for device: ${type}`);
 
     await module.initPrinter?.();
-    await delay(this.deviceType === "SUNMI" ? 3000 : SERVICE_BIND_MS);
+    await delay(this.deviceType === "SUNMI" ? 2000 : SERVICE_BIND_MS);
 
-    if (this.deviceType === "SUNMI") {
-      await waitForPrinterConnection(8);
-    }
     this.initialized = true;
     return this.deviceType;
   }
@@ -187,9 +184,6 @@ class PrinterServiceImpl {
 
     if (this.deviceType === "SUNMI" || (await isSunmiConnected())) {
       this.deviceType = "SUNMI";
-      await getUnifiedModule().initPrinter();
-      // Best-effort — native printReceipt handles bind/retry if still not ready
-      await waitForPrinterConnection(3);
       return;
     }
 
