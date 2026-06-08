@@ -58,6 +58,23 @@ export default function PrinterSetupScreen() {
     }
   };
 
+  const handleHelloWorldPrint = async () => {
+    if (deviceType !== "SUNMI") {
+      Alert.alert("Not available", "Hello World test is only for Sunmi built-in printers.");
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      await printer.printHelloWorld();
+      Alert.alert("Hello World", "High-level AIDL test sent to the printer.");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Hello World print failed";
+      Alert.alert("Print failed", message);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const handleDiagnosticPrint = async () => {
     if (deviceType !== "SUNMI") {
       Alert.alert("Not available", "Diagnostic print is only for Sunmi built-in printers.");
@@ -191,6 +208,26 @@ export default function PrinterSetupScreen() {
         ) : (
           <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Test Print</Text>
         )}
+      </Pressable>
+
+      <Pressable
+        onPress={handleHelloWorldPrint}
+        disabled={isBusy || deviceType !== "SUNMI"}
+        style={{
+          height: 44,
+          backgroundColor: colors.white,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.md,
+          opacity: isBusy || deviceType !== "SUNMI" ? 0.5 : 1,
+        }}
+      >
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>
+          Hello World (AIDL test)
+        </Text>
       </Pressable>
 
       <Pressable

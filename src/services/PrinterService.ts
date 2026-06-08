@@ -15,6 +15,7 @@ import { safeStr } from "../utils/printerUtils";
 import {
   getSunmiPrinterStatus,
   isSunmiConnected,
+  printSunmiHelloWorld,
   printSunmiReceiptFromFuelData,
   printSunmiTestLine,
 } from "./SunmiPrinterService";
@@ -290,6 +291,14 @@ class PrinterServiceImpl {
     }
     await printSunmiTestLine();
     return "Test print sent";
+  }
+
+  async printHelloWorld(): Promise<void> {
+    await this.assertPrinterReady();
+    if (!(await this.isSunmiDevice())) {
+      throw new Error("Hello World test is only available on Sunmi devices");
+    }
+    await printSunmiHelloWorld();
   }
 
   async printTestReceipt(): Promise<void> {

@@ -133,6 +133,23 @@ export function usePrinter() {
     }
   }, [ensureConnected, refreshStatus]);
 
+  const printHelloWorld = useCallback(async (): Promise<void> => {
+    setIsTestingPrint(true);
+    setError(null);
+
+    try {
+      await ensureConnected();
+      await printerService.printHelloWorld();
+      await refreshStatus();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Hello World print failed";
+      setError(message);
+      throw e;
+    } finally {
+      setIsTestingPrint(false);
+    }
+  }, [ensureConnected, refreshStatus]);
+
   const printDiagnostic = useCallback(async (): Promise<string> => {
     setIsTestingPrint(true);
     setError(null);
@@ -190,6 +207,7 @@ export function usePrinter() {
     ensureConnected,
     printReceipt,
     testPrint,
+    printHelloWorld,
     printDiagnostic,
     printCalibration,
     initPrinter,

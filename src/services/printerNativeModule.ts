@@ -20,6 +20,8 @@ export type PrinterNativeModule = {
     vehicleNo: string
   ) => Promise<boolean>;
   printTestLine?: () => Promise<boolean>;
+  printHelloWorld?: () => Promise<boolean>;
+  printHelloWorldRaw?: () => Promise<boolean>;
   printText?: (content: string, textFormat: object) => Promise<number>;
   printBitmapBase64?: (base64Data: string, align: number) => Promise<boolean>;
   paperOut?: (lines: number) => Promise<number>;

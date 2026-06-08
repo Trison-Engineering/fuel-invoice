@@ -99,6 +99,17 @@ export async function printSunmiReceiptFromFuelData(data: ReceiptData): Promise<
   });
 }
 
+export async function printSunmiHelloWorld(): Promise<void> {
+  const printer = getPrinterModule();
+
+  if (!printer.printHelloWorld) {
+    throw new Error("printHelloWorld is not available on SunmiPrinterModule. Please rebuild the app.");
+  }
+
+  await waitForPrinterConnection(3);
+  await printer.printHelloWorld();
+}
+
 export async function printSunmiTestLine(): Promise<void> {
   const printer = getPrinterModule();
 

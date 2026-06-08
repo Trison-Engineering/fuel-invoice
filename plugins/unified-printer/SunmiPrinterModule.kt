@@ -100,6 +100,40 @@ class SunmiPrinterModule(reactContext: ReactApplicationContext) :
     }.start()
   }
 
+  /** High-level AIDL test: setAlignment + printText + lineWrap (no init/selfCheck). */
+  @ReactMethod
+  fun printHelloWorld(promise: Promise) {
+    Thread {
+      try {
+        if (!waitForService(8000)) {
+          promise.reject("NOT_CONNECTED", "Sunmi printer service not connected after retry")
+          return@Thread
+        }
+        engine.printHelloWorld()
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("HELLO_FAILED", e.message, e)
+      }
+    }.start()
+  }
+
+  /** Diagnostic: sendRAWData only (no buffer) — confirm jiuiv5 outputs raw ESC/POS. */
+  @ReactMethod
+  fun printHelloWorldRaw(promise: Promise) {
+    Thread {
+      try {
+        if (!waitForService(8000)) {
+          promise.reject("NOT_CONNECTED", "Sunmi printer service not connected after retry")
+          return@Thread
+        }
+        engine.printHelloWorldDirectRaw()
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("HELLO_RAW_FAILED", e.message, e)
+      }
+    }.start()
+  }
+
   /** Rebind and poll every 100ms for up to [timeoutMs]. */
   private fun waitForService(timeoutMs: Long): Boolean {
     if (engine.isConnected()) return true
