@@ -42,16 +42,17 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
   fun setStatusEmitter(emitter: (String) -> Unit) {
     statusEmitter = emitter
-    while (pendingStatus.isNotEmpty()) {
-      emitter(pendingStatus.removeFirst())
-    }
   }
 
   private fun emit(status: String) {
     mainHandler.post {
       val emitter = statusEmitter
       if (emitter != null) {
-        emitter(status)
+        try {
+          emitter(status)
+        } catch (e: Exception) {
+          Log.e(TAG, "Emit error: ${e.message}")
+        }
       } else {
         pendingStatus.addLast(status)
       }
@@ -101,7 +102,7 @@ class SunmiPrinterEngine private constructor(context: Context) {
       }
     }
 
-  init {
+  fun connect(context: Context) {
     bindService()
   }
 
@@ -166,12 +167,12 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
   fun getStatusCode(): Int = if (isConnected()) 1 else 0
 
-  /** jiuiv5: wait for firmware diagnostic to finish on its own — no print commands. */
+  /** jiuiv5: silent wait — no print commands (setAlignment triggers diagnostic). */
   private fun startAbsorberPrint() {
     Thread {
       try {
-        Log.d(TAG, "absorber started - waiting for firmware diagnostic to complete")
-        Thread.sleep(4000)
+        Log.d(TAG, "absorber started")
+        Thread.sleep(4500)
         printerReady = true
         Log.d(TAG, "absorber complete printer ready")
         emit("CONNECTED")
@@ -265,7 +266,7 @@ class SunmiPrinterEngine private constructor(context: Context) {
     Log.d(TAG, "Receipt print completed successfully (${api.serviceLabel()})")
   }
 
-  /** High-level AIDL test — setAlignment + printText + lineWrap (jiuiv5 path). */
+  /** High-level AIDL test — printText + lineWrap only (no setAlignment). */
   fun printHelloWorld() {
     val api = printApi ?: throw IllegalStateException("Sunmi printer service not connected")
     Log.d(TAG, "printHelloWorld via ${api.serviceLabel()}")
@@ -319,8 +320,7 @@ class SunmiPrinterEngine private constructor(context: Context) {
   fun printTestLine() {
     val api = printApi ?: throw IllegalStateException("Not connected")
     if (api.usesHighLevelAidl()) {
-      api.setAlignment(1)
-      api.printText("Printer Connected OK\n")
+      api.printText("${centerPad("Printer Connected OK")}\n")
       api.lineWrap(3)
       return
     }
@@ -396,7 +396,7 @@ class SunmiPrinterEngine private constructor(context: Context) {
     }
 
     appendEscAlign(parts, 1)
-    appendEscLine(parts, centerText("POWERED BY TRISON"))
+    appendEscLine(parts, centerPad("POWERED BY TRISON"))
     appendEscFeed(parts, 5)
     return parts.toByteArray()
   }
@@ -451,8 +451,6 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
     fun printHelloWorld()
 
-    fun setAlignment(align: Int)
-
     fun printText(text: String)
 
     fun lineWrap(lines: Int)
@@ -487,21 +485,12 @@ class SunmiPrinterEngine private constructor(context: Context) {
     override fun usesHighLevelAidl(): Boolean = false
 
     override fun printHelloWorld() {
-      Log.d(TAG, "before setAlignment(1)")
-      service.setAlignment(1, null)
-      Log.d(TAG, "after setAlignment(1)")
       Log.d(TAG, "before printText: Hello World\\n")
-      service.printText("Hello World\n", null)
+      service.printText("${centerPad("Hello World")}\n", null)
       Log.d(TAG, "after printText")
       Log.d(TAG, "before lineWrap(4)")
       service.lineWrap(4, null)
       Log.d(TAG, "after lineWrap(4)")
-    }
-
-    override fun setAlignment(align: Int) {
-      Log.d(TAG, "before setAlignment($align)")
-      service.setAlignment(align, null)
-      Log.d(TAG, "after setAlignment($align)")
     }
 
     override fun printText(text: String) {
@@ -568,15 +557,8 @@ class SunmiPrinterEngine private constructor(context: Context) {
     override fun usesHighLevelAidl(): Boolean = true
 
     override fun printHelloWorld() {
-      setAlignment(1)
-      printText("Hello World\n")
+      printText("${centerPad("Hello World")}\n")
       lineWrap(4)
-    }
-
-    override fun setAlignment(align: Int) {
-      Log.d(TAG, "before setAlignment($align)")
-      service.setAlignment(align, null)
-      Log.d(TAG, "after setAlignment($align)")
     }
 
     override fun printText(text: String) {
@@ -623,56 +605,71 @@ class SunmiPrinterEngine private constructor(context: Context) {
     ) {
       Log.d(TAG, "printReceiptHighLevel (${serviceLabel()})")
 
+      Log.d(TAG, "calling enterPrinterBuffer")
+      service.enterPrinterBuffer(true)
+      Log.d(TAG, "enterPrinterBuffer done")
+
+      fun printlnLine(text: String) {
+        printText("$text\n")
+      }
+
       if (logo != null) {
-        setAlignment(1)
         printBitmap(logo)
         lineWrap(1)
       }
 
-      setAlignment(1)
-      sendRAWData(ESC_BOLD_ON)
-      sendRAWData(escCharSize(storeNameSizeByte(storeName)))
-      printText("${storeName.uppercase()}\n")
-      sendRAWData(ESC_BOLD_OFF)
-      sendRAWData(ESC_SIZE_NORMAL)
+      printlnLine(centerPad(storeName.uppercase()))
 
-      setAlignment(1)
-      for (addressLine in wrapText(address, LINE_WIDTH)) {
-        printText("$addressLine\n")
+      val words = address.trim().split("\\s+".toRegex())
+      var addressLine = ""
+      for (word in words) {
+        val candidate = if (addressLine.isEmpty()) word else "$addressLine $word"
+        if (candidate.length <= LINE_WIDTH) {
+          addressLine = candidate
+        } else {
+          if (addressLine.isNotEmpty()) {
+            printlnLine(centerPad(addressLine))
+          }
+          addressLine = word
+        }
+      }
+      if (addressLine.isNotEmpty()) {
+        printlnLine(centerPad(addressLine))
       }
 
-      setAlignment(1)
-      sendRAWData(ESC_BOLD_ON)
-      printText("FUEL RECEIPT\n")
-      sendRAWData(ESC_BOLD_OFF)
+      printlnLine(centerPad("FUEL RECEIPT"))
 
-      setAlignment(0)
-      printText("$DIVIDER\n")
-      printText("${formatRow("RECEIPT NO:", receiptNo)}\n")
-      printText("${formatRow("DATE:", date)}\n")
-      printText("${formatRow("TIME:", time)}\n")
-      printText("${formatRow("PAYMENT:", payment.uppercase())}\n")
-      printText("$DIVIDER\n")
-
-      printText("${formatRow("PRODUCT:", product.uppercase())}\n")
-      printText("${formatRow("VOLUME:", "${volume.uppercase()} LTR")}\n")
-      printText("${formatRow("RATE/LTR:", "Rs. $rate")}\n")
-      printText("$DIVIDER\n")
+      printlnLine(DIVIDER)
+      printlnLine(formatRow("RECEIPT NO:", receiptNo))
+      printlnLine(formatRow("DATE:", date))
+      printlnLine(formatRow("TIME:", time))
+      printlnLine(formatRow("PAYMENT:", payment.uppercase()))
+      printlnLine(DIVIDER)
+      printlnLine(formatRow("PRODUCT:", product.uppercase()))
+      printlnLine(formatRow("VOLUME:", "${volume.uppercase()} LTR"))
+      printlnLine(formatRow("RATE/LTR:", "Rs. $rate"))
+      printlnLine(DIVIDER)
 
       sendRAWData(ESC_BOLD_ON)
-      printText("${formatRow("TOTAL AMOUNT:", "Rs. $total")}\n")
+      printlnLine(formatRow("TOTAL AMOUNT:", "Rs. $total"))
       sendRAWData(ESC_BOLD_OFF)
-      printText("$DIVIDER\n")
+      printlnLine(DIVIDER)
 
       if (vehicleNo.isNotBlank()) {
-        printText("${formatRow("VEHICLE NO:", vehicleNo.uppercase())}\n")
-        printText("$DIVIDER\n")
+        printlnLine(formatRow("VEHICLE NO:", vehicleNo.uppercase()))
+        printlnLine(DIVIDER)
       }
 
-      setAlignment(1)
-      printText("POWERED BY TRISON\n")
+      printlnLine(centerPad("POWERED BY TRISON"))
 
-      lineWrap(5)
+      Log.d(TAG, "before sendRAWData flush ESC d 5")
+      sendRAWData(byteArrayOf(0x1B, 0x64, 0x05))
+      Log.d(TAG, "after sendRAWData flush ESC d 5")
+
+      Log.d(TAG, "calling exitPrinterBuffer")
+      service.exitPrinterBuffer(true)
+      Log.d(TAG, "exitPrinterBuffer done")
+      Thread.sleep(100)
     }
   }
 
@@ -724,21 +721,10 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
     private val ESC_BOLD_ON = byteArrayOf(0x1B, 0x45, 0x01)
     private val ESC_BOLD_OFF = byteArrayOf(0x1B, 0x45, 0x00)
-    private val ESC_SIZE_NORMAL = byteArrayOf(0x1D, 0x21, 0x00)
 
-    private fun escCharSize(size: Int): ByteArray = byteArrayOf(0x1D, 0x21, size.toByte())
-
-    private fun storeNameSizeByte(storeName: String): Int =
-      when {
-        storeName.length <= 14 -> 0x11
-        storeName.length <= 18 -> 0x10
-        storeName.length <= 24 -> 0x01
-        else -> 0x00
-      }
-
-    private fun centerText(text: String): String {
-      if (text.length >= LINE_WIDTH) return text
-      val spaces = (LINE_WIDTH - text.length) / 2
+    private fun centerPad(text: String, width: Int = LINE_WIDTH): String {
+      if (text.length >= width) return text
+      val spaces = (width - text.length) / 2
       return " ".repeat(spaces) + text
     }
 

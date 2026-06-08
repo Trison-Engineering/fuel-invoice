@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import { printerService, type DeviceType } from "../src/services/PrinterService";
 import { hasNativePrinterModule, waitForPrinterConnection } from "../src/services/printerNativeModule";
@@ -17,6 +17,9 @@ const DEVICE_LABELS: Record<DeviceType, string> = {
 };
 
 const SUNMI_STATUS_EVENT = "SunmiPrinterStatus";
+
+/** Keep warming-up UI visible at least this long (matches ~4.5s native absorber). */
+const WARMING_UP_MIN_MS = 5000;
 
 function mapSunmiNativeStatus(status: string): PrinterConnectionStatus | null {
   switch (status) {
@@ -40,6 +43,8 @@ export function usePrinter() {
   const [isInitializing, setIsInitializing] = useState(false);
   const [isTestingPrint, setIsTestingPrint] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const warmingUpStartedAtRef = useRef<number | null>(null);
+  const connectedDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connectionStatusLabel =
     connectionStatus === "connected"
@@ -64,11 +69,39 @@ export function usePrinter() {
 
     const emitter = new NativeEventEmitter(NativeModules.SunmiPrinterModule);
     const subscription = emitter.addListener(SUNMI_STATUS_EVENT, (status: string) => {
+      if (status === "WARMING_UP") {
+        warmingUpStartedAtRef.current = Date.now();
+        setConnectionStatus("warming_up");
+        return;
+      }
+
+      if (status === "CONNECTED") {
+        const startedAt = warmingUpStartedAtRef.current ?? Date.now();
+        const remaining = Math.max(0, WARMING_UP_MIN_MS - (Date.now() - startedAt));
+        if (connectedDelayTimerRef.current) {
+          clearTimeout(connectedDelayTimerRef.current);
+        }
+        if (remaining > 0) {
+          connectedDelayTimerRef.current = setTimeout(() => {
+            setConnectionStatus("connected");
+            connectedDelayTimerRef.current = null;
+          }, remaining);
+        } else {
+          setConnectionStatus("connected");
+        }
+        return;
+      }
+
       const mapped = mapSunmiNativeStatus(status);
       if (mapped) setConnectionStatus(mapped);
     });
 
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      if (connectedDelayTimerRef.current) {
+        clearTimeout(connectedDelayTimerRef.current);
+      }
+    };
   }, []);
 
   const refreshStatus = useCallback(async (): Promise<string> => {
@@ -102,7 +135,7 @@ export function usePrinter() {
       const status = await refreshStatus();
 
       if (type === "SUNMI" && connected) {
-        // Sunmi jiuiv5: WARMING_UP -> CONNECTED events drive UI during 4s firmware wait.
+        // Sunmi jiuiv5: WARMING_UP -> CONNECTED events; UI holds warming for WARMING_UP_MIN_MS.
         return true;
       }
 

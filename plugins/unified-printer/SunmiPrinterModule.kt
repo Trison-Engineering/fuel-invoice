@@ -11,15 +11,21 @@ class SunmiPrinterModule(reactContext: ReactApplicationContext) :
 
   private val engine = SunmiPrinterEngine.getInstance(reactContext)
 
-  init {
-    engine.setStatusEmitter { status ->
-      reactApplicationContext
-        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-        .emit("SunmiPrinterStatus", status)
-    }
-  }
-
   override fun getName(): String = "SunmiPrinterModule"
+
+  override fun initialize() {
+    super.initialize()
+    engine.setStatusEmitter { status ->
+      try {
+        reactApplicationContext
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+          .emit("SunmiPrinterStatus", status)
+      } catch (_: Exception) {
+        // Bridge not ready yet — ignore
+      }
+    }
+    engine.connect(reactApplicationContext)
+  }
 
   /** Required for NativeEventEmitter subscription on Android. */
   @ReactMethod
@@ -116,7 +122,7 @@ class SunmiPrinterModule(reactContext: ReactApplicationContext) :
     }.start()
   }
 
-  /** High-level AIDL test: setAlignment + printText + lineWrap (no init/selfCheck). */
+  /** High-level AIDL test: printText + lineWrap (no setAlignment). */
   @ReactMethod
   fun printHelloWorld(promise: Promise) {
     Thread {
