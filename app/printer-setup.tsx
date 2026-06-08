@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, ScrollView, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePrinterContext } from "../contexts/PrinterContext";
-import { PAPER_WIDTH_INCHES, RECEIPT_LINE_WIDTH } from "../constants/printerPaper";
+import { PAPER_WIDTH_MM, RECEIPT_LINE_WIDTH } from "../constants/printerPaper";
 import { colors, spacing } from "../constants/theme";
 
 function DismissButton({ onPress }: { onPress: () => void }) {
@@ -24,8 +24,13 @@ function DismissButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-function statusColor(status: string, connectionStatus: string): string {
-  if (connectionStatus !== "connected") return colors.error;
+function statusColor(
+  status: string,
+  connectionStatus: string,
+  connectionStatusColor: string
+): string {
+  if (connectionStatus === "warming_up") return connectionStatusColor;
+  if (connectionStatus !== "connected") return connectionStatusColor;
   if (status === "Normal") return colors.success;
   if (status === "Out of paper") return colors.error;
   return colors.error;
@@ -58,13 +63,47 @@ export default function PrinterSetupScreen() {
     }
   };
 
+  const handleHelloWorldPrint = async () => {
+    if (deviceType !== "SUNMI") {
+      Alert.alert("Not available", "Hello World test is only for Sunmi built-in printers.");
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      await printer.printHelloWorld();
+      Alert.alert("Hello World", "High-level AIDL test sent to the printer.");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Hello World print failed";
+      Alert.alert("Print failed", message);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleDiagnosticPrint = async () => {
+    if (deviceType !== "SUNMI") {
+      Alert.alert("Not available", "Diagnostic print is only for Sunmi built-in printers.");
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      const result = await printer.printDiagnostic();
+      Alert.alert("Diagnostic", result);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Diagnostic print failed";
+      Alert.alert("Diagnostic Failed", message);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const handleCalibrationPrint = async () => {
     setIsPrinting(true);
     try {
       await printer.printCalibration();
       Alert.alert(
         "Calibration printed",
-        `Count characters on the numbered line (${RECEIPT_LINE_WIDTH} chars for ${PAPER_WIDTH_INCHES}" Sunmi paper). If it wraps early, reduce RECEIPT_LINE_WIDTH in constants/printerPaper.ts.`
+        `Count characters on the numbered line (${RECEIPT_LINE_WIDTH} chars for ${PAPER_WIDTH_MM}mm Sunmi paper). If it wraps early, reduce RECEIPT_LINE_WIDTH in constants/printerPaper.ts.`
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : "Calibration print failed";
@@ -75,7 +114,11 @@ export default function PrinterSetupScreen() {
   };
 
   const printerStatusLabel = printer.printerStatus ?? "Checking...";
-  const dotColor = statusColor(printerStatusLabel, printer.connectionStatus);
+  const dotColor = statusColor(
+    printerStatusLabel,
+    printer.connectionStatus,
+    printer.connectionStatusColor
+  );
   const deviceType = printer.deviceType ?? "UNKNOWN";
 
   const deviceLabel =
@@ -177,6 +220,44 @@ export default function PrinterSetupScreen() {
       </Pressable>
 
       <Pressable
+        onPress={handleHelloWorldPrint}
+        disabled={isBusy || deviceType !== "SUNMI"}
+        style={{
+          height: 44,
+          backgroundColor: colors.white,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.md,
+          opacity: isBusy || deviceType !== "SUNMI" ? 0.5 : 1,
+        }}
+      >
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>
+          Hello World (AIDL test)
+        </Text>
+      </Pressable>
+
+      <Pressable
+        onPress={handleDiagnosticPrint}
+        disabled={isBusy || deviceType !== "SUNMI"}
+        style={{
+          height: 44,
+          backgroundColor: colors.white,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.md,
+          opacity: isBusy || deviceType !== "SUNMI" ? 0.5 : 1,
+        }}
+      >
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>Diagnostic Print (Sunmi)</Text>
+      </Pressable>
+
+      <Pressable
         onPress={handleCalibrationPrint}
         disabled={isBusy}
         style={{
@@ -192,7 +273,7 @@ export default function PrinterSetupScreen() {
         }}
       >
         <Text style={{ color: colors.muted, fontWeight: "600" }}>
-          Print width calibration ({RECEIPT_LINE_WIDTH} chars, {PAPER_WIDTH_INCHES}" paper)
+          Print width calibration ({RECEIPT_LINE_WIDTH} chars, {PAPER_WIDTH_MM}mm paper)
         </Text>
       </Pressable>
 

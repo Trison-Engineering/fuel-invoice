@@ -13,7 +13,8 @@ export interface LogoPrintOptions {
   includeLogoInPrint?: boolean;
 }
 
-async function resolveBase64(logoUri: string): Promise<string | null> {
+/** Resolve logo URI to base64 PNG/JPEG data (no data: prefix). */
+export async function resolveLogoBase64(logoUri: string): Promise<string | null> {
   if (!logoUri) return null;
 
   if (logoUri.startsWith("data:image")) {
@@ -55,13 +56,18 @@ export async function printLogo(options: LogoPrintOptions): Promise<boolean> {
   }
 
   try {
-    const base64Data = await resolveBase64(logoUri);
+    const base64Data = await resolveLogoBase64(logoUri);
     if (!base64Data) {
       console.log("Could not read logo data");
       return false;
     }
 
     await UnifiedPrinterModule.printBitmapBase64(base64Data, align);
+    // Sunmi: skip paperOut — lineWrap() triggers diagnostic output on V2s.
+    const deviceType = (await UnifiedPrinterModule.getDeviceType?.()) as string | undefined;
+    if (deviceType === "SUNMI") {
+      return true;
+    }
     const feedCode = await UnifiedPrinterModule.paperOut(1);
     if (feedCode !== SDK_OK && feedCode < 0) {
       console.log(`Logo feed failed (code ${feedCode})`);

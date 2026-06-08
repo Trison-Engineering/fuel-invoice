@@ -1,4 +1,4 @@
-import { useState, useLayoutEffect } from "react";
+import { useState, useLayoutEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -37,6 +37,10 @@ export default function SettingsScreen() {
     message: string;
     type: "success" | "error";
   }>({ visible: false, message: "", type: "success" });
+
+  const hideToast = useCallback(() => {
+    setToast((t) => ({ ...t, visible: false }));
+  }, []);
 
   const handleSave = async () => {
     if (!station.stationName.trim() || !station.stationAddress.trim()) {
@@ -205,7 +209,7 @@ export default function SettingsScreen() {
         visible={toast.visible}
         message={toast.message}
         type={toast.type}
-        onHide={() => setToast((t) => ({ ...t, visible: false }))}
+        onHide={hideToast}
       />
     </View>
   );

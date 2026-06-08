@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  NativeModules,
 } from "react-native";
 import { useRouter, useNavigation } from "expo-router";
 import { useFormState } from "../hooks/useFormState";
@@ -35,8 +36,27 @@ export default function HomeScreen() {
     type: "success",
   });
 
+  const hideToast = useCallback(() => {
+    setToast((t) => ({ ...t, visible: false }));
+  }, []);
+
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
     setToast({ visible: true, message, type });
+  }, []);
+
+  useEffect(() => {
+    console.log(
+      "PRINTER MODULES:",
+      JSON.stringify(
+        Object.keys(NativeModules).filter(
+          (k) =>
+            k.toLowerCase().includes("print") ||
+            k.toLowerCase().includes("sunmi") ||
+            k.toLowerCase().includes("nyx") ||
+            k.toLowerCase().includes("unified")
+        )
+      )
+    );
   }, []);
 
   useEffect(() => {
@@ -79,13 +99,14 @@ export default function HomeScreen() {
   const handleConfirmPrint = async () => {
     setIsPrinting(true);
     try {
-      const connected = await printer.ensureConnected();
-      if (!connected) {
-        Alert.alert("Printer not ready", "Could not connect to the built-in printer. Open Printer settings to retry.");
-        return;
+      if (!previewData) return;
+
+      try {
+        await printer.ensureConnected();
+      } catch {
+        // Native printReceipt retries bind — continue even if JS check failed
       }
 
-      if (!previewData) return;
       await printer.printReceipt(previewData);
       setShowPreview(false);
       showToast("Receipt printed successfully");
@@ -225,7 +246,7 @@ export default function HomeScreen() {
         visible={toast.visible}
         message={toast.message}
         type={toast.type}
-        onHide={() => setToast((t) => ({ ...t, visible: false }))}
+        onHide={hideToast}
       />
     </View>
   );

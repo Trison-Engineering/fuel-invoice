@@ -7,7 +7,10 @@ import com.facebook.react.uimanager.ViewManager
 
 class UnifiedPrinterPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-    return listOf(UnifiedPrinterModule(reactContext))
+    return listOf(
+      UnifiedPrinterModule(reactContext),
+      SunmiPrinterModule(reactContext),
+    )
   }
 
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {

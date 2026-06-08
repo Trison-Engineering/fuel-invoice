@@ -4,8 +4,6 @@ import android.graphics.Bitmap;
 import woyou.stu.sdkservice.clientinterface.ICallback;
 
 interface IWoyouService {
-  void initPrinter();
-  int updatePrinterState();
   void sendRAWData(in byte[] data, ICallback callback);
   void setPrinterStyle(int wtmKey, String wtmVal);
   void setAlignment(int alignment, ICallback callback);
@@ -19,6 +17,8 @@ interface IWoyouService {
   void printQRCode(String data, int modulesize, int errorlevel, ICallback callback);
   void lineWrap(int n, ICallback callback);
   void cutPaper(ICallback callback);
+  void initPrinter();
+  int updatePrinterState();
   void enterPrinterBuffer(boolean clean);
   void exitPrinterBuffer(boolean commit);
   void commitPrinterBuffer();

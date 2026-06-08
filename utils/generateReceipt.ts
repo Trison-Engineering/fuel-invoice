@@ -1,9 +1,12 @@
-import { safeStr } from "../src/utils/printerUtils";
 import {
   buildReceiptPrintPlan,
   mapFuelReceiptToPrintView,
   type ReceiptPrintLine,
 } from "./receiptFormat";
+import {
+  ESC_POS_LINE_SPACING,
+  RECEIPT_FONT,
+} from "../constants/printerPaper";
 
 export interface ReceiptData {
   stationName: string;
@@ -46,17 +49,8 @@ function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   return result;
 }
 
-function cmdInitCompact(): Uint8Array {
-  return new Uint8Array([
-    ESC,
-    0x40,
-    ESC,
-    0x4d,
-    1,
-    ESC,
-    0x33,
-    18,
-  ]);
+function cmdInitReceipt(): Uint8Array {
+  return new Uint8Array([ESC, 0x40, ESC, 0x33, ESC_POS_LINE_SPACING]);
 }
 
 function cmdAlign(align: 0 | 1 | 2): Uint8Array {
@@ -65,6 +59,28 @@ function cmdAlign(align: 0 | 1 | 2): Uint8Array {
 
 function cmdBold(on: boolean): Uint8Array {
   return new Uint8Array([ESC, 0x45, on ? 1 : 0]);
+}
+
+function resolveFontSizePx(line: ReceiptPrintLine): number {
+  if (line.fontSizePx != null) return line.fontSizePx;
+  switch (line.font) {
+    case "store":
+      return RECEIPT_FONT.storeName;
+    case "heading":
+      return RECEIPT_FONT.heading;
+    case "total":
+      return RECEIPT_FONT.total;
+    default:
+      return RECEIPT_FONT.body;
+  }
+}
+
+/** Map receipt font px to ESC/POS GS ! size for 58 mm paper. */
+function cmdCharSizeFromPx(px: number): Uint8Array {
+  if (px >= 40) return new Uint8Array([GS, 0x21, 0x11]);
+  if (px >= 32) return new Uint8Array([GS, 0x21, 0x10]);
+  if (px >= 28) return new Uint8Array([GS, 0x21, 0x01]);
+  return new Uint8Array([GS, 0x21, 0x00]);
 }
 
 function cmdLine(text: string): Uint8Array {
@@ -81,9 +97,11 @@ function cmdCut(): Uint8Array {
 
 function appendPrintLine(parts: Uint8Array[], line: ReceiptPrintLine): void {
   parts.push(cmdAlign(line.align));
+  parts.push(cmdCharSizeFromPx(resolveFontSizePx(line)));
   if (line.bold) parts.push(cmdBold(true));
   parts.push(cmdLine(line.text));
   if (line.bold) parts.push(cmdBold(false));
+  parts.push(cmdCharSizeFromPx(RECEIPT_FONT.body));
 }
 
 export function buildReceiptLines(data: ReceiptData): string[] {
@@ -91,16 +109,21 @@ export function buildReceiptLines(data: ReceiptData): string[] {
   return buildReceiptPrintPlan(view).map((line) => line.text);
 }
 
-export function generateEscPosBuffer(data: ReceiptData): Uint8Array {
+export function generateEscPosBuffer(data: ReceiptData, options?: { sunmi?: boolean }): Uint8Array {
+  const sunmi = options?.sunmi ?? false;
   const view = mapFuelReceiptToPrintView(data);
   const plan = buildReceiptPrintPlan(view);
-  const parts: Uint8Array[] = [cmdInitCompact()];
+  const parts: Uint8Array[] = [cmdInitReceipt()];
 
   for (const line of plan) {
     appendPrintLine(parts, line);
   }
 
-  parts.push(cmdFeed(3), cmdCut());
+  parts.push(cmdFeed(sunmi ? 6 : 4));
+  if (!sunmi) {
+    parts.push(cmdCut());
+  }
+
   return concatBytes(...parts);
 }
 

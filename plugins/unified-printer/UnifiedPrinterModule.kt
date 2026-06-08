@@ -10,7 +10,7 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
   private val printerType: PrinterType = DeviceDetector.detectPrinterType(reactContext)
-  private val sunmiBridge = SunmiPrinterBridge(reactContext)
+  private val sunmiEngine = SunmiPrinterEngine.getInstance(reactContext)
   private val nyxBridge = NyxPrinterBridge(reactContext)
 
   override fun getName(): String = "UnifiedPrinterModule"
@@ -20,14 +20,15 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
     promise.resolve(printerType.name)
   }
 
+  /** Sunmi: request bind only. NYX: normal init. Never AIDL initPrinter on V2s. */
   @ReactMethod
   fun initPrinter(promise: Promise) {
     try {
       when (printerType) {
-        PrinterType.SUNMI -> promise.resolve(sunmiBridge.initPrinter())
+        PrinterType.SUNMI -> promise.resolve(sunmiEngine.ensureReady())
         PrinterType.NYX -> promise.resolve(nyxBridge.initPrinter())
         PrinterType.UNKNOWN -> {
-          val sunmiOk = sunmiBridge.initPrinter()
+          val sunmiOk = sunmiEngine.ensureReady()
           if (sunmiOk) {
             promise.resolve(true)
           } else {
@@ -44,7 +45,10 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
   fun getPrinterStatus(promise: Promise) {
     try {
       when (activeType()) {
-        PrinterType.SUNMI -> promise.resolve(sunmiBridge.getPrinterStatus())
+        PrinterType.SUNMI -> {
+          sunmiEngine.ensureReady()
+          promise.resolve(sunmiEngine.getStatusCode())
+        }
         PrinterType.NYX -> promise.resolve(nyxBridge.getPrinterStatus())
         PrinterType.UNKNOWN -> promise.resolve(0)
       }
@@ -55,22 +59,26 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun printRawDataBase64(base64Data: String, promise: Promise) {
+    if (activeType() == PrinterType.SUNMI) {
+      promise.reject("UNSUPPORTED", "Use SunmiPrinterModule.printReceipt on Sunmi devices")
+      return
+    }
     try {
       val code =
         when (activeType()) {
-          PrinterType.SUNMI -> sunmiBridge.printRawDataBase64(base64Data)
           PrinterType.NYX -> nyxBridge.printRawDataBase64(base64Data)
-          PrinterType.UNKNOWN ->
-            if (sunmiBridge.isConnected()) {
-              sunmiBridge.printRawDataBase64(base64Data)
-            } else {
-              nyxBridge.printRawDataBase64(base64Data)
-            }
+          PrinterType.UNKNOWN -> nyxBridge.printRawDataBase64(base64Data)
+          else -> -1
         }
       promise.resolve(code)
     } catch (e: Exception) {
       promise.reject("PRINT_ERROR", e.message, e)
     }
+  }
+
+  @ReactMethod
+  fun printSunmiReceipt(logoBase64: String?, receiptBase64: String, promise: Promise) {
+    promise.reject("DEPRECATED", "Use SunmiPrinterModule.printReceipt")
   }
 
   @ReactMethod
@@ -78,16 +86,20 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
     try {
       val code =
         when (activeType()) {
-          PrinterType.SUNMI -> sunmiBridge.printText(content, textFormat)
+          PrinterType.SUNMI -> -1
           PrinterType.NYX -> nyxBridge.printText(content, textFormat)
           PrinterType.UNKNOWN ->
-            if (sunmiBridge.isConnected()) {
-              sunmiBridge.printText(content, textFormat)
+            if (sunmiEngine.isConnected()) {
+              -1
             } else {
               nyxBridge.printText(content, textFormat)
             }
         }
-      promise.resolve(code)
+      if (code == -1 && sunmiEngine.isConnected()) {
+        promise.reject("UNSUPPORTED", "Use SunmiPrinterModule.printReceipt on Sunmi devices")
+      } else {
+        promise.resolve(code)
+      }
     } catch (e: Exception) {
       promise.reject("PRINT_ERROR", e.message, e)
     }
@@ -95,17 +107,16 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun printBitmapBase64(base64Data: String, align: Int, promise: Promise) {
+    if (activeType() == PrinterType.SUNMI) {
+      promise.reject("UNSUPPORTED", "Logo is printed inside SunmiPrinterModule.printReceipt")
+      return
+    }
     try {
       val code =
         when (activeType()) {
-          PrinterType.SUNMI -> sunmiBridge.printBitmapBase64(base64Data, align)
           PrinterType.NYX -> nyxBridge.printBitmapBase64(base64Data, align)
-          PrinterType.UNKNOWN ->
-            if (sunmiBridge.isConnected()) {
-              sunmiBridge.printBitmapBase64(base64Data, align)
-            } else {
-              nyxBridge.printBitmapBase64(base64Data, align)
-            }
+          PrinterType.UNKNOWN -> nyxBridge.printBitmapBase64(base64Data, align)
+          else -> -1
         }
       if (code == 0 || code == -1203) {
         promise.resolve(true)
@@ -121,17 +132,16 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun paperOut(lines: Int, promise: Promise) {
+    if (activeType() == PrinterType.SUNMI) {
+      promise.resolve(0)
+      return
+    }
     try {
       val code =
         when (activeType()) {
-          PrinterType.SUNMI -> sunmiBridge.paperOut(lines)
           PrinterType.NYX -> nyxBridge.paperOut()
-          PrinterType.UNKNOWN ->
-            if (sunmiBridge.isConnected()) {
-              sunmiBridge.paperOut(lines)
-            } else {
-              nyxBridge.paperOut()
-            }
+          PrinterType.UNKNOWN -> nyxBridge.paperOut()
+          else -> 0
         }
       promise.resolve(code)
     } catch (e: Exception) {
@@ -141,24 +151,92 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun cutPaper(promise: Promise) {
-    try {
-      when (activeType()) {
-        PrinterType.SUNMI -> promise.resolve(sunmiBridge.cutPaper())
-        else -> promise.resolve(true)
-      }
-    } catch (e: Exception) {
-      promise.reject("CUT_ERROR", e.message, e)
+    when (activeType()) {
+      PrinterType.SUNMI -> promise.resolve(true)
+      else -> promise.resolve(true)
     }
   }
 
   @ReactMethod
   fun isConnected(promise: Promise) {
     when (activeType()) {
-      PrinterType.SUNMI -> promise.resolve(sunmiBridge.isConnected())
+      PrinterType.SUNMI -> {
+        sunmiEngine.ensureReady()
+        promise.resolve(sunmiEngine.isConnected())
+      }
       PrinterType.NYX -> promise.resolve(nyxBridge.isConnected())
-      PrinterType.UNKNOWN ->
-        promise.resolve(sunmiBridge.isConnected() || nyxBridge.isConnected())
+      PrinterType.UNKNOWN -> {
+        sunmiEngine.ensureReady()
+        promise.resolve(sunmiEngine.isConnected() || nyxBridge.isConnected())
+      }
     }
+  }
+
+  /** Sunmi V2s — full receipt in one native job (same engine as status check). */
+  @ReactMethod
+  fun printReceipt(
+    logoBase64: String,
+    storeName: String,
+    address: String,
+    receiptNo: String,
+    date: String,
+    time: String,
+    payment: String,
+    product: String,
+    volume: String,
+    rate: String,
+    total: String,
+    vehicleNo: String,
+    promise: Promise,
+  ) {
+    if (!sunmiEngine.waitForConnection(5000)) {
+      promise.reject("NOT_CONNECTED", "Sunmi printer service not connected")
+      return
+    }
+
+    Thread {
+      try {
+        sunmiEngine.printReceipt(
+          logoBase64.ifBlank { null },
+          storeName,
+          address,
+          receiptNo,
+          date,
+          time,
+          payment,
+          product,
+          volume,
+          rate,
+          total,
+          vehicleNo,
+        )
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("PRINT_FAILED", e.message, e)
+      }
+    }.start()
+  }
+
+  @ReactMethod
+  fun printTestLine(promise: Promise) {
+    if (!sunmiEngine.waitForConnection(5000)) {
+      promise.reject("NOT_CONNECTED", "Sunmi printer service not connected")
+      return
+    }
+
+    Thread {
+      try {
+        sunmiEngine.printTestLine()
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("TEST_FAILED", e.message, e)
+      }
+    }.start()
+  }
+
+  @ReactMethod
+  fun printDiagnostic(promise: Promise) {
+    printTestLine(promise)
   }
 
   private fun activeType(): PrinterType {
@@ -166,7 +244,7 @@ class UnifiedPrinterModule(reactContext: ReactApplicationContext) :
       return printerType
     }
     return when {
-      sunmiBridge.isConnected() -> PrinterType.SUNMI
+      sunmiEngine.isConnected() -> PrinterType.SUNMI
       nyxBridge.isConnected() -> PrinterType.NYX
       else -> PrinterType.UNKNOWN
     }
