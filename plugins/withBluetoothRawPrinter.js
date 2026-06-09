@@ -34,7 +34,7 @@ const PRINT_DUAL_METHOD = `
     @ReactMethod
     public void printDualPic(String base64Left, String base64Right, @Nullable ReadableMap options, final Promise promise) {
         try {
-            int logoWidth = 120;
+            int logoWidth = 180;
             int paperWidthDots = WIDTH_58;
             int feed = 8;
             if (options != null) {

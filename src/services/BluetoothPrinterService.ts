@@ -6,17 +6,20 @@ import {
 } from "@vardrz/react-native-bluetooth-escpos-printer";
 import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
-import { resolveLogoBase64 } from "../utils/printLogoUtil";
-import { cleanLogoBase64, RawLogoKeys } from "../utils/logoStorage";
+import {
+  LOGO_PRINT_WIDTH_DUAL,
+  LOGO_PRINT_WIDTH_SINGLE,
+  preprocessLogoForPrinting,
+  resolveLogoBase64,
+} from "../utils/printLogoUtil";
+import { RawLogoKeys } from "../utils/logoStorage";
 
 export const INNER_PRINTER_MAC = "00:11:22:33:44:55";
 export const INNER_PRINTER_NAME = "InnerPrinter";
 
 const LINE = 32;
 const DIV = "-".repeat(LINE);
-const LOGO_PRINT_WIDTH_SINGLE = 150;
-const LOGO_PRINT_WIDTH_DUAL = 120;
-const LOGO_PRINT_FEED = 8;
+const LOGO_PRINT_FEED = 1;
 
 const escpos = BluetoothEscposPrinter as typeof BluetoothEscposPrinter & {
   sendRAWData(base64: string): Promise<void>;
@@ -84,6 +87,12 @@ const wrapWordLines = (text: string): string[] => {
 
 const wrapAddressLines = (address: string): string[] => wrapWordLines(address);
 
+/** Raw LF after logo — uses sendRAWData to avoid printText prefix bytes. */
+const sendLogoSeparator = async (): Promise<void> => {
+  if (!escpos.sendRAWData) return;
+  await escpos.sendRAWData(Buffer.from([0x0a]).toString("base64"));
+};
+
 const printLogo = async (): Promise<void> => {
   try {
     const includeLogo = await getItem<boolean>(StorageKeys.INCLUDE_LOGO_IN_PRINT);
@@ -106,10 +115,14 @@ const printLogo = async (): Promise<void> => {
 
     if (!logo1) return;
 
-    const cleanLogo1 = cleanLogoBase64(logo1);
+    const logo1Processed = await preprocessLogoForPrinting(logo1);
+    console.log(
+      "[BT] Printing logo at 576px preprocessed, base64 length:",
+      logo1Processed.length
+    );
 
     if (useTwoLogos && logo2) {
-      const cleanLogo2 = cleanLogoBase64(logo2);
+      const logo2Processed = await preprocessLogoForPrinting(logo2);
 
       if (!escpos.printDualPic) {
         throw new Error(
@@ -117,18 +130,21 @@ const printLogo = async (): Promise<void> => {
         );
       }
 
-      await escpos.printDualPic(cleanLogo1, cleanLogo2, {
+      await escpos.printDualPic(logo1Processed, logo2Processed, {
         width: LOGO_PRINT_WIDTH_DUAL,
         feed: LOGO_PRINT_FEED,
       });
     } else {
-      await BluetoothEscposPrinter.printPic(cleanLogo1, {
+      await BluetoothEscposPrinter.printPic(logo1Processed, {
         width: LOGO_PRINT_WIDTH_SINGLE,
-        center: true,
+        left: 0,
+        center: false,
         autoCut: false,
         feed: LOGO_PRINT_FEED,
       });
     }
+
+    await sendLogoSeparator();
   } catch (e) {
     console.warn("[BT] Logo print failed:", e);
   }

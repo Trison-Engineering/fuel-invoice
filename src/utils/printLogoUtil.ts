@@ -1,10 +1,79 @@
+import * as ImageManipulator from "expo-image-manipulator";
 import { LOGO_MAX_SIZE } from "../../constants/printerPaper";
+import { cleanLogoBase64 } from "./logoStorage";
+
+/** Sunmi 58mm printable width in dots. */
+export const THERMAL_PAPER_WIDTH_DOTS = 384;
+
+/** Preprocess width: 384 dots × 1.5 for sharp thermal output. */
+export const LOGO_PREPROCESS_WIDTH = 576;
+
+export const LOGO_PRINT_WIDTH_SINGLE = THERMAL_PAPER_WIDTH_DOTS;
+export const LOGO_PRINT_WIDTH_DUAL = 180;
+export const LOGO_PRINT_DUAL_RIGHT_LEFT = 204;
 
 export interface LogoPrintOptions {
   logoUri: string;
   maxSize?: number;
   align?: number;
   includeLogoInPrint?: boolean;
+}
+
+function toManipulatorUri(source: string): string {
+  if (source.startsWith("data:") || source.startsWith("file://")) {
+    return source;
+  }
+  return `data:image/png;base64,${cleanLogoBase64(source)}`;
+}
+
+/** Resize logo to optimal thermal resolution before print (576px wide PNG). */
+export async function preprocessLogoForPrinting(source: string): Promise<string> {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      toManipulatorUri(source),
+      [{ resize: { width: LOGO_PREPROCESS_WIDTH } }],
+      {
+        compress: 1,
+        format: ImageManipulator.SaveFormat.PNG,
+        base64: true,
+      }
+    );
+
+    if (result.base64) {
+      return result.base64;
+    }
+  } catch (e) {
+    console.warn("[Logo] preprocessLogoForPrinting failed, using original:", e);
+  }
+
+  return cleanLogoBase64(source);
+}
+
+/** Resize and store logo at optimal resolution when user uploads. */
+export async function preprocessLogoForUpload(source: string): Promise<string> {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      toManipulatorUri(source),
+      [{ resize: { width: LOGO_PREPROCESS_WIDTH } }],
+      {
+        compress: 0.9,
+        format: ImageManipulator.SaveFormat.PNG,
+        base64: true,
+      }
+    );
+
+    if (result.base64) {
+      return `data:image/png;base64,${result.base64}`;
+    }
+  } catch (e) {
+    console.warn("[Logo] preprocessLogoForUpload failed, using original:", e);
+  }
+
+  if (source.startsWith("data:")) {
+    return source;
+  }
+
+  return `data:image/png;base64,${cleanLogoBase64(source)}`;
 }
 
 /** Resolve logo URI to base64 PNG/JPEG data (no data: prefix). */
@@ -41,7 +110,7 @@ export async function resolveLogoBase64(logoUri: string): Promise<string | null>
   return logoUri;
 }
 
-/** Logo on thermal receipt is passed via SunmiPrinterModule.printReceipt — no separate native call. */
+/** @deprecated Legacy no-op — Bluetooth printLogo handles printing. */
 export async function printLogo(_options: LogoPrintOptions): Promise<boolean> {
   return false;
 }

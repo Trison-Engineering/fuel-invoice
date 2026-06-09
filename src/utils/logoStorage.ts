@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { resolveLogoBase64 } from "./printLogoUtil";
+import { preprocessLogoForPrinting, resolveLogoBase64 } from "./printLogoUtil";
 
 /** Raw AsyncStorage keys used by Bluetooth printLogo (no @fuel_receipt: prefix). */
 export const RawLogoKeys = {
@@ -10,8 +10,12 @@ export const RawLogoKeys = {
 
 async function toStoredLogoValue(logoDataUrl: string | null): Promise<string | null> {
   if (!logoDataUrl) return null;
-  const base64 = await resolveLogoBase64(logoDataUrl).catch(() => null);
-  return base64 ?? logoDataUrl;
+  try {
+    return await preprocessLogoForPrinting(logoDataUrl);
+  } catch {
+    const base64 = await resolveLogoBase64(logoDataUrl).catch(() => null);
+    return base64 ?? logoDataUrl;
+  }
 }
 
 export async function syncRawLogoStorage(params: {

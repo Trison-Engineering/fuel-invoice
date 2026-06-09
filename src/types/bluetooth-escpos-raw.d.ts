@@ -4,6 +4,8 @@ declare module "@vardrz/react-native-bluetooth-escpos-printer" {
   interface PrintOptions {
     feed?: number;
     autoCut?: boolean;
+    left?: number;
+    center?: boolean;
   }
 
   interface BluetoothEscposPrinterType {

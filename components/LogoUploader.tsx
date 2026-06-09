@@ -1,7 +1,9 @@
-import { View, Text, Image, Pressable, Alert } from "react-native";
+import { useState } from "react";
+import { View, Text, Image, Pressable, Alert, ActivityIndicator } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing } from "../constants/theme";
+import { preprocessLogoForUpload } from "../src/utils/printLogoUtil";
 
 const MAX_SIZE_BYTES = 2 * 1024 * 1024;
 
@@ -12,6 +14,8 @@ interface LogoUploaderProps {
 }
 
 export function LogoUploader({ logoDataUrl, onLogoChange, label }: LogoUploaderProps) {
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const pickImage = async (useCamera: boolean) => {
     const permission = useCamera
       ? await ImagePicker.requestCameraPermissionsAsync()
@@ -42,9 +46,19 @@ export function LogoUploader({ logoDataUrl, onLogoChange, label }: LogoUploaderP
       return;
     }
 
-    if (asset.base64) {
+    setIsProcessing(true);
+    try {
       const mime = asset.mimeType ?? "image/jpeg";
-      onLogoChange(`data:${mime};base64,${asset.base64}`);
+      const source =
+        asset.uri ?? (asset.base64 ? `data:${mime};base64,${asset.base64}` : null);
+      if (!source) return;
+
+      const processed = await preprocessLogoForUpload(source);
+      onLogoChange(processed);
+    } catch {
+      Alert.alert("Logo error", "Could not process the selected image. Try another file.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -99,6 +113,7 @@ export function LogoUploader({ logoDataUrl, onLogoChange, label }: LogoUploaderP
       ) : (
         <Pressable
           onPress={showPickerOptions}
+          disabled={isProcessing}
           style={{
             borderWidth: 2,
             borderStyle: "dashed",
@@ -107,11 +122,16 @@ export function LogoUploader({ logoDataUrl, onLogoChange, label }: LogoUploaderP
             padding: spacing.xl,
             alignItems: "center",
             justifyContent: "center",
+            opacity: isProcessing ? 0.7 : 1,
           }}
         >
-          <Ionicons name="cloud-upload-outline" size={40} color={colors.muted} />
+          {isProcessing ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <Ionicons name="cloud-upload-outline" size={40} color={colors.muted} />
+          )}
           <Text style={{ marginTop: spacing.sm, fontSize: 14, color: colors.muted }}>
-            Tap to upload logo (PNG/JPG, max 2MB)
+            {isProcessing ? "Processing logo..." : "Tap to upload logo (PNG/JPG, max 2MB)"}
           </Text>
         </Pressable>
       )}
