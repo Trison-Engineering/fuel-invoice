@@ -98,7 +98,9 @@ export function useFormState() {
       vehicleNumber,
       customerName: "",
       logoDataUrl: station.logoDataUrl,
+      logo2DataUrl: station.logo2DataUrl,
       includeLogoInPrint: station.includeLogoInPrint,
+      useTwoLogos: station.useTwoLogos,
     };
   }, [
     station,

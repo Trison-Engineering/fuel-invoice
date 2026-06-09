@@ -8,9 +8,10 @@ const MAX_SIZE_BYTES = 2 * 1024 * 1024;
 interface LogoUploaderProps {
   logoDataUrl: string | null;
   onLogoChange: (dataUrl: string | null) => void;
+  label?: string;
 }
 
-export function LogoUploader({ logoDataUrl, onLogoChange }: LogoUploaderProps) {
+export function LogoUploader({ logoDataUrl, onLogoChange, label }: LogoUploaderProps) {
   const pickImage = async (useCamera: boolean) => {
     const permission = useCamera
       ? await ImagePicker.requestCameraPermissionsAsync()
@@ -57,6 +58,11 @@ export function LogoUploader({ logoDataUrl, onLogoChange }: LogoUploaderProps) {
 
   return (
     <View>
+      {label ? (
+        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.black, marginBottom: spacing.sm }}>
+          {label}
+        </Text>
+      ) : null}
       {logoDataUrl ? (
         <View style={{ alignItems: "center", gap: spacing.sm }}>
           <Image

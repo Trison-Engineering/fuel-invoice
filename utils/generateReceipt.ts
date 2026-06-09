@@ -22,7 +22,9 @@ export interface ReceiptData {
   vehicleNumber: string;
   customerName: string;
   logoDataUrl?: string | null;
+  logo2DataUrl?: string | null;
   includeLogoInPrint?: boolean;
+  useTwoLogos?: boolean;
 }
 
 const ESC = 0x1b;

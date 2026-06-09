@@ -47,4 +47,5 @@ export const StorageKeys = {
   PRINTER_MODE: "printer_mode",
   LAST_SERIAL_PATH: "last_serial_path",
   INCLUDE_LOGO_IN_PRINT: "include_logo_in_print",
+  USE_TWO_LOGOS: "use_two_logos",
 } as const;

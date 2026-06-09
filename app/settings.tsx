@@ -118,7 +118,15 @@ export default function SettingsScreen() {
         </FormSection>
 
         <FormSection icon="cloud-upload-outline" title="Station Logo">
-          <LogoUploader logoDataUrl={station.logoDataUrl} onLogoChange={station.setLogoDataUrl} />
+          {station.includeLogoInPrint && station.useTwoLogos ? (
+            <LogoUploader
+              label="Logo 1 (Left Side)"
+              logoDataUrl={station.logoDataUrl}
+              onLogoChange={station.setLogoDataUrl}
+            />
+          ) : (
+            <LogoUploader logoDataUrl={station.logoDataUrl} onLogoChange={station.setLogoDataUrl} />
+          )}
           <View
             style={{
               flexDirection: "row",
@@ -137,6 +145,33 @@ export default function SettingsScreen() {
               thumbColor={station.includeLogoInPrint ? colors.primary : colors.muted}
             />
           </View>
+          {station.includeLogoInPrint ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: spacing.sm,
+              }}
+            >
+              <Text style={{ fontSize: 14, color: colors.black, flex: 1 }}>Use Two Logos</Text>
+              <Switch
+                value={station.useTwoLogos}
+                onValueChange={station.setUseTwoLogos}
+                trackColor={{ false: colors.border, true: colors.primaryLight }}
+                thumbColor={station.useTwoLogos ? colors.primary : colors.muted}
+              />
+            </View>
+          ) : null}
+          {station.includeLogoInPrint && station.useTwoLogos ? (
+            <View style={{ marginTop: spacing.md }}>
+              <LogoUploader
+                label="Logo 2 (Right Side)"
+                logoDataUrl={station.logo2DataUrl}
+                onLogoChange={station.setLogo2DataUrl}
+              />
+            </View>
+          ) : null}
         </FormSection>
 
         <Pressable

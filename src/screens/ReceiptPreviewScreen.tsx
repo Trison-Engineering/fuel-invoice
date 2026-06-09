@@ -73,8 +73,11 @@ export function ReceiptPreviewScreen({
   );
   const addressLines = splitAddressLines(view.address, PREVIEW_LINE_WIDTH);
   const dateTime = `${view.date}  ${view.time}`;
-  const logoUri =
-    data.includeLogoInPrint && view.logoDataUrl ? view.logoDataUrl : null;
+  const showLogos = Boolean(data.includeLogoInPrint);
+  const logo1Uri = showLogos && view.logoDataUrl ? view.logoDataUrl : null;
+  const logo2Uri =
+    showLogos && data.useTwoLogos && data.logo2DataUrl ? data.logo2DataUrl : null;
+  const useDualLogos = showLogos && data.useTwoLogos && Boolean(logo1Uri && logo2Uri);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
@@ -90,9 +93,14 @@ export function ReceiptPreviewScreen({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.receiptPaper}>
-            {logoUri ? (
+            {useDualLogos ? (
+              <View style={styles.logoRow}>
+                <Image source={{ uri: logo1Uri! }} style={styles.logoImageDual} />
+                <Image source={{ uri: logo2Uri! }} style={styles.logoImageDual} />
+              </View>
+            ) : logo1Uri ? (
               <View style={styles.logoContainer}>
-                <Image source={{ uri: logoUri }} style={styles.logoImage} />
+                <Image source={{ uri: logo1Uri }} style={styles.logoImage} />
               </View>
             ) : null}
 
@@ -232,7 +240,19 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     paddingBottom: 2,
   },
+  logoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 0,
+    paddingBottom: 0,
+  },
   logoImage: {
+    width: 28,
+    resizeMode: "contain",
+  },
+  logoImageDual: {
     width: 28,
     resizeMode: "contain",
   },

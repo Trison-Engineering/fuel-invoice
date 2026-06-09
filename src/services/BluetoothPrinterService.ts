@@ -7,17 +7,24 @@ import {
 import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
 import { resolveLogoBase64 } from "../utils/printLogoUtil";
+import { cleanLogoBase64, RawLogoKeys } from "../utils/logoStorage";
 
 export const INNER_PRINTER_MAC = "00:11:22:33:44:55";
 export const INNER_PRINTER_NAME = "InnerPrinter";
 
 const LINE = 32;
 const DIV = "-".repeat(LINE);
-/** Logo print width in dots (half of previous 200); height scales from bitmap aspect ratio. */
-const LOGO_PRINT_WIDTH = 100;
+const LOGO_PRINT_WIDTH_SINGLE = 150;
+const LOGO_PRINT_WIDTH_DUAL = 120;
+const LOGO_PRINT_FEED = 8;
 
 const escpos = BluetoothEscposPrinter as typeof BluetoothEscposPrinter & {
   sendRAWData(base64: string): Promise<void>;
+  printDualPic(
+    base64Left: string,
+    base64Right: string,
+    options?: { width?: number; feed?: number }
+  ): Promise<void>;
 };
 
 let connected = false;
@@ -79,29 +86,49 @@ const wrapAddressLines = (address: string): string[] => wrapWordLines(address);
 
 const printLogo = async (): Promise<void> => {
   try {
-    let logoB64 = await AsyncStorage.getItem("station_logo");
+    const includeLogo = await getItem<boolean>(StorageKeys.INCLUDE_LOGO_IN_PRINT);
+    if (!includeLogo) return;
 
-    if (!logoB64) {
-      const includeLogo = await getItem<boolean>(StorageKeys.INCLUDE_LOGO_IN_PRINT);
-      if (!includeLogo) return;
+    let logo1 = await AsyncStorage.getItem(RawLogoKeys.LOGO_1);
+    const useTwoLogos = (await AsyncStorage.getItem(RawLogoKeys.USE_TWO_LOGOS)) === "true";
+    let logo2 =
+      useTwoLogos ? await AsyncStorage.getItem(RawLogoKeys.LOGO_2) : null;
 
+    if (!logo1) {
       const profile = await getItem<StationProfile>(StorageKeys.STATION_PROFILE);
       if (profile?.logoDataUrl) {
-        logoB64 = (await resolveLogoBase64(profile.logoDataUrl).catch(() => null)) ?? null;
+        logo1 = (await resolveLogoBase64(profile.logoDataUrl).catch(() => null)) ?? null;
+      }
+      if (useTwoLogos && profile?.logo2DataUrl && !logo2) {
+        logo2 = (await resolveLogoBase64(profile.logo2DataUrl).catch(() => null)) ?? null;
       }
     }
 
-    if (!logoB64) return;
+    if (!logo1) return;
 
-    if (logoB64.startsWith("data:")) {
-      const comma = logoB64.indexOf(",");
-      logoB64 = comma >= 0 ? logoB64.slice(comma + 1) : logoB64;
+    const cleanLogo1 = cleanLogoBase64(logo1);
+
+    if (useTwoLogos && logo2) {
+      const cleanLogo2 = cleanLogoBase64(logo2);
+
+      if (!escpos.printDualPic) {
+        throw new Error(
+          "printDualPic is missing. Rebuild with expo prebuild so withBluetoothRawPrinter runs."
+        );
+      }
+
+      await escpos.printDualPic(cleanLogo1, cleanLogo2, {
+        width: LOGO_PRINT_WIDTH_DUAL,
+        feed: LOGO_PRINT_FEED,
+      });
+    } else {
+      await BluetoothEscposPrinter.printPic(cleanLogo1, {
+        width: LOGO_PRINT_WIDTH_SINGLE,
+        center: true,
+        autoCut: false,
+        feed: LOGO_PRINT_FEED,
+      });
     }
-
-    await BluetoothEscposPrinter.printPic(logoB64, {
-      width: LOGO_PRINT_WIDTH,
-      center: true,
-    });
   } catch (e) {
     console.warn("[BT] Logo print failed:", e);
   }
