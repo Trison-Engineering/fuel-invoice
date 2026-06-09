@@ -115,8 +115,8 @@ const printLogo = async (): Promise<void> => {
     );
 
     await BluetoothEscposPrinter.printPic(logo1Processed, {
-      width: LOGO_PRINT_WIDTH_SINGLE,
-      left: 0,
+      width: 192,
+      left: 96,
       center: false,
       autoCut: false,
       feed: LOGO_PRINT_FEED,
