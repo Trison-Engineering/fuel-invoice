@@ -1,11 +1,13 @@
 import type { ReceiptData } from "../../utils/generateReceipt";
 import { mapFuelReceiptToPrintView } from "../../utils/receiptFormat";
-import { formatCurrency, formatVolume, safeStr } from "../utils/printerUtils";
-import { resolveLogoBase64 } from "../utils/printLogoUtil";
+import { formatCurrency, formatVolume } from "../utils/printerUtils";
 import {
-  getPrinterModule,
-  waitForPrinterConnection,
-} from "./printerNativeModule";
+  connectInnerPrinter,
+  isInnerPrinterConnected,
+  printDiagnostic as btPrintDiagnostic,
+  printReceipt as btPrintReceipt,
+  printTestLine as btPrintTestLine,
+} from "./BluetoothPrinterService";
 
 export interface SunmiReceiptData {
   storeName: string;
@@ -19,67 +21,38 @@ export interface SunmiReceiptData {
   logoBase64?: string;
 }
 
+export async function initSunmiPrinter(): Promise<boolean> {
+  return connectInnerPrinter();
+}
+
 export async function isSunmiConnected(): Promise<boolean> {
-  try {
-    const printer = getPrinterModule();
-    if (!printer.isConnected) return false;
-    return Boolean(await printer.isConnected());
-  } catch {
-    return false;
-  }
+  if (isInnerPrinterConnected()) return true;
+  return connectInnerPrinter();
 }
 
 export async function getSunmiPrinterStatus(): Promise<string> {
-  try {
-    const printer = getPrinterModule();
-    if (!printer.getPrinterStatus) return "UNKNOWN";
-    const status = await printer.getPrinterStatus();
-    if (typeof status === "string") return status;
-    if (status === 1) return "NORMAL";
-    if (status === 4) return "NO_PAPER";
-    if (status === 0) return "DISCONNECTED";
-    return "UNKNOWN";
-  } catch {
-    return "UNKNOWN";
-  }
+  const connected = await isSunmiConnected();
+  return connected ? "CONNECTED" : "DISCONNECTED";
 }
 
 export async function printSunmiReceipt(data: SunmiReceiptData): Promise<void> {
-  const printer = getPrinterModule();
-
-  if (!printer.printReceipt) {
-    throw new Error(
-      "printReceipt is not available on SunmiPrinterModule. Please rebuild the app."
-    );
-  }
-
-  await waitForPrinterConnection(3);
-
-  await printer.printReceipt(
-    safeStr(data.logoBase64),
-    safeStr(data.storeName),
-    safeStr(data.address),
-    safeStr(data.dateTime),
-    safeStr(data.product),
-    safeStr(data.volume),
-    safeStr(data.rate),
-    safeStr(data.total),
-    safeStr(data.vehicleNo ?? "")
-  );
+  await btPrintReceipt({
+    storeName: data.storeName,
+    address: data.address,
+    dateTime: data.dateTime,
+    product: data.product,
+    volume: data.volume,
+    rate: data.rate,
+    total: data.total,
+    vehicleNo: data.vehicleNo,
+  });
 }
 
 export async function printSunmiReceiptFromFuelData(data: ReceiptData): Promise<void> {
   const view = mapFuelReceiptToPrintView(data);
-
-  let logoBase64 = "";
-  if (data.includeLogoInPrint && data.logoDataUrl) {
-    logoBase64 = (await resolveLogoBase64(data.logoDataUrl).catch(() => null)) ?? "";
-  }
-
   const dateTime = `${view.date}  ${view.time}`;
 
   await printSunmiReceipt({
-    logoBase64,
     storeName: view.storeName,
     address: view.address,
     dateTime,
@@ -87,28 +60,19 @@ export async function printSunmiReceiptFromFuelData(data: ReceiptData): Promise<
     volume: formatVolume(data.volume),
     rate: formatCurrency(data.fuelRate),
     total: formatCurrency(data.totalAmount),
-    vehicleNo: view.vehicleNo,
+    vehicleNo: view.vehicleNo.trim() || undefined,
   });
 }
 
 export async function printSunmiHelloWorld(): Promise<void> {
-  const printer = getPrinterModule();
-
-  if (!printer.printHelloWorld) {
-    throw new Error("printHelloWorld is not available on SunmiPrinterModule. Please rebuild the app.");
-  }
-
-  await waitForPrinterConnection(3);
-  await printer.printHelloWorld();
+  await btPrintDiagnostic();
 }
 
 export async function printSunmiTestLine(): Promise<void> {
-  const printer = getPrinterModule();
-
-  if (!printer.printTestLine) {
-    throw new Error("printTestLine is not available on SunmiPrinterModule");
-  }
-
-  await waitForPrinterConnection(3);
-  await printer.printTestLine();
+  await btPrintTestLine();
 }
+
+/** Alias for test print from printer setup. */
+export const testPrint = printSunmiTestLine;
+
+export { connectInnerPrinter, printDiagnostic as printBluetoothDiagnostic } from "./BluetoothPrinterService";

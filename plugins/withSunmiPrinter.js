@@ -1,22 +1,7 @@
 const { withAndroidManifest } = require("@expo/config-plugins");
 
-const POS_PRINTER_PACKAGES = [
-  "com.iposprinter.iposprinterservice",
-  "com.iposprinter.iposprinterservice2",
-  "com.zkc.printer",
-  "com.zkc.helper",
-  "com.sunmi.printerhelper",
-  "woyou.aidlservice.jiuiv5",
-  "woyou.stu.sdkservice",
-  "com.sunmi.peripheral.printer",
-  "net.nyx.printerservice",
-  "com.android.printspooler",
-];
-
-const POS_PRINTER_ACTIONS = [
-  "com.iposprinter.iposprinterservice.IPosPrinterService",
-  "com.iposprinter.iposprinterservice.IPosPrintService",
-];
+const SUNMI_JIUIV5 = "woyou.aidlservice.jiuiv5";
+const SUNMI_JIUIV5_ACTION = "woyou.aidlservice.jiuiv5.IWoyouService";
 
 module.exports = function withSunmiPrinter(config) {
   return withAndroidManifest(config, (config) => {
@@ -37,26 +22,20 @@ module.exports = function withSunmiPrinter(config) {
       queries.intent = [];
     }
 
-    for (const packageName of POS_PRINTER_PACKAGES) {
-      const exists = queries.package.some(
-        (entry) => entry.$?.["android:name"] === packageName
-      );
-      if (!exists) {
-        queries.package.push({
-          $: { "android:name": packageName },
-        });
-      }
+    const packageExists = queries.package.some(
+      (entry) => entry.$?.["android:name"] === SUNMI_JIUIV5
+    );
+    if (!packageExists) {
+      queries.package.push({ $: { "android:name": SUNMI_JIUIV5 } });
     }
 
-    for (const action of POS_PRINTER_ACTIONS) {
-      const exists = queries.intent.some((entry) =>
-        entry.action?.some((a) => a.$?.["android:name"] === action)
-      );
-      if (!exists) {
-        queries.intent.push({
-          action: [{ $: { "android:name": action } }],
-        });
-      }
+    const intentExists = queries.intent.some((entry) =>
+      entry.action?.some((a) => a.$?.["android:name"] === SUNMI_JIUIV5_ACTION)
+    );
+    if (!intentExists) {
+      queries.intent.push({
+        action: [{ $: { "android:name": SUNMI_JIUIV5_ACTION } }],
+      });
     }
 
     return config;

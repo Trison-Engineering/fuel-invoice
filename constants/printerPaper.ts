@@ -1,5 +1,5 @@
 /**
- * Sunmi V2s / EzPump — 58 mm thermal roll (384-dot printable width).
+ * Sunmi V2s — 58 mm thermal roll (384-dot printable width).
  *
  * Characters per line (device spec):
  *   24px → 32 chars
@@ -26,7 +26,7 @@ export const SUNMI_CHARS_PER_LINE = {
   xlarge: 14,
 } as const;
 
-/** NYX / Sunmi textSize values for receipt body and headings. */
+/** Sunmi textSize values for receipt body and headings. */
 export const RECEIPT_FONT = {
   body: 24,
   heading: 24,
@@ -82,7 +82,7 @@ export function getPreviewStoreFontSize(name: string): number {
   return 12;
 }
 
-/** Line spacing between receipt rows (NYX API units). */
+/** Line spacing between receipt rows (Sunmi API units). */
 export const RECEIPT_LINE_SPACING = 2;
 
 /** ESC/POS line spacing in dots (58 mm — balanced for 24px body). */

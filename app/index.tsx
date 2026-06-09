@@ -48,13 +48,7 @@ export default function HomeScreen() {
     console.log(
       "PRINTER MODULES:",
       JSON.stringify(
-        Object.keys(NativeModules).filter(
-          (k) =>
-            k.toLowerCase().includes("print") ||
-            k.toLowerCase().includes("sunmi") ||
-            k.toLowerCase().includes("nyx") ||
-            k.toLowerCase().includes("unified")
-        )
+        Object.keys(NativeModules).filter((k) => k.toLowerCase().includes("sunmi"))
       )
     );
   }, []);

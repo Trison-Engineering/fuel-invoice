@@ -54,7 +54,7 @@ export default function PrinterSetupScreen() {
     setIsPrinting(true);
     try {
       await printer.testPrint();
-      Alert.alert("Print complete", "Test receipt sent to the built-in printer.");
+      Alert.alert("Print complete", "Test receipt sent to the Sunmi built-in printer.");
     } catch (e) {
       const message = e instanceof Error ? e.message : "Test print failed";
       Alert.alert("Print failed", message);
@@ -64,14 +64,10 @@ export default function PrinterSetupScreen() {
   };
 
   const handleHelloWorldPrint = async () => {
-    if (deviceType !== "SUNMI") {
-      Alert.alert("Not available", "Hello World test is only for Sunmi built-in printers.");
-      return;
-    }
     setIsPrinting(true);
     try {
       await printer.printHelloWorld();
-      Alert.alert("Hello World", "High-level AIDL test sent to the printer.");
+      Alert.alert("Hello World", "RAW ESC/POS test sent to the printer.");
     } catch (e) {
       const message = e instanceof Error ? e.message : "Hello World print failed";
       Alert.alert("Print failed", message);
@@ -81,10 +77,6 @@ export default function PrinterSetupScreen() {
   };
 
   const handleDiagnosticPrint = async () => {
-    if (deviceType !== "SUNMI") {
-      Alert.alert("Not available", "Diagnostic print is only for Sunmi built-in printers.");
-      return;
-    }
     setIsPrinting(true);
     try {
       const result = await printer.printDiagnostic();
@@ -119,21 +111,8 @@ export default function PrinterSetupScreen() {
     printer.connectionStatus,
     printer.connectionStatusColor
   );
-  const deviceType = printer.deviceType ?? "UNKNOWN";
-
-  const deviceLabel =
-    deviceType === "SUNMI"
-      ? "Sunmi V2s_GL"
-      : deviceType === "NYX"
-        ? "EzPump Handheld-POS"
-        : "No printer detected";
-
-  const sdkLabel =
-    deviceType === "SUNMI"
-      ? "Sunmi Inner Printer SDK (woyou.stu.sdkservice)"
-      : deviceType === "NYX"
-        ? "NYX Printer Service (net.nyx.printerservice)"
-        : "Unknown SDK";
+  const isConnected =
+    printer.connectionStatus === "connected" || printer.connectionStatus === "warming_up";
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
@@ -151,13 +130,13 @@ export default function PrinterSetupScreen() {
           Connected Device
         </Text>
         <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
-          {deviceType === "UNKNOWN" ? "🔴" : "🟢"} {deviceLabel}
+          {isConnected ? "🟢" : "🔴"} Sunmi V2s_GL
         </Text>
         <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
-          SDK: {sdkLabel}
+          SDK: woyou.aidlservice.jiuiv5 (built-in thermal printer)
         </Text>
         <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
-          Auto-detected on startup — no Bluetooth pairing or manual selection required.
+          Auto-detected on startup — no Bluetooth pairing required.
         </Text>
 
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
@@ -221,7 +200,7 @@ export default function PrinterSetupScreen() {
 
       <Pressable
         onPress={handleHelloWorldPrint}
-        disabled={isBusy || deviceType !== "SUNMI"}
+        disabled={isBusy}
         style={{
           height: 44,
           backgroundColor: colors.white,
@@ -231,17 +210,15 @@ export default function PrinterSetupScreen() {
           alignItems: "center",
           justifyContent: "center",
           marginBottom: spacing.md,
-          opacity: isBusy || deviceType !== "SUNMI" ? 0.5 : 1,
+          opacity: isBusy ? 0.7 : 1,
         }}
       >
-        <Text style={{ color: colors.muted, fontWeight: "600" }}>
-          Hello World (AIDL test)
-        </Text>
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>Hello World (RAW test)</Text>
       </Pressable>
 
       <Pressable
         onPress={handleDiagnosticPrint}
-        disabled={isBusy || deviceType !== "SUNMI"}
+        disabled={isBusy}
         style={{
           height: 44,
           backgroundColor: colors.white,
@@ -251,10 +228,10 @@ export default function PrinterSetupScreen() {
           alignItems: "center",
           justifyContent: "center",
           marginBottom: spacing.md,
-          opacity: isBusy || deviceType !== "SUNMI" ? 0.5 : 1,
+          opacity: isBusy ? 0.7 : 1,
         }}
       >
-        <Text style={{ color: colors.muted, fontWeight: "600" }}>Diagnostic Print (Sunmi)</Text>
+        <Text style={{ color: colors.muted, fontWeight: "600" }}>Diagnostic Print</Text>
       </Pressable>
 
       <Pressable

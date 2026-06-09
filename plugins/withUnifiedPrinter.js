@@ -8,23 +8,12 @@ const fs = require("fs");
 const path = require("path");
 
 const PLUGIN_DIR = "plugins/unified-printer";
-const SUNMI_AIDL_SOURCE = path.join(PLUGIN_DIR, "aidl", "woyou");
-const KOTLIN_FILES = [
-  "BitmapScaler.kt",
-  "DeviceDetector.kt",
-  "NyxPrinterBridge.kt",
-  "SunmiPrinterEngine.kt",
-  "SunmiPrinterModule.kt",
-  "UnifiedPrinterModule.kt",
-  "UnifiedPrinterPackage.kt",
-];
-const AIDL_MARKER = "unified-printer-aidl";
+const SUNMI_AIDL_SOURCE = path.join(PLUGIN_DIR, "aidl", "woyou", "aidlservice", "jiuiv5");
+const KOTLIN_FILES = ["SunmiPrinterEngine.kt", "SunmiPrinterModule.kt", "SunmiPrinterPackage.kt"];
+const AIDL_MARKER = "sunmi-printer-aidl";
 
-const SUNMI_PACKAGE = "woyou.stu.sdkservice";
-const SUNMI_PACKAGE_LEGACY = "woyou.aidlservice.jiuiv5";
-const SUNMI_ACTION = "woyou.stu.sdkservice.sdkservice";
-const SUNMI_ACTION_LEGACY = "woyou.aidlservice.jiuiv5.IWoyouService";
-const NYX_PACKAGE = "net.nyx.printerservice";
+const SUNMI_PACKAGE = "woyou.aidlservice.jiuiv5";
+const SUNMI_ACTION = "woyou.aidlservice.jiuiv5.IWoyouService";
 
 function copyRecursive(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
@@ -39,15 +28,14 @@ function copyRecursive(src, dest) {
   }
 }
 
-function copyUnifiedPrinterSources(projectRoot, platformRoot) {
-  // Sunmi AIDL only — NYX types come from react-native-nyx-printer (avoid duplicate AIDL).
+function copySunmiPrinterSources(projectRoot, platformRoot) {
   copyRecursive(
     path.join(projectRoot, SUNMI_AIDL_SOURCE),
-    path.join(platformRoot, "app", "src", "main", "aidl", "woyou")
+    path.join(platformRoot, "app", "src", "main", "aidl", "woyou", "aidlservice", "jiuiv5")
   );
 
-  // Remove legacy NYX AIDL/Java copied by earlier plugin versions (EAS reuses android/).
   const stalePaths = [
+    path.join(platformRoot, "app", "src", "main", "aidl", "woyou", "stu"),
     path.join(platformRoot, "app", "src", "main", "aidl", "net"),
     path.join(platformRoot, "app", "src", "main", "java", "net", "nyx"),
   ];
@@ -71,6 +59,19 @@ function copyUnifiedPrinterSources(projectRoot, platformRoot) {
   fs.mkdirSync(kotlinDest, { recursive: true });
   for (const file of KOTLIN_FILES) {
     fs.copyFileSync(path.join(projectRoot, PLUGIN_DIR, file), path.join(kotlinDest, file));
+  }
+
+  for (const staleKotlin of [
+    "NyxPrinterBridge.kt",
+    "UnifiedPrinterModule.kt",
+    "UnifiedPrinterPackage.kt",
+    "DeviceDetector.kt",
+    "BitmapScaler.kt",
+  ]) {
+    const staleFile = path.join(kotlinDest, staleKotlin);
+    if (fs.existsSync(staleFile)) {
+      fs.unlinkSync(staleFile);
+    }
   }
 }
 
@@ -97,8 +98,8 @@ function enableAidlInBuildGradle(contents) {
 }
 
 function addPackageToMainApplication(contents) {
-  const importLine = "import com.fuelreceipt.app.unifiedprinter.UnifiedPrinterPackage";
-  const packageLine = "packages.add(UnifiedPrinterPackage())";
+  const importLine = "import com.fuelreceipt.app.unifiedprinter.SunmiPrinterPackage";
+  const packageLine = "packages.add(SunmiPrinterPackage())";
 
   let updated = contents;
   if (!updated.includes(importLine)) {
@@ -106,6 +107,14 @@ function addPackageToMainApplication(contents) {
       /(import com\.facebook\.react\.ReactApplication\n)/,
       `$1${importLine}\n`
     );
+  }
+
+  if (updated.includes("UnifiedPrinterPackage")) {
+    updated = updated.replace(
+      /import com\.fuelreceipt\.app\.unifiedprinter\.UnifiedPrinterPackage\n/g,
+      ""
+    );
+    updated = updated.replace(/packages\.add\(UnifiedPrinterPackage\(\)\)\n/g, "");
   }
 
   if (updated.includes(packageLine)) {
@@ -135,22 +144,26 @@ function ensureManifestQueries(manifest) {
     queries.intent = [];
   }
 
-  for (const packageName of [SUNMI_PACKAGE, SUNMI_PACKAGE_LEGACY, NYX_PACKAGE]) {
-    const exists = queries.package.some((entry) => entry.$?.["android:name"] === packageName);
-    if (!exists) {
-      queries.package.push({ $: { "android:name": packageName } });
-    }
+  queries.package = (queries.package ?? []).filter(
+    (entry) => entry.$?.["android:name"] === SUNMI_PACKAGE
+  );
+  const packageExists = queries.package.some(
+    (entry) => entry.$?.["android:name"] === SUNMI_PACKAGE
+  );
+  if (!packageExists) {
+    queries.package.push({ $: { "android:name": SUNMI_PACKAGE } });
   }
 
-  for (const action of [SUNMI_ACTION, SUNMI_ACTION_LEGACY]) {
-    const intentExists = queries.intent.some((entry) =>
-      entry.action?.some((a) => a.$?.["android:name"] === action)
-    );
-    if (!intentExists) {
-      queries.intent.push({
-        action: [{ $: { "android:name": action } }],
-      });
-    }
+  queries.intent = (queries.intent ?? []).filter((entry) =>
+    entry.action?.some((a) => a.$?.["android:name"] === SUNMI_ACTION)
+  );
+  const intentExists = queries.intent.some((entry) =>
+    entry.action?.some((a) => a.$?.["android:name"] === SUNMI_ACTION)
+  );
+  if (!intentExists) {
+    queries.intent.push({
+      action: [{ $: { "android:name": SUNMI_ACTION } }],
+    });
   }
 
   return manifest;
@@ -175,7 +188,7 @@ module.exports = function withUnifiedPrinter(config) {
   return withDangerousMod(config, [
     "android",
     async (config) => {
-      copyUnifiedPrinterSources(
+      copySunmiPrinterSources(
         config.modRequest.projectRoot,
         config.modRequest.platformProjectRoot
       );

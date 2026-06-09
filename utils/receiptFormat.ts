@@ -221,7 +221,7 @@ export function formatRow(label: string, value: unknown, width: number = LINE_WI
   return labelStr + " ".repeat(spaces) + valueStr;
 }
 
-/** @deprecated Use formatRow — kept for NYX callers migrating off tabs. */
+/** @deprecated Use formatRow — kept for legacy callers migrating off tabs. */
 export function formatRowForPrinter(label: string, value: unknown): string {
   return formatRow(label, value);
 }

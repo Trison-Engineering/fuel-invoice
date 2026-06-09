@@ -1,13 +1,7 @@
-import { NativeModules } from "react-native";
-
 import { LOGO_MAX_SIZE } from "../../constants/printerPaper";
-
-const { UnifiedPrinterModule } = NativeModules;
-const SDK_OK = 0;
 
 export interface LogoPrintOptions {
   logoUri: string;
-  /** Max width/height in dots — defaults to LOGO_MAX_SIZE (100). */
   maxSize?: number;
   align?: number;
   includeLogoInPrint?: boolean;
@@ -47,36 +41,9 @@ export async function resolveLogoBase64(logoUri: string): Promise<string | null>
   return logoUri;
 }
 
-/** Print uploaded station logo; never throws — returns false on skip/failure. */
-export async function printLogo(options: LogoPrintOptions): Promise<boolean> {
-  const { logoUri, align = 1, includeLogoInPrint = true } = options;
-
-  if (!includeLogoInPrint || !logoUri || !UnifiedPrinterModule) {
-    return false;
-  }
-
-  try {
-    const base64Data = await resolveLogoBase64(logoUri);
-    if (!base64Data) {
-      console.log("Could not read logo data");
-      return false;
-    }
-
-    await UnifiedPrinterModule.printBitmapBase64(base64Data, align);
-    // Sunmi: skip paperOut — lineWrap() triggers diagnostic output on V2s.
-    const deviceType = (await UnifiedPrinterModule.getDeviceType?.()) as string | undefined;
-    if (deviceType === "SUNMI") {
-      return true;
-    }
-    const feedCode = await UnifiedPrinterModule.paperOut(1);
-    if (feedCode !== SDK_OK && feedCode < 0) {
-      console.log(`Logo feed failed (code ${feedCode})`);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.log("Logo print failed, continuing without logo:", error);
-    return false;
-  }
+/** Logo on thermal receipt is passed via SunmiPrinterModule.printReceipt — no separate native call. */
+export async function printLogo(_options: LogoPrintOptions): Promise<boolean> {
+  return false;
 }
+
+export { LOGO_MAX_SIZE };

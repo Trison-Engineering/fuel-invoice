@@ -15,13 +15,14 @@
     "build:ios:store": "eas build --platform ios --profile production",
     "build:ios:simulator": "eas build --platform ios --profile ios-simulator",
     "build:all": "eas build --platform all --profile production",
-    "lint": "expo lint",
-    "postinstall": "node scripts/patch-nyx-printer.js"
+    "lint": "expo lint"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-community/datetimepicker": "8.4.1",
+    "@vardrz/react-native-bluetooth-escpos-printer": "^0.1.2",
+    "buffer": "^6.0.3",
     "expo": "~53.0.9",
     "expo-asset": "~11.1.7",
     "expo-constants": "~17.1.6",
@@ -37,7 +38,6 @@
     "nativewind": "4.1.23",
     "react": "19.0.0",
     "react-native": "0.79.6",
-    "react-native-nyx-printer": "file:vendor/react-native-nyx-printer-2.0.2.tgz",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",

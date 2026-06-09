@@ -61,6 +61,7 @@
       "./plugins/withNyxPrinter.js",
       "./plugins/withSunmiPrinter.js",
       "./plugins/withUnifiedPrinter.js",
+      "./plugins/withBluetoothRawPrinter.js",
       "expo-asset",
       "expo-font",
       "@react-native-community/datetimepicker"

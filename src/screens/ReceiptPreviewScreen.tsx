@@ -14,6 +14,7 @@ import {
   centerText,
   mapFuelReceiptToPrintView,
   splitAddressLines,
+  wrapWords,
 } from "../../utils/receiptFormat";
 import { formatCurrency, formatVolume } from "../utils/printerUtils";
 
@@ -67,7 +68,11 @@ export function ReceiptPreviewScreen({
 
   const view = mapFuelReceiptToPrintView(data);
   const storeName = view.storeName.toUpperCase();
+  const storeNameLines = wrapWords(storeName, PREVIEW_LINE_WIDTH).map((line) =>
+    centerText(line, PREVIEW_LINE_WIDTH)
+  );
   const addressLines = splitAddressLines(view.address, PREVIEW_LINE_WIDTH);
+  const dateTime = `${view.date}  ${view.time}`;
   const logoUri =
     data.includeLogoInPrint && view.logoDataUrl ? view.logoDataUrl : null;
 
@@ -91,11 +96,14 @@ export function ReceiptPreviewScreen({
               </View>
             ) : null}
 
-            <Text
-              style={[styles.storeName, { fontSize: getStoreFontSize(storeName) }]}
-            >
-              {storeName}
-            </Text>
+            {storeNameLines.map((line, i) => (
+              <Text
+                key={`store-${i}`}
+                style={[styles.storeName, { fontSize: getStoreFontSize(storeName) }]}
+              >
+                {line}
+              </Text>
+            ))}
 
             {addressLines.map((line, i) => (
               <Text key={`addr-${i}`} style={styles.storeAddress}>
@@ -107,13 +115,7 @@ export function ReceiptPreviewScreen({
 
             <ReceiptDivider />
 
-            <ReceiptRow label="receiptNo:" value={view.receiptNo} />
-            <ReceiptRow label="date:" value={view.date} />
-            <ReceiptRow label="time:" value={view.time} />
-            <ReceiptRow
-              label="payment:"
-              value={view.paymentMethod.toUpperCase()}
-            />
+            <ReceiptRow label="DATE:" value={dateTime} />
 
             <ReceiptDivider />
 
@@ -227,12 +229,11 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 6,
-    paddingBottom: 4,
+    marginBottom: 3,
+    paddingBottom: 2,
   },
   logoImage: {
-    width: 56,
-    height: 56,
+    width: 28,
     resizeMode: "contain",
   },
   storeName: {
