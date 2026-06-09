@@ -7,7 +7,6 @@ import {
 import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
 import {
-  LOGO_PRINT_WIDTH_DUAL,
   LOGO_PRINT_WIDTH_SINGLE,
   preprocessLogoForPrinting,
   resolveLogoBase64,
@@ -99,17 +98,11 @@ const printLogo = async (): Promise<void> => {
     if (!includeLogo) return;
 
     let logo1 = await AsyncStorage.getItem(RawLogoKeys.LOGO_1);
-    const useTwoLogos = (await AsyncStorage.getItem(RawLogoKeys.USE_TWO_LOGOS)) === "true";
-    let logo2 =
-      useTwoLogos ? await AsyncStorage.getItem(RawLogoKeys.LOGO_2) : null;
 
     if (!logo1) {
       const profile = await getItem<StationProfile>(StorageKeys.STATION_PROFILE);
       if (profile?.logoDataUrl) {
         logo1 = (await resolveLogoBase64(profile.logoDataUrl).catch(() => null)) ?? null;
-      }
-      if (useTwoLogos && profile?.logo2DataUrl && !logo2) {
-        logo2 = (await resolveLogoBase64(profile.logo2DataUrl).catch(() => null)) ?? null;
       }
     }
 
@@ -121,28 +114,13 @@ const printLogo = async (): Promise<void> => {
       logo1Processed.length
     );
 
-    if (useTwoLogos && logo2) {
-      const logo2Processed = await preprocessLogoForPrinting(logo2);
-
-      if (!escpos.printDualPic) {
-        throw new Error(
-          "printDualPic is missing. Rebuild with expo prebuild so withBluetoothRawPrinter runs."
-        );
-      }
-
-      await escpos.printDualPic(logo1Processed, logo2Processed, {
-        width: LOGO_PRINT_WIDTH_DUAL,
-        feed: LOGO_PRINT_FEED,
-      });
-    } else {
-      await BluetoothEscposPrinter.printPic(logo1Processed, {
-        width: LOGO_PRINT_WIDTH_SINGLE,
-        left: 0,
-        center: false,
-        autoCut: false,
-        feed: LOGO_PRINT_FEED,
-      });
-    }
+    await BluetoothEscposPrinter.printPic(logo1Processed, {
+      width: LOGO_PRINT_WIDTH_SINGLE,
+      left: 0,
+      center: false,
+      autoCut: false,
+      feed: LOGO_PRINT_FEED,
+    });
 
     await sendLogoSeparator();
   } catch (e) {
@@ -152,6 +130,7 @@ const printLogo = async (): Promise<void> => {
 
 const buildReceiptLines = (data: BluetoothReceiptData): string[] => {
   const lines: string[] = [
+    center("Welcome to"),
     ...wrapWordLines(data.storeName.toUpperCase()),
     ...wrapAddressLines(data.address),
     center("FUEL RECEIPT"),
@@ -171,6 +150,16 @@ const buildReceiptLines = (data: BluetoothReceiptData): string[] => {
   }
 
   lines.push(center("POWERED BY TRISON"));
+
+  const phone = data.stationPhone?.trim();
+  if (phone) {
+    lines.push(
+      ...wrapWordLines(`Thank you for visiting us! Contact Us : ${phone}`)
+    );
+  } else {
+    lines.push(center("Thank you for visiting us!"));
+  }
+
   return lines;
 };
 
@@ -228,6 +217,7 @@ export interface BluetoothReceiptData {
   rate: string;
   total: string;
   vehicleNo?: string;
+  stationPhone?: string;
 }
 
 export const printReceipt = async (data: BluetoothReceiptData): Promise<void> => {

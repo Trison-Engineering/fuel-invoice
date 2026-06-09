@@ -18,7 +18,7 @@ import {
 import { useRouter, useNavigation } from "expo-router";
 import { useFormState } from "../hooks/useFormState";
 import { usePrinterContext } from "../contexts/PrinterContext";
-import { PrinterStatus } from "../components/PrinterStatus";
+// import { PrinterStatus } from "../components/PrinterStatus";
 import { Toast } from "../components/Toast";
 // import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
 import { colors } from "../constants/theme";
@@ -99,6 +99,7 @@ export default function HomeScreen() {
           <Pressable onPress={() => router.push("/settings")} style={{ padding: 8, marginRight: 4 }}>
             <Ionicons name="settings-outline" size={24} color={colors.primary} />
           </Pressable>
+          {/* Printer status icon hidden for now
           <PrinterStatus
             connected={printer.connectionStatus === "connected"}
             connectionStatus={printer.connectionStatus}
@@ -106,6 +107,7 @@ export default function HomeScreen() {
             printerName={printer.connectedDevice?.name}
             onPress={() => router.push("/printer-setup")}
           />
+          */}
         </View>
       ),
     });

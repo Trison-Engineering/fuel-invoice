@@ -18,6 +18,7 @@ export interface SunmiReceiptData {
   rate: string;
   total: string;
   vehicleNo?: string;
+  stationPhone?: string;
   logoBase64?: string;
 }
 
@@ -45,6 +46,7 @@ export async function printSunmiReceipt(data: SunmiReceiptData): Promise<void> {
     rate: data.rate,
     total: data.total,
     vehicleNo: data.vehicleNo,
+    stationPhone: data.stationPhone,
   });
 }
 
@@ -61,6 +63,7 @@ export async function printSunmiReceiptFromFuelData(data: ReceiptData): Promise<
     rate: formatCurrency(data.fuelRate),
     total: formatCurrency(data.totalAmount),
     vehicleNo: view.vehicleNo.trim() || undefined,
+    stationPhone: data.stationPhone?.trim() || undefined,
   });
 }
 

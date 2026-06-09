@@ -74,11 +74,14 @@ export function ReceiptPreviewScreen({
   );
   const addressLines = splitAddressLines(view.address, PREVIEW_LINE_WIDTH);
   const dateTime = `${view.date}  ${view.time}`;
-  const showLogos = Boolean(data.includeLogoInPrint);
-  const logo1Uri = showLogos && view.logoDataUrl ? view.logoDataUrl : null;
-  const logo2Uri =
-    showLogos && data.useTwoLogos && data.logo2DataUrl ? data.logo2DataUrl : null;
-  const useDualLogos = showLogos && data.useTwoLogos && Boolean(logo1Uri && logo2Uri);
+  const showLogo = Boolean(data.includeLogoInPrint && view.logoDataUrl);
+  const logoUri = showLogo ? view.logoDataUrl : null;
+  const phone = data.stationPhone?.trim();
+  const contactFooter = phone
+    ? wrapWords(`Thank you for visiting us! Contact Us : ${phone}`, PREVIEW_LINE_WIDTH).map(
+        (line) => centerText(line, PREVIEW_LINE_WIDTH)
+      )
+    : [centerText("Thank you for visiting us!", PREVIEW_LINE_WIDTH)];
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
@@ -94,16 +97,15 @@ export function ReceiptPreviewScreen({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.receiptPaper}>
-            {useDualLogos ? (
-              <View style={styles.logoRow}>
-                <Image source={{ uri: logo1Uri! }} style={styles.logoImageDual} />
-                <Image source={{ uri: logo2Uri! }} style={styles.logoImageDual} />
-              </View>
-            ) : logo1Uri ? (
+            {logoUri ? (
               <View style={styles.logoContainer}>
-                <Image source={{ uri: logo1Uri }} style={styles.logoImage} />
+                <Image source={{ uri: logoUri }} style={styles.logoImage} />
               </View>
             ) : null}
+
+            <Text style={styles.welcomeText}>
+              {centerText("Welcome to", PREVIEW_LINE_WIDTH)}
+            </Text>
 
             {storeNameLines.map((line, i) => (
               <Text
@@ -161,6 +163,12 @@ export function ReceiptPreviewScreen({
             <Text style={styles.footerText}>
               {centerText("POWERED BY TRISON", PREVIEW_LINE_WIDTH)}
             </Text>
+
+            {contactFooter.map((line, i) => (
+              <Text key={`contact-${i}`} style={styles.footerText}>
+                {line}
+              </Text>
+            ))}
 
             <View style={styles.bottomSpacer} />
           </View>
@@ -241,24 +249,17 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     paddingBottom: 2,
   },
-  logoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
-    marginBottom: 0,
-    paddingBottom: 0,
-  },
   logoImage: {
     width: LOGO_PREVIEW_WIDTH,
     maxWidth: "100%",
     resizeMode: "contain",
   },
-  logoImageDual: {
-    width: LOGO_PREVIEW_WIDTH,
-    maxWidth: "48%",
-    flexShrink: 1,
-    resizeMode: "contain",
+  welcomeText: {
+    fontFamily: "Courier New",
+    fontSize: 9,
+    textAlign: "center",
+    color: "#333",
+    marginBottom: 2,
   },
   storeName: {
     fontFamily: "Courier New",

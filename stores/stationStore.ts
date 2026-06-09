@@ -6,6 +6,7 @@ import { RawLogoKeys, clearRawLogoStorage, syncRawLogoStorage } from "../src/uti
 export interface StationProfile {
   stationName: string;
   stationAddress: string;
+  stationPhone: string;
   paymentMethod: string;
   logoDataUrl: string | null;
   logo2DataUrl: string | null;
@@ -17,6 +18,7 @@ interface StationState extends StationProfile {
   isHydrated: boolean;
   setStationName: (name: string) => void;
   setStationAddress: (address: string) => void;
+  setStationPhone: (phone: string) => void;
   setPaymentMethod: (method: string) => void;
   setLogoDataUrl: (url: string | null) => void;
   setLogo2DataUrl: (url: string | null) => void;
@@ -31,6 +33,7 @@ interface StationState extends StationProfile {
 const defaultProfile: StationProfile = {
   stationName: "",
   stationAddress: "",
+  stationPhone: "",
   paymentMethod: "Cash",
   logoDataUrl: null,
   logo2DataUrl: null,
@@ -44,6 +47,7 @@ export const useStationStore = create<StationState>((set, get) => ({
 
   setStationName: (stationName) => set({ stationName }),
   setStationAddress: (stationAddress) => set({ stationAddress }),
+  setStationPhone: (stationPhone) => set({ stationPhone }),
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
   setLogoDataUrl: (logoDataUrl) => set({ logoDataUrl }),
   setLogo2DataUrl: (logo2DataUrl) => set({ logo2DataUrl }),
@@ -77,6 +81,7 @@ export const useStationStore = create<StationState>((set, get) => ({
 
       set({
         ...profile,
+        stationPhone: profile.stationPhone ?? "",
         logo2DataUrl: profile.logo2DataUrl ?? null,
         paymentMethod: "Cash",
         includeLogoInPrint: includeLogo ?? profile.includeLogoInPrint ?? false,
@@ -93,6 +98,7 @@ export const useStationStore = create<StationState>((set, get) => ({
     const profile: StationProfile = {
       stationName: state.stationName,
       stationAddress: state.stationAddress,
+      stationPhone: state.stationPhone,
       paymentMethod: "Cash",
       logoDataUrl: state.logoDataUrl,
       logo2DataUrl: state.logo2DataUrl,

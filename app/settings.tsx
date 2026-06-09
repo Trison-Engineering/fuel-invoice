@@ -115,18 +115,17 @@ export default function SettingsScreen() {
             onChangeText={station.setStationAddress}
             placeholder="Enter station address"
           />
+          <InputField
+            label="Contact Phone"
+            value={station.stationPhone}
+            onChangeText={station.setStationPhone}
+            placeholder="e.g. 0300-1234567"
+            keyboardType="phone-pad"
+          />
         </FormSection>
 
         <FormSection icon="cloud-upload-outline" title="Station Logo">
-          {station.includeLogoInPrint && station.useTwoLogos ? (
-            <LogoUploader
-              label="Logo 1 (Left Side)"
-              logoDataUrl={station.logoDataUrl}
-              onLogoChange={station.setLogoDataUrl}
-            />
-          ) : (
-            <LogoUploader logoDataUrl={station.logoDataUrl} onLogoChange={station.setLogoDataUrl} />
-          )}
+          <LogoUploader logoDataUrl={station.logoDataUrl} onLogoChange={station.setLogoDataUrl} />
           <View
             style={{
               flexDirection: "row",
@@ -145,6 +144,7 @@ export default function SettingsScreen() {
               thumbColor={station.includeLogoInPrint ? colors.primary : colors.muted}
             />
           </View>
+          {/* Multi-logo UI hidden — single logo only for now
           {station.includeLogoInPrint ? (
             <View
               style={{
@@ -172,8 +172,10 @@ export default function SettingsScreen() {
               />
             </View>
           ) : null}
+          */}
         </FormSection>
 
+        {/* Printer setup hidden for now
         <Pressable
           onPress={() => router.push("/printer-setup")}
           style={{
@@ -189,6 +191,7 @@ export default function SettingsScreen() {
         >
           <Text style={{ color: colors.primary, fontWeight: "600" }}>Printer Setup</Text>
         </Pressable>
+        */}
 
         <Pressable
           onPress={handleSave}
