@@ -7,10 +7,14 @@ import {
 import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
 import {
-  LOGO_PRINT_WIDTH_SINGLE,
   preprocessLogoForPrinting,
+  preprocessLogoForPrintWidth,
   resolveLogoBase64,
 } from "../utils/printLogoUtil";
+import {
+  DEFAULT_LOGO_WIDTH_V2S,
+  resolveLogoPrintLayout,
+} from "../utils/logoPrintConfig";
 import { RawLogoKeys } from "../utils/logoStorage";
 
 export const INNER_PRINTER_MAC = "00:11:22:33:44:55";
@@ -92,6 +96,23 @@ const sendLogoSeparator = async (): Promise<void> => {
   await escpos.sendRAWData(Buffer.from([0x0a]).toString("base64"));
 };
 
+/** VSTC path — matched preprocess width + printPic (GS v 0 dimension fix). */
+const printLogoViaEscStar = async (
+  base64: string,
+  width: number,
+  left: number
+): Promise<void> => {
+  const processed = await preprocessLogoForPrintWidth(base64, width);
+  console.log("[BT] VSTC logo via printPic", width, "dots, left:", left);
+  await BluetoothEscposPrinter.printPic(processed, {
+    width,
+    left,
+    center: false,
+    autoCut: false,
+    feed: LOGO_PRINT_FEED,
+  });
+};
+
 const printLogo = async (): Promise<void> => {
   try {
     const includeLogo = await getItem<boolean>(StorageKeys.INCLUDE_LOGO_IN_PRINT);
@@ -108,19 +129,49 @@ const printLogo = async (): Promise<void> => {
 
     if (!logo1) return;
 
-    const logo1Processed = await preprocessLogoForPrinting(logo1);
+    const layout = await resolveLogoPrintLayout();
+    console.log("[BT] Device model:", layout.model);
+    console.log("[BT] Is V2s_GL:", layout.isV2s);
+    console.log("[BT] Is VSTC:", layout.isVstc);
     console.log(
-      "[BT] Printing logo at 576px preprocessed, base64 length:",
-      logo1Processed.length
+      "[BT] Logo print width:",
+      layout.width,
+      "left:",
+      layout.left,
+      layout.saved ? "(manual)" : "(auto)"
     );
 
-    await BluetoothEscposPrinter.printPic(logo1Processed, {
-      width: 192,
-      left: 96,
-      center: false,
-      autoCut: false,
-      feed: LOGO_PRINT_FEED,
-    });
+    if (layout.isV2s && !layout.saved && layout.width === DEFAULT_LOGO_WIDTH_V2S) {
+      const logo1Processed = await preprocessLogoForPrinting(logo1);
+      console.log(
+        "[BT] V2s_GL logo at 576px preprocessed, base64 length:",
+        logo1Processed.length
+      );
+      await BluetoothEscposPrinter.printPic(logo1Processed, {
+        width: 192,
+        left: 96,
+        center: false,
+        autoCut: false,
+        feed: LOGO_PRINT_FEED,
+      });
+    } else if (layout.isVstc && !layout.saved) {
+      await printLogoViaEscStar(logo1, layout.width, layout.left);
+    } else {
+      const logo1Processed = await preprocessLogoForPrintWidth(logo1, layout.width);
+      console.log(
+        "[BT] Logo preprocessed for",
+        layout.width,
+        "dots, base64 length:",
+        logo1Processed.length
+      );
+      await BluetoothEscposPrinter.printPic(logo1Processed, {
+        width: layout.width,
+        left: layout.left,
+        center: false,
+        autoCut: false,
+        feed: LOGO_PRINT_FEED,
+      });
+    }
 
     await sendLogoSeparator();
   } catch (e) {

@@ -26,12 +26,28 @@ function toManipulatorUri(source: string): string {
   return `data:image/png;base64,${cleanLogoBase64(source)}`;
 }
 
+/** V2s_GL default print width — preprocess is 576px (3×). */
+const V2S_DEFAULT_PRINT_WIDTH_DOTS = 192;
+
 /** Resize logo to optimal thermal resolution before print (576px wide PNG). */
 export async function preprocessLogoForPrinting(source: string): Promise<string> {
+  return preprocessLogoForPrintWidth(source, V2S_DEFAULT_PRINT_WIDTH_DOTS);
+}
+
+/** Resize logo so preprocess width scales with print width (576px @ 192 dots = 3×). */
+export async function preprocessLogoForPrintWidth(
+  source: string,
+  printWidthDots: number
+): Promise<string> {
+  const preprocessWidth = Math.max(
+    8,
+    Math.round(printWidthDots * (LOGO_PREPROCESS_WIDTH / V2S_DEFAULT_PRINT_WIDTH_DOTS))
+  );
+
   try {
     const result = await ImageManipulator.manipulateAsync(
       toManipulatorUri(source),
-      [{ resize: { width: LOGO_PREPROCESS_WIDTH } }],
+      [{ resize: { width: preprocessWidth } }],
       {
         compress: 1,
         format: ImageManipulator.SaveFormat.PNG,
@@ -40,10 +56,17 @@ export async function preprocessLogoForPrinting(source: string): Promise<string>
     );
 
     if (result.base64) {
+      console.log(
+        "[Logo] preprocessLogoForPrintWidth:",
+        printWidthDots,
+        "dots →",
+        preprocessWidth,
+        "px"
+      );
       return result.base64;
     }
   } catch (e) {
-    console.warn("[Logo] preprocessLogoForPrinting failed, using original:", e);
+    console.warn("[Logo] preprocessLogoForPrintWidth failed, using original:", e);
   }
 
   return cleanLogoBase64(source);
