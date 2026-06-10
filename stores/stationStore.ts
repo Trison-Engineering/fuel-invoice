@@ -3,11 +3,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getItem, setItem, StorageKeys } from "../utils/storage";
 import { RawLogoKeys, clearRawLogoStorage, syncRawLogoStorage } from "../src/utils/logoStorage";
 
+export interface FuelPrices {
+  petrol: string;
+  diesel: string;
+  hiOctane: string;
+}
+
 export interface StationProfile {
   stationName: string;
   stationAddress: string;
   stationPhone: string;
   paymentMethod: string;
+  fuelPrices: FuelPrices;
   logoDataUrl: string | null;
   logo2DataUrl: string | null;
   includeLogoInPrint: boolean;
@@ -19,6 +26,10 @@ interface StationState extends StationProfile {
   setStationName: (name: string) => void;
   setStationAddress: (address: string) => void;
   setStationPhone: (phone: string) => void;
+  setPetrolPrice: (price: string) => void;
+  setDieselPrice: (price: string) => void;
+  setHiOctanePrice: (price: string) => void;
+  getFuelPrice: (productType: string) => string;
   setPaymentMethod: (method: string) => void;
   setLogoDataUrl: (url: string | null) => void;
   setLogo2DataUrl: (url: string | null) => void;
@@ -30,11 +41,18 @@ interface StationState extends StationProfile {
   clearAll: () => Promise<void>;
 }
 
+const defaultFuelPrices: FuelPrices = {
+  petrol: "",
+  diesel: "",
+  hiOctane: "",
+};
+
 const defaultProfile: StationProfile = {
   stationName: "",
   stationAddress: "",
   stationPhone: "",
   paymentMethod: "Cash",
+  fuelPrices: defaultFuelPrices,
   logoDataUrl: null,
   logo2DataUrl: null,
   includeLogoInPrint: false,
@@ -47,7 +65,24 @@ export const useStationStore = create<StationState>((set, get) => ({
 
   setStationName: (stationName) => set({ stationName }),
   setStationAddress: (stationAddress) => set({ stationAddress }),
-  setStationPhone: (stationPhone) => set({ stationPhone }),
+  setStationPhone: (stationPhone) => set({ stationPhone: stationPhone.replace(/\D/g, "") }),
+  setPetrolPrice: (petrol) =>
+    set((state) => ({ fuelPrices: { ...state.fuelPrices, petrol } })),
+  setDieselPrice: (diesel) =>
+    set((state) => ({ fuelPrices: { ...state.fuelPrices, diesel } })),
+  setHiOctanePrice: (hiOctane) =>
+    set((state) => ({ fuelPrices: { ...state.fuelPrices, hiOctane } })),
+  getFuelPrice: (productType) => {
+    const { fuelPrices } = get();
+    switch (productType) {
+      case "Diesel":
+        return fuelPrices.diesel;
+      case "Hi-Octane":
+        return fuelPrices.hiOctane;
+      default:
+        return fuelPrices.petrol;
+    }
+  },
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
   setLogoDataUrl: (logoDataUrl) => set({ logoDataUrl }),
   setLogo2DataUrl: (logo2DataUrl) => set({ logo2DataUrl }),
@@ -64,8 +99,12 @@ export const useStationStore = create<StationState>((set, get) => ({
   },
 
   isProfileComplete: () => {
-    const { stationName, stationAddress } = get();
-    return Boolean(stationName.trim() && stationAddress.trim());
+    const { stationName, stationAddress, fuelPrices } = get();
+    const hasPrices =
+      parseFloat(fuelPrices.petrol) > 0 &&
+      parseFloat(fuelPrices.diesel) > 0 &&
+      parseFloat(fuelPrices.hiOctane) > 0;
+    return Boolean(stationName.trim() && stationAddress.trim() && hasPrices);
   },
 
   hydrate: async () => {
@@ -82,6 +121,7 @@ export const useStationStore = create<StationState>((set, get) => ({
       set({
         ...profile,
         stationPhone: profile.stationPhone ?? "",
+        fuelPrices: profile.fuelPrices ?? defaultFuelPrices,
         logo2DataUrl: profile.logo2DataUrl ?? null,
         paymentMethod: "Cash",
         includeLogoInPrint: includeLogo ?? profile.includeLogoInPrint ?? false,
@@ -100,6 +140,7 @@ export const useStationStore = create<StationState>((set, get) => ({
       stationAddress: state.stationAddress,
       stationPhone: state.stationPhone,
       paymentMethod: "Cash",
+      fuelPrices: state.fuelPrices,
       logoDataUrl: state.logoDataUrl,
       logo2DataUrl: state.logo2DataUrl,
       includeLogoInPrint: state.includeLogoInPrint,

@@ -12,8 +12,7 @@ import { logPrinterNativeModules } from "../src/services/printerNativeModule";
 function AppBootstrap({ children }: { children: React.ReactNode }) {
   const hydrate = useStationStore((s) => s.hydrate);
   const isHydrated = useStationStore((s) => s.isHydrated);
-  const stationName = useStationStore((s) => s.stationName);
-  const stationAddress = useStationStore((s) => s.stationAddress);
+  const isProfileComplete = useStationStore((s) => s.isProfileComplete);
   const router = useRouter();
   const segments = useSegments();
 
@@ -23,13 +22,12 @@ function AppBootstrap({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isHydrated) return;
-    const profileComplete = Boolean(stationName.trim() && stationAddress.trim());
-    if (profileComplete) return;
+    if (isProfileComplete()) return;
     const onSettings = segments[0] === "settings";
     if (!onSettings) {
       router.replace("/settings?setup=1");
     }
-  }, [isHydrated, stationName, stationAddress, segments, router]);
+  }, [isHydrated, isProfileComplete, segments, router]);
 
   return <>{children}</>;
 }

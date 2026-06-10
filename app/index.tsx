@@ -23,7 +23,7 @@ import { Toast } from "../components/Toast";
 // import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
 import { colors } from "../constants/theme";
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 100;
 const FUEL_SELECT_DELAY_MS = 60;
 
@@ -90,7 +90,15 @@ export default function HomeScreen() {
     if (!form.station.isProfileComplete()) {
       router.replace("/settings?setup=1");
     }
-  }, [form.station.isHydrated, form.station.stationName, form.station.stationAddress, router]);
+  }, [
+    form.station.isHydrated,
+    form.station.stationName,
+    form.station.stationAddress,
+    form.station.fuelPrices.petrol,
+    form.station.fuelPrices.diesel,
+    form.station.fuelPrices.hiOctane,
+    router,
+  ]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -159,14 +167,13 @@ export default function HomeScreen() {
   }, [form]);
 
   const handlePrint = useCallback(
-    async (vehicleNo: string) => {
+    async () => {
       if (!form.station.isProfileComplete()) {
         Alert.alert("Station setup required", "Please complete your station profile in Settings first.");
         router.push("/settings?setup=1");
         return;
       }
 
-      form.updateVehicleNumber(vehicleNo);
       if (!form.validate()) {
         Alert.alert("Invalid input", "Please check fuel rate and volume.");
         return;
@@ -200,6 +207,7 @@ export default function HomeScreen() {
     (fuelId: FuelId) => {
       setSelectedProduct(fuelId);
       form.setProductType(fuelId);
+      form.updateFuelRate(form.station.getFuelPrice(fuelId));
       setTimeout(() => goForward(2), FUEL_SELECT_DELAY_MS);
     },
     [form, goForward]
@@ -266,33 +274,6 @@ export default function HomeScreen() {
       case 2:
         return (
           <>
-            <Text style={styles.cardTitle}>Rate per Litre</Text>
-            <Text style={styles.cardSubtitle}>Enter current fuel rate</Text>
-            <View style={styles.rateInputRow}>
-              <Text style={styles.ratePrefix}>Rs.</Text>
-              <TextInput
-                style={styles.numberInput}
-                value={form.fuelRate}
-                onChangeText={form.updateFuelRate}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor="#9ca3af"
-                autoFocus
-              />
-            </View>
-            <Pressable
-              onPress={() => goForward(3)}
-              disabled={!form.fuelRate.trim()}
-              style={[styles.nextButton, !form.fuelRate.trim() && styles.buttonDisabled]}
-            >
-              <Text style={styles.nextButtonText}>Next →</Text>
-            </Pressable>
-          </>
-        );
-
-      case 3:
-        return (
-          <>
             <Text style={styles.cardTitle}>Litres Dispensed</Text>
             <Text style={styles.cardSubtitle}>Enter volume from pump</Text>
             <View style={styles.volumeInputRow}>
@@ -308,7 +289,7 @@ export default function HomeScreen() {
               <Text style={styles.volumeSuffix}>LTR</Text>
             </View>
             <Pressable
-              onPress={() => goForward(4)}
+              onPress={() => goForward(3)}
               disabled={!form.volume.trim()}
               style={[styles.nextButton, !form.volume.trim() && styles.buttonDisabled]}
             >
@@ -317,42 +298,32 @@ export default function HomeScreen() {
           </>
         );
 
-      case 4:
+      case 3:
         return (
           <>
             <Text style={styles.cardTitle}>Vehicle Number</Text>
-            <Text style={styles.cardSubtitle}>Optional - tap Skip to print</Text>
-            <TextInput
-              style={[styles.numberInput, { marginBottom: 24 }]}
-              value={form.vehicleNumber}
-              onChangeText={form.updateVehicleNumber}
-              placeholder="e.g. ASX-428"
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="characters"
-              autoFocus
-            />
-            <View style={styles.printButtonRow}>
-              <Pressable
-                onPress={() => handlePrint("")}
-                disabled={isPrinting || printer.isReconnecting}
-                style={[
-                  styles.skipButton,
-                  (isPrinting || printer.isReconnecting) && styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.skipButtonText}>Skip & Print</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => handlePrint(form.vehicleNumber)}
-                disabled={isPrinting || printer.isReconnecting}
-                style={[
-                  styles.confirmButton,
-                  (isPrinting || printer.isReconnecting) && styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.confirmButtonText}>Confirm & Print</Text>
-              </Pressable>
+            <Text style={styles.cardSubtitle}>Optional — leave blank to skip</Text>
+            <View style={styles.vehicleInputRow}>
+              <TextInput
+                style={[styles.numberInput, { flex: 1 }]}
+                value={form.vehicleNumber}
+                onChangeText={form.updateVehicleNumber}
+                placeholder="e.g. ASX-428"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="characters"
+                autoFocus
+              />
             </View>
+            <Pressable
+              onPress={handlePrint}
+              disabled={isPrinting || printer.isReconnecting}
+              style={[
+                styles.nextButton,
+                (isPrinting || printer.isReconnecting) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.nextButtonText}>Print</Text>
+            </Pressable>
           </>
         );
 
@@ -538,7 +509,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
-  rateInputRow: {
+  volumeInputRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 24,
@@ -546,13 +517,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1a56db",
     paddingVertical: 8,
   },
-  ratePrefix: {
-    fontSize: 32,
-    color: "#1a1a2e",
-    fontWeight: "600",
-    marginRight: 8,
-  },
-  volumeInputRow: {
+  vehicleInputRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 24,
@@ -587,34 +552,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.4,
-  },
-  printButtonRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  skipButton: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    backgroundColor: "#f3f4f6",
-  },
-  skipButtonText: {
-    color: "#374151",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  confirmButton: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    backgroundColor: "#1a56db",
-  },
-  confirmButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
   },
   fullOverlay: {
     ...StyleSheet.absoluteFillObject,

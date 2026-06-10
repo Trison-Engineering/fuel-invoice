@@ -17,6 +17,7 @@ import { TextAreaField } from "../components/TextAreaField";
 import { LogoUploader } from "../components/LogoUploader";
 import { Toast } from "../components/Toast";
 import { colors, spacing } from "../constants/theme";
+import { isValidDecimal } from "../utils/validation";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -42,9 +43,27 @@ export default function SettingsScreen() {
     setToast((t) => ({ ...t, visible: false }));
   }, []);
 
+  const handlePriceChange =
+    (setter: (value: string) => void) => (value: string) => {
+      if (isValidDecimal(value)) setter(value);
+    };
+
   const handleSave = async () => {
     if (!station.stationName.trim() || !station.stationAddress.trim()) {
       setToast({ visible: true, message: "Station name and address are required", type: "error" });
+      return;
+    }
+    const { petrol, diesel, hiOctane } = station.fuelPrices;
+    if (
+      parseFloat(petrol) <= 0 ||
+      parseFloat(diesel) <= 0 ||
+      parseFloat(hiOctane) <= 0
+    ) {
+      setToast({
+        visible: true,
+        message: "Enter price per litre for Petrol, Diesel, and Hi-Octane",
+        type: "error",
+      });
       return;
     }
     setSaving(true);
@@ -94,8 +113,8 @@ export default function SettingsScreen() {
               Welcome
             </Text>
             <Text style={{ fontSize: 13, color: colors.black, lineHeight: 20 }}>
-              Set up your station profile to start printing fuel receipts. This information is saved
-              and used on every receipt.
+              Set up your station profile and fuel prices to start printing receipts. Prices are
+              saved once and applied automatically when you select a fuel type.
             </Text>
           </View>
         ) : null}
@@ -119,8 +138,35 @@ export default function SettingsScreen() {
             label="Contact Phone"
             value={station.stationPhone}
             onChangeText={station.setStationPhone}
-            placeholder="e.g. 0300-1234567"
-            keyboardType="phone-pad"
+            placeholder="e.g. 03001234567"
+            keyboardType="number-pad"
+          />
+        </FormSection>
+
+        <FormSection icon="cash-outline" title="Fuel Prices (per litre)">
+          <InputField
+            label="Petrol"
+            required
+            value={station.fuelPrices.petrol}
+            onChangeText={handlePriceChange(station.setPetrolPrice)}
+            placeholder="Rs. per litre"
+            keyboardType="decimal-pad"
+          />
+          <InputField
+            label="Diesel"
+            required
+            value={station.fuelPrices.diesel}
+            onChangeText={handlePriceChange(station.setDieselPrice)}
+            placeholder="Rs. per litre"
+            keyboardType="decimal-pad"
+          />
+          <InputField
+            label="Hi-Octane"
+            required
+            value={station.fuelPrices.hiOctane}
+            onChangeText={handlePriceChange(station.setHiOctanePrice)}
+            placeholder="Rs. per litre"
+            keyboardType="decimal-pad"
           />
         </FormSection>
 
