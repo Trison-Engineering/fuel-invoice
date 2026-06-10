@@ -175,7 +175,7 @@ export default function SettingsScreen() {
           */}
         </FormSection>
 
-        {/* Printer setup hidden for now
+        {/* Printer setup hidden — logo width tuning removed
         <Pressable
           onPress={() => router.push("/printer-setup")}
           style={{

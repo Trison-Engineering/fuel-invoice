@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Buffer } from "buffer";
+import { NativeModules } from "react-native";
 import {
   BluetoothEscposPrinter,
   BluetoothManager,
@@ -8,14 +9,15 @@ import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
 import {
   preprocessLogoForPrinting,
-  preprocessLogoForPrintWidth,
   resolveLogoBase64,
 } from "../utils/printLogoUtil";
-import {
-  DEFAULT_LOGO_WIDTH_V2S,
-  resolveLogoPrintLayout,
-} from "../utils/logoPrintConfig";
+import { getDeviceModel, isVSTCDevice, VSTC_TARGET_LOGO_WIDTH } from "../utils/logoPrintConfig";
 import { RawLogoKeys } from "../utils/logoStorage";
+import type { SunmiPrinterModuleType } from "./printerNativeModule";
+
+const SunmiPrinterModule = NativeModules.SunmiPrinterModule as
+  | SunmiPrinterModuleType
+  | undefined;
 
 export const INNER_PRINTER_MAC = "00:11:22:33:44:55";
 export const INNER_PRINTER_NAME = "InnerPrinter";
@@ -96,21 +98,40 @@ const sendLogoSeparator = async (): Promise<void> => {
   await escpos.sendRAWData(Buffer.from([0x0a]).toString("base64"));
 };
 
-/** VSTC path — matched preprocess width + printPic (GS v 0 dimension fix). */
-const printLogoViaEscStar = async (
-  base64: string,
-  width: number,
-  left: number
-): Promise<void> => {
-  const processed = await preprocessLogoForPrintWidth(base64, width);
-  console.log("[BT] VSTC logo via printPic", width, "dots, left:", left);
-  await BluetoothEscposPrinter.printPic(processed, {
-    width,
-    left,
-    center: false,
-    autoCut: false,
-    feed: LOGO_PRINT_FEED,
-  });
+/**
+ * VSTC: native PNG → GS v 0 bytes, then Bluetooth sendRAWData (same path as text).
+ */
+const printLogoVSTCViaBluetooth = async (base64: string): Promise<void> => {
+  try {
+    if (!SunmiPrinterModule?.bitmapToEscPos) {
+      console.warn("[BT] bitmapToEscPos not available, skip logo");
+      return;
+    }
+
+    const clean = base64.includes(",") ? base64.split(",")[1] : base64;
+
+    console.log("[BT] VSTC: converting logo to ESC/POS");
+
+    const escPosBase64 = await SunmiPrinterModule.bitmapToEscPos(
+      clean,
+      VSTC_TARGET_LOGO_WIDTH
+    );
+
+    console.log("[BT] VSTC: ESC/POS bytes ready, sending via Bluetooth sendRAWData");
+
+    const ok = await connectInnerPrinter();
+    if (!ok) {
+      console.warn("[BT] VSTC: BT not connected for logo");
+      return;
+    }
+
+    const escPosBytes = Buffer.from(escPosBase64, "base64");
+    await sendRawBytes(new Uint8Array(escPosBytes));
+
+    console.log("[BT] VSTC: logo sent via BT raw bytes");
+  } catch (e) {
+    console.error("[BT] VSTC logo BT failed:", e);
+  }
 };
 
 const printLogo = async (): Promise<void> => {
@@ -129,19 +150,15 @@ const printLogo = async (): Promise<void> => {
 
     if (!logo1) return;
 
-    const layout = await resolveLogoPrintLayout();
-    console.log("[BT] Device model:", layout.model);
-    console.log("[BT] Is V2s_GL:", layout.isV2s);
-    console.log("[BT] Is VSTC:", layout.isVstc);
-    console.log(
-      "[BT] Logo print width:",
-      layout.width,
-      "left:",
-      layout.left,
-      layout.saved ? "(manual)" : "(auto)"
-    );
+    const deviceModel = getDeviceModel();
+    const isVstc = isVSTCDevice(deviceModel);
+    console.log("[BT] Device model:", deviceModel);
+    console.log("[BT] Is VSTC:", isVstc);
 
-    if (layout.isV2s && !layout.saved && layout.width === DEFAULT_LOGO_WIDTH_V2S) {
+    if (isVstc) {
+      console.log("[BT] VSTC: ESC/POS logo via BT");
+      await printLogoVSTCViaBluetooth(logo1);
+    } else {
       const logo1Processed = await preprocessLogoForPrinting(logo1);
       console.log(
         "[BT] V2s_GL logo at 576px preprocessed, base64 length:",
@@ -150,23 +167,6 @@ const printLogo = async (): Promise<void> => {
       await BluetoothEscposPrinter.printPic(logo1Processed, {
         width: 192,
         left: 96,
-        center: false,
-        autoCut: false,
-        feed: LOGO_PRINT_FEED,
-      });
-    } else if (layout.isVstc && !layout.saved) {
-      await printLogoViaEscStar(logo1, layout.width, layout.left);
-    } else {
-      const logo1Processed = await preprocessLogoForPrintWidth(logo1, layout.width);
-      console.log(
-        "[BT] Logo preprocessed for",
-        layout.width,
-        "dots, base64 length:",
-        logo1Processed.length
-      );
-      await BluetoothEscposPrinter.printPic(logo1Processed, {
-        width: layout.width,
-        left: layout.left,
         center: false,
         autoCut: false,
         feed: LOGO_PRINT_FEED,
@@ -309,3 +309,4 @@ export const printTestLine = async (): Promise<void> => {
   const bytes = buildRawReceipt([center("TEST PRINT OK")], 3);
   await sendRawBytes(bytes);
 };
+

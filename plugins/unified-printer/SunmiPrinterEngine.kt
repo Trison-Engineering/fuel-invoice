@@ -247,10 +247,21 @@ class SunmiPrinterEngine private constructor(context: Context) {
     api.sendRAWData(buildDiagnosticBytes())
   }
 
+  /** VSTC: print logo via jiuiv5 printBitmap — bypasses simulated Bluetooth layer. */
+  fun printBitmapBase64(base64: String) {
+    val api = printApi ?: throw IllegalStateException("Sunmi printer service not connected")
+    waitForPrinterReady()
+    Log.d(TAG, "printBitmapBase64 via jiuiv5 AIDL")
+    api.printBitmapBase64(base64)
+    Log.d(TAG, "printBitmapBase64 complete")
+  }
+
   private interface SunmiPrintApi {
     fun printHelloWorld()
 
     fun sendRAWData(data: ByteArray)
+
+    fun printBitmapBase64(base64: String)
 
     fun printReceiptHighLevel(
       storeName: String,
@@ -278,6 +289,23 @@ class SunmiPrinterEngine private constructor(context: Context) {
       Log.d(TAG, "before sendRAWData bytes=${data.size}")
       service.sendRAWData(data, null)
       Log.d(TAG, "after sendRAWData")
+    }
+
+    override fun printBitmapBase64(base64: String) {
+      val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+      val bitmap =
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+          ?: throw IllegalArgumentException("Failed to decode bitmap")
+
+      val targetWidth = 384
+      val scale = targetWidth.toFloat() / bitmap.width.coerceAtLeast(1)
+      val targetHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
+      val scaled =
+        android.graphics.Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+
+      // VSTC: do NOT call setAlignment — triggers diagnostic slip
+      service.printBitmap(scaled, null)
+      service.lineWrap(1, null)
     }
 
     override fun printReceiptHighLevel(

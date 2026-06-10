@@ -1,6 +1,14 @@
 import { NativeModules, Platform } from "react-native";
 import { connectInnerPrinter, isInnerPrinterConnected } from "./BluetoothPrinterService";
 
+export interface SunmiPrinterModuleType {
+  bitmapToEscPos?(base64: string, targetWidthDots: number): Promise<string>;
+  isConnected?(): Promise<boolean>;
+}
+
+export const SunmiPrinterModule: SunmiPrinterModuleType | undefined =
+  NativeModules.SunmiPrinterModule;
+
 export function listPrinterNativeModuleKeys(): string[] {
   if (Platform.OS !== "android") return [];
   return Object.keys(NativeModules).filter(

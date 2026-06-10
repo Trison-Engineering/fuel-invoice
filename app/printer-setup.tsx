@@ -4,15 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { PAPER_WIDTH_MM, RECEIPT_LINE_WIDTH } from "../constants/printerPaper";
 import { colors, spacing } from "../constants/theme";
-import {
-  getDeviceModel,
-  getSavedLogoPrintWidth,
-  isVSTCDevice,
-  LOGO_PRINT_WIDTH_OPTIONS,
-  DEFAULT_LOGO_WIDTH_V2S,
-  DEFAULT_LOGO_WIDTH_VSTC,
-  setSavedLogoPrintWidth,
-} from "../src/utils/logoPrintConfig";
 
 function DismissButton({ onPress }: { onPress: () => void }) {
   return (
@@ -48,18 +39,8 @@ function statusColor(
 export default function PrinterSetupScreen() {
   const printer = usePrinterContext();
   const [isPrinting, setIsPrinting] = useState(false);
-  const [deviceModel, setDeviceModel] = useState("");
-  const [logoPrintWidth, setLogoPrintWidth] = useState<number | null>(null);
-  const [autoLogoWidth, setAutoLogoWidth] = useState(192);
 
   const isBusy = printer.isInitializing || printer.isReconnecting || isPrinting;
-
-  const loadLogoWidthSettings = useCallback(async () => {
-    const model = getDeviceModel();
-    setDeviceModel(model);
-    setLogoPrintWidth(await getSavedLogoPrintWidth());
-    setAutoLogoWidth(isVSTCDevice(model) ? DEFAULT_LOGO_WIDTH_VSTC : DEFAULT_LOGO_WIDTH_V2S);
-  }, []);
 
   const runInit = useCallback(() => {
     printer.initPrinter().catch(() => undefined);
@@ -67,21 +48,7 @@ export default function PrinterSetupScreen() {
 
   useEffect(() => {
     runInit();
-    loadLogoWidthSettings().catch(() => undefined);
-  }, [runInit, loadLogoWidthSettings]);
-
-  const handleLogoWidthSelect = async (width: number) => {
-    await setSavedLogoPrintWidth(width);
-    setLogoPrintWidth(width);
-    Alert.alert("Logo width saved", `Logo will print at ${width} dots wide.`);
-  };
-
-  const handleLogoWidthReset = async () => {
-    await setSavedLogoPrintWidth(null);
-    setLogoPrintWidth(null);
-    await loadLogoWidthSettings();
-    Alert.alert("Logo width reset", "Using automatic width for this device model.");
-  };
+  }, [runInit]);
 
   const handleTestPrint = async () => {
     setIsPrinting(true);
@@ -163,7 +130,7 @@ export default function PrinterSetupScreen() {
           Connected Device
         </Text>
         <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
-          {isConnected ? "🟢" : "🔴"} {deviceModel || "Sunmi InnerPrinter"}
+          {isConnected ? "🟢" : "🔴"} Sunmi InnerPrinter
         </Text>
         <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
           SDK: woyou.aidlservice.jiuiv5 (built-in thermal printer)
@@ -192,63 +159,6 @@ export default function PrinterSetupScreen() {
 
         <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 4 }}>Printer status</Text>
         <Text style={{ fontSize: 15, fontWeight: "600", color: dotColor }}>{printerStatusLabel}</Text>
-      </View>
-
-      <View
-        style={{
-          backgroundColor: colors.white,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 12,
-          padding: spacing.lg,
-          marginBottom: spacing.lg,
-        }}
-      >
-        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.black, marginBottom: 4 }}>
-          Logo Print Width (dots)
-        </Text>
-        <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
-          Device: {deviceModel || "unknown"} — auto default: {autoLogoWidth} dots
-          {logoPrintWidth != null ? ` — saved: ${logoPrintWidth} dots` : " — using auto"}
-        </Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-          {LOGO_PRINT_WIDTH_OPTIONS.map((width) => {
-            const selected = logoPrintWidth === width;
-            return (
-              <Pressable
-                key={width}
-                onPress={() => handleLogoWidthSelect(width)}
-                style={{
-                  minWidth: 56,
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.sm,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: selected ? colors.primary : colors.border,
-                  backgroundColor: selected ? colors.primaryLight : colors.white,
-                  alignItems: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: selected ? "700" : "500",
-                    color: selected ? colors.primary : colors.black,
-                  }}
-                >
-                  {width}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        {logoPrintWidth != null ? (
-          <Pressable onPress={handleLogoWidthReset} style={{ marginTop: spacing.md }}>
-            <Text style={{ fontSize: 13, color: colors.primary, fontWeight: "600" }}>
-              Reset to auto ({autoLogoWidth} dots)
-            </Text>
-          </Pressable>
-        ) : null}
       </View>
 
       {printer.isInitializing ? (
