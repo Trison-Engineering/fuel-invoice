@@ -71,7 +71,10 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "480b9cba-0c4f-4029-99ae-98a0563f6cd9"
+      }
     },
     "owner": "arslan_eas_2"
   }
