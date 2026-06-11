@@ -18,6 +18,9 @@ import { LogoUploader } from "../components/LogoUploader";
 import { Toast } from "../components/Toast";
 import { colors, spacing } from "../constants/theme";
 import { isValidDecimal } from "../utils/validation";
+import { getItem, StorageKeys } from "../utils/storage";
+import { recordPriceChange } from "../src/services/PriceHistoryService";
+import type { StationProfile } from "../stores/stationStore";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -67,6 +70,27 @@ export default function SettingsScreen() {
       return;
     }
     setSaving(true);
+
+    const oldProfile = await getItem<StationProfile>(StorageKeys.STATION_PROFILE);
+    if (oldProfile?.fuelPrices) {
+      const oldPetrol = parseFloat(oldProfile.fuelPrices.petrol);
+      const oldDiesel = parseFloat(oldProfile.fuelPrices.diesel);
+      const oldHiOctane = parseFloat(oldProfile.fuelPrices.hiOctane);
+      const newPetrol = parseFloat(petrol);
+      const newDiesel = parseFloat(diesel);
+      const newHiOctane = parseFloat(hiOctane);
+
+      if (oldPetrol > 0 && oldPetrol !== newPetrol) {
+        await recordPriceChange("PETROL", oldPetrol, newPetrol);
+      }
+      if (oldDiesel > 0 && oldDiesel !== newDiesel) {
+        await recordPriceChange("DIESEL", oldDiesel, newDiesel);
+      }
+      if (oldHiOctane > 0 && oldHiOctane !== newHiOctane) {
+        await recordPriceChange("HI-OCTANE", oldHiOctane, newHiOctane);
+      }
+    }
+
     await station.saveProfile();
     setSaving(false);
 

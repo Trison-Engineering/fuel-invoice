@@ -56,6 +56,7 @@ function RootNavigator() {
         <Stack.Screen name="index" options={{ title: "Fuel Receipt" }} />
         <Stack.Screen name="printer-setup" options={{ title: "Printer" }} />
         <Stack.Screen name="settings" options={{ title: "Settings" }} />
+        <Stack.Screen name="admin" options={{ headerShown: false }} />
       </Stack>
     </>
   );

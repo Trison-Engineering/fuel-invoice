@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Fuel Receipt",
-    "slug": "fuel-receipt-app",
-    "version": "1.0.0",
+    "name": "PetrolSlip Pro",
+    "slug": "petrolslip-pro",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "fuelreceipt",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.fuelreceipt.app",
+      "bundleIdentifier": "com.petrolslip.pro",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to thermal receipt printers.",
         "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to thermal receipt printers.",
@@ -28,7 +28,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1D4ED8"
       },
-      "package": "com.fuelreceipt.app",
+      "package": "com.petrolslip.pro",
+      "versionCode": 2,
       "statusBar": {
         "backgroundColor": "#FFFFFF",
         "barStyle": "dark-content",

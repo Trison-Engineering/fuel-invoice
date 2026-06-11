@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Modal,
 } from "react-native";
 import { useRouter, useNavigation } from "expo-router";
 import { useFormState } from "../hooks/useFormState";
@@ -22,10 +23,20 @@ import { usePrinterContext } from "../contexts/PrinterContext";
 import { Toast } from "../components/Toast";
 // import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
 import { colors } from "../constants/theme";
+import { ReceiptData } from "../utils/generateReceipt";
+import {
+  startSlipSession,
+  getCurrentSession,
+  isSessionActive,
+  incrementSlipCount,
+} from "../src/services/SlipCounterService";
 
 const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 100;
 const FUEL_SELECT_DELAY_MS = 60;
+const DUPLICATE_COUNTDOWN_SECONDS = 10;
+const ADMIN_EMAIL = "admin@admin.com";
+const ADMIN_PASSWORD = "admin@123";
 
 const FUEL_OPTIONS = [
   { id: "Petrol", label: "PETROL", color: "#22c55e" },
@@ -52,6 +63,28 @@ function ProgressDots({ currentStep }: { currentStep: number }) {
   );
 }
 
+function CountdownRing({ countdown, total }: { countdown: number; total: number }) {
+  const progress = countdown / total;
+  const ringColor = (segment: number) => (progress >= segment ? "#1a56db" : "#e5e7eb");
+
+  return (
+    <View style={styles.ringOuter}>
+      <View
+        style={[
+          styles.ringProgress,
+          {
+            borderTopColor: ringColor(0.875),
+            borderRightColor: ringColor(0.625),
+            borderBottomColor: ringColor(0.375),
+            borderLeftColor: ringColor(0.125),
+          },
+        ]}
+      />
+      <Text style={styles.countdownNumber}>{countdown}</Text>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -69,7 +102,19 @@ export default function HomeScreen() {
     type: "success",
   });
 
+  const [showDuplicate, setShowDuplicate] = useState(false);
+  const [duplicateCountdown, setDuplicateCountdown] = useState(DUPLICATE_COUNTDOWN_SECONDS);
+  const [lastPrintData, setLastPrintData] = useState<ReceiptData | null>(null);
+  const [isPrintingDuplicate, setIsPrintingDuplicate] = useState(false);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [sessionCount, setSessionCount] = useState(0);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const duplicateSlideAnim = useRef(new Animated.Value(0)).current;
+  const closingDuplicate = useRef(false);
   const cardWidth = screenWidth * 0.85;
 
   const hideToast = useCallback(() => {
@@ -83,6 +128,17 @@ export default function HomeScreen() {
         Object.keys(NativeModules).filter((k) => k.toLowerCase().includes("sunmi"))
       )
     );
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const active = await isSessionActive();
+      setSessionActive(active);
+      if (active) {
+        const session = await getCurrentSession();
+        setSessionCount(session?.count ?? 0);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -104,6 +160,24 @@ export default function HomeScreen() {
     navigation.setOptions({
       headerRight: () => (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={styles.headerBadgeWrap}>
+            <Ionicons
+              name="print-outline"
+              size={22}
+              color={sessionActive ? "#1a56db" : "#9ca3af"}
+            />
+            {sessionActive && sessionCount > 0 ? (
+              <View style={styles.badgeNumber}>
+                <Text style={styles.badgeText}>{sessionCount}</Text>
+              </View>
+            ) : null}
+          </View>
+          {sessionActive ? (
+            <Text style={styles.sessionActiveText}>Session active</Text>
+          ) : null}
+          <Pressable onPress={() => setShowAdminLogin(true)} style={{ padding: 8 }}>
+            <Ionicons name="person-outline" size={24} color={colors.primary} />
+          </Pressable>
           <Pressable onPress={() => router.push("/settings")} style={{ padding: 8, marginRight: 4 }}>
             <Ionicons name="settings-outline" size={24} color={colors.primary} />
           </Pressable>
@@ -119,7 +193,7 @@ export default function HomeScreen() {
         </View>
       ),
     });
-  }, [navigation, printer.connectedDevice, printer.connectionStatus, printer.connectionStatusLabel, router]);
+  }, [navigation, router, sessionActive, sessionCount]);
 
   const animateToStep = useCallback(
     (nextStep: number, direction: "forward" | "back") => {
@@ -157,14 +231,80 @@ export default function HomeScreen() {
     [animateToStep]
   );
 
-  const resetForm = useCallback(() => {
+  const resetSteps = useCallback(() => {
     setCurrentStep(1);
     setSelectedProduct(null);
     form.updateFuelRate("");
     form.updateVolume("");
     form.updateVehicleNumber("");
     setPrintSuccess(false);
+    setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
+    setLastPrintData(null);
   }, [form]);
+
+  useEffect(() => {
+    if (!showDuplicate) {
+      closingDuplicate.current = false;
+      return;
+    }
+    if (duplicateCountdown <= 0) {
+      if (closingDuplicate.current) return;
+      closingDuplicate.current = true;
+      Animated.timing(duplicateSlideAnim, {
+        toValue: screenWidth,
+        duration: 300,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => {
+        setShowDuplicate(false);
+        duplicateSlideAnim.setValue(0);
+        closingDuplicate.current = false;
+        resetSteps();
+      });
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDuplicateCountdown((prev) => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [showDuplicate, duplicateCountdown, duplicateSlideAnim, screenWidth, resetSteps]);
+
+  const handleStartCounter = useCallback(async () => {
+    await startSlipSession();
+    setSessionActive(true);
+    setSessionCount(0);
+  }, []);
+
+  const handleAdminLogin = useCallback(() => {
+    if (adminEmail === ADMIN_EMAIL && adminPassword === ADMIN_PASSWORD) {
+      setShowAdminLogin(false);
+      setAdminEmail("");
+      setAdminPassword("");
+      router.push("/admin");
+    } else {
+      Alert.alert("Invalid credentials");
+    }
+  }, [adminEmail, adminPassword, router]);
+
+  const handleDuplicatePrint = useCallback(async () => {
+    if (!lastPrintData) return;
+    setIsPrintingDuplicate(true);
+    try {
+      try {
+        await printer.ensureConnected();
+      } catch {
+        // Native printReceipt retries bind — continue even if JS check failed
+      }
+      await printer.printReceipt(lastPrintData);
+      setShowDuplicate(false);
+      resetSteps();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Print failed";
+      Alert.alert("Print failed", msg);
+    } finally {
+      setIsPrintingDuplicate(false);
+    }
+  }, [lastPrintData, printer, resetSteps]);
 
   const handlePrint = useCallback(
     async () => {
@@ -190,9 +330,16 @@ export default function HomeScreen() {
         const receiptData = form.getReceiptData();
         await printer.printReceipt(receiptData);
         setPrintSuccess(true);
-        setTimeout(() => {
-          resetForm();
-        }, 1500);
+
+        const count = await incrementSlipCount();
+        if (count > 0) {
+          setSessionCount(count);
+        }
+
+        setLastPrintData(receiptData);
+        setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
+        setShowDuplicate(true);
+        setTimeout(() => setPrintSuccess(false), 800);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Print failed";
         Alert.alert("Print failed", msg);
@@ -200,7 +347,7 @@ export default function HomeScreen() {
         setIsPrinting(false);
       }
     },
-    [form, printer, resetForm, router]
+    [form, printer, router]
   );
 
   const handleSelectFuel = useCallback(
@@ -338,6 +485,12 @@ export default function HomeScreen() {
         style={styles.overlay}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        {!sessionActive ? (
+          <Pressable onPress={handleStartCounter} style={styles.startCounterButton}>
+            <Text style={styles.startCounterText}>▶ Start Counter</Text>
+          </Pressable>
+        ) : null}
+
         <Animated.View
           style={[
             styles.card,
@@ -377,6 +530,70 @@ export default function HomeScreen() {
           <Text style={styles.successText}>✓ Printed!</Text>
         </View>
       ) : null}
+
+      {showDuplicate ? (
+        <View style={styles.fullOverlay}>
+          <Animated.View
+            style={[
+              styles.duplicateCard,
+              { width: cardWidth, transform: [{ translateX: duplicateSlideAnim }] },
+            ]}
+          >
+            <Text style={styles.duplicateTitle}>Print Duplicate?</Text>
+            <CountdownRing countdown={duplicateCountdown} total={DUPLICATE_COUNTDOWN_SECONDS} />
+            <Pressable
+              onPress={handleDuplicatePrint}
+              disabled={isPrintingDuplicate}
+              style={[styles.duplicateButton, isPrintingDuplicate && styles.buttonDisabled]}
+            >
+              <Text style={styles.duplicateButtonText}>🖨️ Print Duplicate</Text>
+            </Pressable>
+            <Text style={styles.autoCloseText}>
+              {isPrintingDuplicate
+                ? "Printing duplicate..."
+                : `Auto-closing in ${duplicateCountdown} seconds`}
+            </Text>
+          </Animated.View>
+        </View>
+      ) : null}
+
+      <Modal visible={showAdminLogin} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.loginCard}>
+            <Text style={styles.loginTitle}>Admin Login</Text>
+            <TextInput
+              style={styles.loginInput}
+              placeholder="Email"
+              placeholderTextColor="#9ca3af"
+              value={adminEmail}
+              onChangeText={setAdminEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <TextInput
+              style={styles.loginInput}
+              placeholder="Password"
+              placeholderTextColor="#9ca3af"
+              value={adminPassword}
+              onChangeText={setAdminPassword}
+              secureTextEntry
+            />
+            <Pressable onPress={handleAdminLogin} style={styles.loginButton}>
+              <Text style={styles.loginButtonText}>Login</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setShowAdminLogin(false);
+                setAdminEmail("");
+                setAdminPassword("");
+              }}
+              style={styles.cancelButton}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Receipt preview skipped — print fires directly from Step 4
       <ReceiptPreviewScreen
@@ -569,5 +786,152 @@ const styles = StyleSheet.create({
     color: "#22c55e",
     fontSize: 24,
     fontWeight: "700",
+  },
+  headerBadgeWrap: {
+    position: "relative",
+    marginRight: 8,
+    padding: 4,
+  },
+  badgeNumber: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: "#ef4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "bold",
+  },
+  sessionActiveText: {
+    fontSize: 11,
+    color: "#1a56db",
+    marginRight: 4,
+    fontWeight: "500",
+  },
+  startCounterButton: {
+    backgroundColor: "#1a56db",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  startCounterText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  duplicateCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 28,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  duplicateTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#1a1a2e",
+    marginBottom: 24,
+  },
+  ringOuter: {
+    width: 120,
+    height: 120,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
+  ringProgress: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 8,
+  },
+  countdownNumber: {
+    fontSize: 48,
+    fontWeight: "700",
+    color: "#1a56db",
+  },
+  duplicateButton: {
+    backgroundColor: "#1a56db",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  duplicateButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  autoCloseText: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  loginCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 360,
+  },
+  loginTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1a1a2e",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  loginInput: {
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginBottom: 12,
+    color: "#1a1a2e",
+  },
+  loginButton: {
+    backgroundColor: "#1a56db",
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  loginButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  cancelButton: {
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  cancelButtonText: {
+    color: "#6b7280",
+    fontSize: 15,
+    fontWeight: "500",
   },
 });
