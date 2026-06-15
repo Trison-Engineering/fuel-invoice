@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ScrollView,
   ActivityIndicator,
   StyleSheet,
+  TextInput,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,15 +18,34 @@ import {
   isSessionActive,
   type SlipSession,
 } from "../src/services/SlipCounterService";
-import { formatCurrency } from "../utils/formatters";
+import {
+  getInvoices,
+  saveInvoice,
+  formatSlipDateTime,
+  storageKeyToProductType,
+  type StoredInvoice,
+} from "../src/services/InvoiceHistoryService";
+import { usePrinterContext } from "../contexts/PrinterContext";
+import { formatCurrency, generateInvoiceNumber } from "../utils/formatters";
+import type { ReceiptData } from "../utils/generateReceipt";
 import { colors, spacing } from "../constants/theme";
 
-type Tab = "price" | "slips";
+type Tab = "invoices" | "price" | "slips";
+type DateFilter = "all" | "today" | "week";
 
 const PRODUCT_COLORS: Record<PriceChange["product"], string> = {
   PETROL: "#22c55e",
   DIESEL: "#3b82f6",
   "HI-OCTANE": "#a855f7",
+};
+
+const INVOICE_BADGE_STYLES: Record<
+  string,
+  { backgroundColor: string; color: string }
+> = {
+  PETROL: { backgroundColor: "#dcfce7", color: "#16a34a" },
+  DIESEL: { backgroundColor: "#dbeafe", color: "#1d4ed8" },
+  "HI-OCTANE": { backgroundColor: "#f3e8ff", color: "#7e22ce" },
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -70,38 +91,137 @@ function getLast7Days(): string[] {
   return days;
 }
 
+function isPrintedToday(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return d.toDateString() === now.toDateString();
+}
+
+function isPrintedThisWeek(iso: string): boolean {
+  const d = new Date(iso);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  return d > cutoff;
+}
+
+function storedInvoiceToReceiptData(invoice: StoredInvoice): ReceiptData {
+  const printed = new Date(invoice.printedAt);
+  const year = printed.getFullYear();
+  const month = String(printed.getMonth() + 1).padStart(2, "0");
+  const day = String(printed.getDate()).padStart(2, "0");
+  const hours = String(printed.getHours()).padStart(2, "0");
+  const minutes = String(printed.getMinutes()).padStart(2, "0");
+
+  return {
+    stationName: invoice.stationName,
+    stationAddress: invoice.address,
+    invoiceNumber: generateInvoiceNumber(),
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`,
+    paymentMethod: "Cash",
+    productType: storageKeyToProductType(invoice.product),
+    fuelRate: String(invoice.rate),
+    volume: String(invoice.volume),
+    totalAmount: invoice.totalAmount,
+    vehicleNumber: invoice.vehicleNo,
+    customerName: "",
+    includeLogoInPrint: false,
+  };
+}
+
 export default function AdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<Tab>("price");
+  const printer = usePrinterContext();
+  const [activeTab, setActiveTab] = useState<Tab>("invoices");
   const [loading, setLoading] = useState(true);
   const [priceHistory, setPriceHistory] = useState<PriceChange[]>([]);
   const [sessionHistory, setSessionHistory] = useState<SlipSession[]>([]);
+  const [invoices, setInvoices] = useState<StoredInvoice[]>([]);
   const [currentSession, setCurrentSession] = useState<{
     startTime: string;
     count: number;
     isActive: boolean;
   } | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [reprintingId, setReprintingId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [history, sessions, active, current] = await Promise.all([
+    const [history, sessions, active, current, invoiceList] = await Promise.all([
       getPriceHistory(),
       getSessionHistory(),
       isSessionActive(),
       getCurrentSession(),
+      getInvoices(),
     ]);
     setPriceHistory(history);
     setSessionHistory(sessions);
     setSessionActive(active);
     setCurrentSession(current);
+    setInvoices(invoiceList);
     setLoading(false);
   }, []);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const invoiceStats = useMemo(() => {
+    const today = invoices.filter((inv) => isPrintedToday(inv.printedAt)).length;
+    const week = invoices.filter((inv) => isPrintedThisWeek(inv.printedAt)).length;
+    return { today, week, total: invoices.length };
+  }, [invoices]);
+
+  const filteredInvoices = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return invoices.filter((inv) => {
+      if (dateFilter === "today" && !isPrintedToday(inv.printedAt)) return false;
+      if (dateFilter === "week" && !isPrintedThisWeek(inv.printedAt)) return false;
+      if (!query) return true;
+      return (
+        inv.vehicleNo.toLowerCase().includes(query) ||
+        inv.dateTime.toLowerCase().includes(query)
+      );
+    });
+  }, [invoices, searchQuery, dateFilter]);
+
+  const handleReprint = useCallback(
+    async (invoice: StoredInvoice) => {
+      setReprintingId(invoice.id);
+      try {
+        try {
+          await printer.ensureConnected();
+        } catch {
+          // Native printReceipt retries bind — continue even if JS check failed
+        }
+        const receiptData = storedInvoiceToReceiptData(invoice);
+        await printer.printReceipt(receiptData, true);
+
+        await saveInvoice({
+          product: invoice.product,
+          volume: invoice.volume,
+          rate: invoice.rate,
+          totalAmount: invoice.totalAmount,
+          vehicleNo: invoice.vehicleNo,
+          stationName: invoice.stationName,
+          address: invoice.address,
+          dateTime: formatSlipDateTime(),
+          isDuplicate: true,
+        });
+
+        const updated = await getInvoices();
+        setInvoices(updated);
+      } catch {
+        Alert.alert("Print Failed", "Could not print. Check printer connection.");
+      } finally {
+        setReprintingId(null);
+      }
+    },
+    [printer]
+  );
 
   const weekTotal =
     sessionHistory.reduce((sum, s) => sum + s.count, 0) +
@@ -112,6 +232,132 @@ export default function AdminScreen() {
     acc[session.date] = session;
     return acc;
   }, {});
+
+  const renderInvoiceTab = () => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView contentContainerStyle={styles.invoiceScrollContent}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by vehicle or date..."
+          placeholderTextColor={colors.muted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+
+        <View style={styles.filterRow}>
+          {(["all", "today", "week"] as const).map((filter) => (
+            <Pressable
+              key={filter}
+              onPress={() => setDateFilter(filter)}
+              style={[styles.filterChip, dateFilter === filter && styles.filterChipActive]}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  dateFilter === filter && styles.filterChipTextActive,
+                ]}
+              >
+                {filter === "all" ? "All" : filter === "today" ? "Today" : "This Week"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Today</Text>
+            <Text style={styles.statValue}>{invoiceStats.today} slips</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>This Week</Text>
+            <Text style={styles.statValue}>{invoiceStats.week} slips</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Total</Text>
+            <Text style={styles.statValue}>{invoiceStats.total} slips</Text>
+          </View>
+        </View>
+
+        {filteredInvoices.length === 0 ? (
+          <View style={styles.invoiceEmpty}>
+            <Text style={styles.invoiceEmptyIcon}>🧾</Text>
+            <Text style={styles.invoiceEmptyTitle}>No invoices yet</Text>
+            <Text style={styles.invoiceEmptySubtitle}>Printed receipts will appear here</Text>
+          </View>
+        ) : (
+          filteredInvoices.map((invoice) => {
+            const badgeStyle =
+              INVOICE_BADGE_STYLES[invoice.product] ?? INVOICE_BADGE_STYLES.PETROL;
+            return (
+              <View key={invoice.id} style={styles.invoiceCard}>
+                <View style={styles.invoiceCardTop}>
+                  <View style={[styles.invoiceProductBadge, { backgroundColor: badgeStyle.backgroundColor }]}>
+                    <Text style={[styles.invoiceProductText, { color: badgeStyle.color }]}>
+                      {invoice.product}
+                    </Text>
+                  </View>
+                  <Text style={styles.invoiceDateTime}>{invoice.dateTime}</Text>
+                </View>
+
+                <View style={styles.invoiceDetailRow}>
+                  <Text style={styles.invoiceDetailText}>
+                    Volume: {invoice.volume} LTR
+                  </Text>
+                  <Text style={styles.invoiceDetailText}>
+                    Rate: {formatCurrency(invoice.rate)}
+                  </Text>
+                </View>
+
+                <Text style={styles.invoiceTotal}>
+                  TOTAL: {formatCurrency(invoice.totalAmount)}
+                </Text>
+
+                <View style={styles.invoiceCardBottom}>
+                  <View style={styles.invoiceCardBottomLeft}>
+                    <Text
+                      style={[
+                        styles.invoiceVehicle,
+                        !invoice.vehicleNo.trim() && styles.invoiceVehicleEmpty,
+                      ]}
+                    >
+                      {invoice.vehicleNo.trim() ? `Vehicle: ${invoice.vehicleNo}` : "No Vehicle"}
+                    </Text>
+                    {invoice.isDuplicate ? (
+                      <View style={styles.duplicateBadge}>
+                        <Text style={styles.duplicateBadgeText}>DUPLICATE</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Pressable
+                    onPress={() => handleReprint(invoice)}
+                    disabled={reprintingId === invoice.id}
+                    style={[
+                      styles.printButton,
+                      reprintingId === invoice.id && styles.printButtonDisabled,
+                    ]}
+                  >
+                    {reprintingId === invoice.id ? (
+                      <ActivityIndicator size="small" color={colors.white} />
+                    ) : (
+                      <Text style={styles.printButtonText}>🖨️</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+    );
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -126,6 +372,14 @@ export default function AdminScreen() {
       </View>
 
       <View style={styles.tabs}>
+        <Pressable
+          onPress={() => setActiveTab("invoices")}
+          style={[styles.tab, activeTab === "invoices" && styles.tabActive]}
+        >
+          <Text style={[styles.tabText, activeTab === "invoices" && styles.tabTextActive]}>
+            Invoices
+          </Text>
+        </Pressable>
         <Pressable
           onPress={() => setActiveTab("price")}
           style={[styles.tab, activeTab === "price" && styles.tabActive]}
@@ -144,7 +398,9 @@ export default function AdminScreen() {
         </Pressable>
       </View>
 
-      {loading ? (
+      {activeTab === "invoices" ? (
+        renderInvoiceTab()
+      ) : loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -288,7 +544,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1a56db",
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     color: colors.muted,
   },
@@ -304,6 +560,183 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  invoiceScrollContent: {
+    paddingBottom: spacing.xxl,
+  },
+  searchInput: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.black,
+  },
+  filterRow: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  filterChipActive: {
+    backgroundColor: "#1a56db",
+    borderColor: "#1a56db",
+  },
+  filterChipText: {
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: "500",
+  },
+  filterChipTextActive: {
+    color: colors.white,
+    fontWeight: "600",
+  },
+  statsRow: {
+    flexDirection: "row",
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    gap: 8,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+  },
+  statLabel: {
+    fontSize: 11,
+    color: colors.muted,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.black,
+  },
+  invoiceEmpty: {
+    alignItems: "center",
+    paddingTop: spacing.xxl * 2,
+    paddingHorizontal: spacing.lg,
+  },
+  invoiceEmptyIcon: {
+    fontSize: 48,
+    marginBottom: spacing.md,
+  },
+  invoiceEmptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: colors.black,
+    marginBottom: 4,
+  },
+  invoiceEmptySubtitle: {
+    fontSize: 14,
+    color: colors.muted,
+  },
+  invoiceCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginVertical: 4,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+  },
+  invoiceCardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  invoiceProductBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  invoiceProductText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  invoiceDateTime: {
+    fontSize: 11,
+    color: colors.muted,
+  },
+  invoiceDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  invoiceDetailText: {
+    fontSize: 13,
+    color: colors.black,
+  },
+  invoiceTotal: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.black,
+    marginBottom: 10,
+  },
+  invoiceCardBottom: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  invoiceCardBottomLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  invoiceVehicle: {
+    fontSize: 13,
+    color: colors.black,
+  },
+  invoiceVehicleEmpty: {
+    color: colors.muted,
+  },
+  duplicateBadge: {
+    backgroundColor: "#fff7ed",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  duplicateBadgeText: {
+    color: "#ea580c",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  printButton: {
+    backgroundColor: "#1a56db",
+    borderRadius: 8,
+    padding: 8,
+    minWidth: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  printButtonDisabled: {
+    opacity: 0.7,
+  },
+  printButtonText: {
+    fontSize: 16,
   },
   emptyText: {
     textAlign: "center",

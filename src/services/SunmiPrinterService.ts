@@ -36,35 +36,47 @@ export async function getSunmiPrinterStatus(): Promise<string> {
   return connected ? "CONNECTED" : "DISCONNECTED";
 }
 
-export async function printSunmiReceipt(data: SunmiReceiptData): Promise<void> {
-  await btPrintReceipt({
-    storeName: data.storeName,
-    address: data.address,
-    dateTime: data.dateTime,
-    product: data.product,
-    volume: data.volume,
-    rate: data.rate,
-    total: data.total,
-    vehicleNo: data.vehicleNo,
-    stationPhone: data.stationPhone,
-  });
+export async function printSunmiReceipt(
+  data: SunmiReceiptData,
+  isDuplicate = false
+): Promise<void> {
+  await btPrintReceipt(
+    {
+      storeName: data.storeName,
+      address: data.address,
+      dateTime: data.dateTime,
+      product: data.product,
+      volume: data.volume,
+      rate: data.rate,
+      total: data.total,
+      vehicleNo: data.vehicleNo,
+      stationPhone: data.stationPhone,
+    },
+    isDuplicate
+  );
 }
 
-export async function printSunmiReceiptFromFuelData(data: ReceiptData): Promise<void> {
+export async function printSunmiReceiptFromFuelData(
+  data: ReceiptData,
+  isDuplicate = false
+): Promise<void> {
   const view = mapFuelReceiptToPrintView(data);
   const dateTime = `${view.date}  ${view.time}`;
 
-  await printSunmiReceipt({
-    storeName: view.storeName,
-    address: view.address,
-    dateTime,
-    product: view.product,
-    volume: formatVolume(data.volume),
-    rate: formatCurrency(data.fuelRate),
-    total: formatCurrency(data.totalAmount),
-    vehicleNo: view.vehicleNo.trim() || undefined,
-    stationPhone: data.stationPhone?.trim() || undefined,
-  });
+  await printSunmiReceipt(
+    {
+      storeName: view.storeName,
+      address: view.address,
+      dateTime,
+      product: view.product,
+      volume: formatVolume(data.volume),
+      rate: formatCurrency(data.fuelRate),
+      total: formatCurrency(data.totalAmount),
+      vehicleNo: view.vehicleNo.trim() || undefined,
+      stationPhone: data.stationPhone?.trim() || undefined,
+    },
+    isDuplicate
+  );
 }
 
 export async function printSunmiHelloWorld(): Promise<void> {

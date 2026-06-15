@@ -30,6 +30,11 @@ import {
   isSessionActive,
   incrementSlipCount,
 } from "../src/services/SlipCounterService";
+import {
+  saveInvoice,
+  formatSlipDateTime,
+  productTypeToStorageKey,
+} from "../src/services/InvoiceHistoryService";
 
 const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 100;
@@ -286,6 +291,23 @@ export default function HomeScreen() {
     }
   }, [adminEmail, adminPassword, router]);
 
+  const saveInvoiceFromReceipt = useCallback(
+    async (receiptData: ReceiptData, isDuplicate: boolean) => {
+      await saveInvoice({
+        product: productTypeToStorageKey(receiptData.productType),
+        volume: parseFloat(receiptData.volume),
+        rate: parseFloat(receiptData.fuelRate),
+        totalAmount: receiptData.totalAmount,
+        vehicleNo: receiptData.vehicleNumber || "",
+        stationName: receiptData.stationName,
+        address: receiptData.stationAddress,
+        dateTime: formatSlipDateTime(),
+        isDuplicate,
+      });
+    },
+    []
+  );
+
   const handleDuplicatePrint = useCallback(async () => {
     if (!lastPrintData) return;
     setIsPrintingDuplicate(true);
@@ -295,7 +317,8 @@ export default function HomeScreen() {
       } catch {
         // Native printReceipt retries bind — continue even if JS check failed
       }
-      await printer.printReceipt(lastPrintData);
+      await printer.printReceipt(lastPrintData, true);
+      await saveInvoiceFromReceipt(lastPrintData, true);
       setShowDuplicate(false);
       resetSteps();
     } catch (e) {
@@ -304,7 +327,7 @@ export default function HomeScreen() {
     } finally {
       setIsPrintingDuplicate(false);
     }
-  }, [lastPrintData, printer, resetSteps]);
+  }, [lastPrintData, printer, resetSteps, saveInvoiceFromReceipt]);
 
   const handlePrint = useCallback(
     async () => {
@@ -336,6 +359,8 @@ export default function HomeScreen() {
           setSessionCount(count);
         }
 
+        await saveInvoiceFromReceipt(receiptData, false);
+
         setLastPrintData(receiptData);
         setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
         setShowDuplicate(true);
@@ -347,7 +372,7 @@ export default function HomeScreen() {
         setIsPrinting(false);
       }
     },
-    [form, printer, router]
+    [form, printer, router, saveInvoiceFromReceipt]
   );
 
   const handleSelectFuel = useCallback(

@@ -128,12 +128,19 @@ const printLogo = async (): Promise<void> => {
   }
 };
 
-const buildReceiptLines = (data: BluetoothReceiptData): string[] => {
+const buildReceiptLines = (data: BluetoothReceiptData, isDuplicate = false): string[] => {
   const lines: string[] = [
     center("Welcome to"),
     ...wrapWordLines(data.storeName.toUpperCase()),
     ...wrapAddressLines(data.address),
     center("FUEL RECEIPT"),
+  ];
+
+  if (isDuplicate) {
+    lines.push(center("** DUPLICATE COPY **"));
+  }
+
+  lines.push(
     DIV,
     row("DATE:", data.dateTime),
     DIV,
@@ -142,8 +149,8 @@ const buildReceiptLines = (data: BluetoothReceiptData): string[] => {
     row("RATE/LTR:", `Rs. ${data.rate}`),
     DIV,
     row("TOTAL AMOUNT:", `Rs. ${data.total}`),
-    DIV,
-  ];
+    DIV
+  );
 
   if (data.vehicleNo?.trim()) {
     lines.push(row("VEHICLE NO:", data.vehicleNo), DIV);
@@ -220,7 +227,10 @@ export interface BluetoothReceiptData {
   stationPhone?: string;
 }
 
-export const printReceipt = async (data: BluetoothReceiptData): Promise<void> => {
+export const printReceipt = async (
+  data: BluetoothReceiptData,
+  isDuplicate = false
+): Promise<void> => {
   const ok = await connectInnerPrinter();
   if (!ok) {
     throw new Error("Could not connect to InnerPrinter");
@@ -228,7 +238,7 @@ export const printReceipt = async (data: BluetoothReceiptData): Promise<void> =>
 
   await printLogo();
 
-  const lines = buildReceiptLines(data);
+  const lines = buildReceiptLines(data, isDuplicate);
   const bytes = buildRawReceipt(lines, 5);
   await sendRawBytes(bytes);
 };

@@ -97,7 +97,7 @@ export function usePrinter() {
   }, [initPrinter, refreshStatus]);
 
   const printReceipt = useCallback(
-    async (data: ReceiptData): Promise<void> => {
+    async (data: ReceiptData, isDuplicate = false): Promise<void> => {
       if (!hasNativePrinterModule()) {
         throw new Error("Bluetooth printer module missing. Rebuild and install the APK.");
       }
@@ -109,7 +109,7 @@ export function usePrinter() {
         throw new Error("Could not connect to InnerPrinter via Bluetooth");
       }
 
-      await printerService.printFuelReceipt(data);
+      await printerService.printFuelReceipt(data, isDuplicate);
       await refreshStatus();
     },
     [ensureConnected, refreshStatus]

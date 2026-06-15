@@ -8,6 +8,7 @@ import { PrinterProvider } from "../contexts/PrinterContext";
 import { useStationStore } from "../stores/stationStore";
 import { colors } from "../constants/theme";
 import { logPrinterNativeModules } from "../src/services/printerNativeModule";
+import { getInvoices } from "../src/services/InvoiceHistoryService";
 
 function AppBootstrap({ children }: { children: React.ReactNode }) {
   const hydrate = useStationStore((s) => s.hydrate);
@@ -18,6 +19,7 @@ function AppBootstrap({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     hydrate();
+    getInvoices().catch(() => undefined);
   }, [hydrate]);
 
   useEffect(() => {

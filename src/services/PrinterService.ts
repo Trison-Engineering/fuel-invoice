@@ -66,9 +66,9 @@ class PrinterServiceImpl {
     await printSunmiTestLine();
   }
 
-  async printFuelReceipt(data: FuelReceiptData): Promise<void> {
+  async printFuelReceipt(data: FuelReceiptData, isDuplicate = false): Promise<void> {
     await this.assertPrinterReady();
-    await printSunmiReceiptFromFuelData(data);
+    await printSunmiReceiptFromFuelData(data, isDuplicate);
   }
 
   async printDiagnostic(): Promise<string> {
