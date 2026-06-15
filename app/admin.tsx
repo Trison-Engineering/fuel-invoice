@@ -169,15 +169,20 @@ export default function AdminScreen() {
     loadData();
   }, [loadData]);
 
+  const originalInvoices = useMemo(
+    () => invoices.filter((inv) => !inv.isDuplicate),
+    [invoices]
+  );
+
   const invoiceStats = useMemo(() => {
-    const today = invoices.filter((inv) => isPrintedToday(inv.printedAt)).length;
-    const week = invoices.filter((inv) => isPrintedThisWeek(inv.printedAt)).length;
-    return { today, week, total: invoices.length };
-  }, [invoices]);
+    const today = originalInvoices.filter((inv) => isPrintedToday(inv.printedAt)).length;
+    const week = originalInvoices.filter((inv) => isPrintedThisWeek(inv.printedAt)).length;
+    return { today, week, total: originalInvoices.length };
+  }, [originalInvoices]);
 
   const filteredInvoices = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return invoices.filter((inv) => {
+    return originalInvoices.filter((inv) => {
       if (dateFilter === "today" && !isPrintedToday(inv.printedAt)) return false;
       if (dateFilter === "week" && !isPrintedThisWeek(inv.printedAt)) return false;
       if (!query) return true;
@@ -186,7 +191,7 @@ export default function AdminScreen() {
         inv.dateTime.toLowerCase().includes(query)
       );
     });
-  }, [invoices, searchQuery, dateFilter]);
+  }, [originalInvoices, searchQuery, dateFilter]);
 
   const handleReprint = useCallback(
     async (invoice: StoredInvoice) => {
@@ -274,15 +279,15 @@ export default function AdminScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Today</Text>
-            <Text style={styles.statValue}>{invoiceStats.today} slips</Text>
+            <Text style={styles.statValue}>{invoiceStats.today} originals</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>This Week</Text>
-            <Text style={styles.statValue}>{invoiceStats.week} slips</Text>
+            <Text style={styles.statValue}>{invoiceStats.week} originals</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Total</Text>
-            <Text style={styles.statValue}>{invoiceStats.total} slips</Text>
+            <Text style={styles.statValue}>{invoiceStats.total} originals</Text>
           </View>
         </View>
 
@@ -330,11 +335,6 @@ export default function AdminScreen() {
                     >
                       {invoice.vehicleNo.trim() ? `Vehicle: ${invoice.vehicleNo}` : "No Vehicle"}
                     </Text>
-                    {invoice.isDuplicate ? (
-                      <View style={styles.duplicateBadge}>
-                        <Text style={styles.duplicateBadgeText}>DUPLICATE</Text>
-                      </View>
-                    ) : null}
                   </View>
                   <Pressable
                     onPress={() => handleReprint(invoice)}
@@ -712,17 +712,6 @@ const styles = StyleSheet.create({
   },
   invoiceVehicleEmpty: {
     color: colors.muted,
-  },
-  duplicateBadge: {
-    backgroundColor: "#fff7ed",
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  duplicateBadgeText: {
-    color: "#ea580c",
-    fontSize: 10,
-    fontWeight: "700",
   },
   printButton: {
     backgroundColor: "#1a56db",
