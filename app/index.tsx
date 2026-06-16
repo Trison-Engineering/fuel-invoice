@@ -39,6 +39,7 @@ import {
 const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 100;
 const FUEL_SELECT_DELAY_MS = 60;
+const DUPLICATE_COUNTDOWN_SECONDS = 10;
 const ADMIN_EMAIL = "admin@admin.com";
 const ADMIN_PASSWORD = "admin@123";
 
@@ -67,6 +68,28 @@ function ProgressDots({ currentStep }: { currentStep: number }) {
   );
 }
 
+function CountdownRing({ countdown, total }: { countdown: number; total: number }) {
+  const progress = countdown / total;
+  const ringColor = (segment: number) => (progress >= segment ? "#1a56db" : "#e5e7eb");
+
+  return (
+    <View style={styles.ringOuter}>
+      <View
+        style={[
+          styles.ringProgress,
+          {
+            borderTopColor: ringColor(0.875),
+            borderRightColor: ringColor(0.625),
+            borderBottomColor: ringColor(0.375),
+            borderLeftColor: ringColor(0.125),
+          },
+        ]}
+      />
+      <Text style={styles.countdownNumber}>{countdown}</Text>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -84,6 +107,10 @@ export default function HomeScreen() {
     type: "success",
   });
 
+  const [showDuplicate, setShowDuplicate] = useState(false);
+  const [duplicateCountdown, setDuplicateCountdown] = useState(DUPLICATE_COUNTDOWN_SECONDS);
+  const [lastPrintData, setLastPrintData] = useState<ReceiptData | null>(null);
+  const [isPrintingDuplicate, setIsPrintingDuplicate] = useState(false);
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -91,6 +118,8 @@ export default function HomeScreen() {
   const [adminPassword, setAdminPassword] = useState("");
 
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const duplicateSlideAnim = useRef(new Animated.Value(0)).current;
+  const closingDuplicate = useRef(false);
   const cardWidth = screenWidth * 0.85;
 
   const hideToast = useCallback(() => {
@@ -214,7 +243,36 @@ export default function HomeScreen() {
     form.updateVolume("");
     form.updateVehicleNumber("");
     setPrintSuccess(false);
+    setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
+    setLastPrintData(null);
   }, [form]);
+
+  useEffect(() => {
+    if (!showDuplicate) {
+      closingDuplicate.current = false;
+      return;
+    }
+    if (duplicateCountdown <= 0) {
+      if (closingDuplicate.current) return;
+      closingDuplicate.current = true;
+      Animated.timing(duplicateSlideAnim, {
+        toValue: screenWidth,
+        duration: 300,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => {
+        setShowDuplicate(false);
+        duplicateSlideAnim.setValue(0);
+        closingDuplicate.current = false;
+        resetSteps();
+      });
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDuplicateCountdown((prev) => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [showDuplicate, duplicateCountdown, duplicateSlideAnim, screenWidth, resetSteps]);
 
   const handleStartCounter = useCallback(async () => {
     await startSlipSession();
@@ -233,19 +291,43 @@ export default function HomeScreen() {
     }
   }, [adminEmail, adminPassword, router]);
 
-  const saveInvoiceFromReceipt = useCallback(async (receiptData: ReceiptData) => {
-    await saveInvoice({
-      product: productTypeToStorageKey(receiptData.productType),
-      volume: parseFloat(receiptData.volume),
-      rate: parseFloat(receiptData.fuelRate),
-      totalAmount: receiptData.totalAmount,
-      vehicleNo: receiptData.vehicleNumber || "",
-      stationName: receiptData.stationName,
-      address: receiptData.stationAddress,
-      dateTime: formatSlipDateTime(),
-      isDuplicate: false,
-    });
-  }, []);
+  const saveInvoiceFromReceipt = useCallback(
+    async (receiptData: ReceiptData, isDuplicate: boolean) => {
+      await saveInvoice({
+        product: productTypeToStorageKey(receiptData.productType),
+        volume: parseFloat(receiptData.volume),
+        rate: parseFloat(receiptData.fuelRate),
+        totalAmount: receiptData.totalAmount,
+        vehicleNo: receiptData.vehicleNumber || "",
+        stationName: receiptData.stationName,
+        address: receiptData.stationAddress,
+        dateTime: formatSlipDateTime(),
+        isDuplicate,
+      });
+    },
+    []
+  );
+
+  const handleDuplicatePrint = useCallback(async () => {
+    if (!lastPrintData) return;
+    setIsPrintingDuplicate(true);
+    try {
+      try {
+        await printer.ensureConnected();
+      } catch {
+        // Native printReceipt retries bind — continue even if JS check failed
+      }
+      await printer.printReceipt(lastPrintData, true);
+      await saveInvoiceFromReceipt(lastPrintData, true);
+      setShowDuplicate(false);
+      resetSteps();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Print failed";
+      Alert.alert("Print failed", msg);
+    } finally {
+      setIsPrintingDuplicate(false);
+    }
+  }, [lastPrintData, printer, resetSteps, saveInvoiceFromReceipt]);
 
   const handlePrint = useCallback(
     async () => {
@@ -277,13 +359,12 @@ export default function HomeScreen() {
           setSessionCount(count);
         }
 
-        await saveInvoiceFromReceipt(receiptData);
+        await saveInvoiceFromReceipt(receiptData, false);
 
-        setPrintSuccess(true);
-        setTimeout(() => {
-          setPrintSuccess(false);
-          resetSteps();
-        }, 800);
+        setLastPrintData(receiptData);
+        setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
+        setShowDuplicate(true);
+        setTimeout(() => setPrintSuccess(false), 800);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Print failed";
         Alert.alert("Print failed", msg);
@@ -291,7 +372,7 @@ export default function HomeScreen() {
         setIsPrinting(false);
       }
     },
-    [form, printer, router, saveInvoiceFromReceipt, resetSteps]
+    [form, printer, router, saveInvoiceFromReceipt]
   );
 
   const handleSelectFuel = useCallback(
@@ -472,6 +553,32 @@ export default function HomeScreen() {
       {printSuccess ? (
         <View style={styles.fullOverlay}>
           <Text style={styles.successText}>✓ Printed!</Text>
+        </View>
+      ) : null}
+
+      {showDuplicate ? (
+        <View style={styles.fullOverlay}>
+          <Animated.View
+            style={[
+              styles.duplicateCard,
+              { width: cardWidth, transform: [{ translateX: duplicateSlideAnim }] },
+            ]}
+          >
+            <Text style={styles.duplicateTitle}>Print Duplicate?</Text>
+            <CountdownRing countdown={duplicateCountdown} total={DUPLICATE_COUNTDOWN_SECONDS} />
+            <Pressable
+              onPress={handleDuplicatePrint}
+              disabled={isPrintingDuplicate}
+              style={[styles.duplicateButton, isPrintingDuplicate && styles.buttonDisabled]}
+            >
+              <Text style={styles.duplicateButtonText}>🖨️ Print Duplicate</Text>
+            </Pressable>
+            <Text style={styles.autoCloseText}>
+              {isPrintingDuplicate
+                ? "Printing duplicate..."
+                : `Auto-closing in ${duplicateCountdown} seconds`}
+            </Text>
+          </Animated.View>
         </View>
       ) : null}
 
@@ -744,6 +851,60 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 13,
     fontWeight: "600",
+  },
+  duplicateCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 28,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  duplicateTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#1a1a2e",
+    marginBottom: 24,
+  },
+  ringOuter: {
+    width: 120,
+    height: 120,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
+  ringProgress: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 8,
+  },
+  countdownNumber: {
+    fontSize: 48,
+    fontWeight: "700",
+    color: "#1a56db",
+  },
+  duplicateButton: {
+    backgroundColor: "#1a56db",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  duplicateButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  autoCloseText: {
+    fontSize: 12,
+    color: "#9ca3af",
   },
   modalOverlay: {
     flex: 1,

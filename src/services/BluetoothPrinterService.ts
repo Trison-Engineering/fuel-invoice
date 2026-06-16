@@ -7,7 +7,8 @@ import {
 import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
 import {
-  LOGO_PRINT_WIDTH_SINGLE,
+  LOGO_PRINT_LEFT_30_PCT,
+  LOGO_PRINT_WIDTH_30_PCT,
   preprocessLogoForPrinting,
   resolveLogoBase64,
 } from "../utils/printLogoUtil";
@@ -18,7 +19,6 @@ export const INNER_PRINTER_NAME = "InnerPrinter";
 
 const LINE = 32;
 const DIV = "-".repeat(LINE);
-const LOGO_PRINT_FEED = 1;
 
 const escpos = BluetoothEscposPrinter as typeof BluetoothEscposPrinter & {
   sendRAWData(base64: string): Promise<void>;
@@ -86,12 +86,6 @@ const wrapWordLines = (text: string): string[] => {
 
 const wrapAddressLines = (address: string): string[] => wrapWordLines(address);
 
-/** Raw LF after logo — uses sendRAWData to avoid printText prefix bytes. */
-const sendLogoSeparator = async (): Promise<void> => {
-  if (!escpos.sendRAWData) return;
-  await escpos.sendRAWData(Buffer.from([0x0a]).toString("base64"));
-};
-
 const printLogo = async (): Promise<void> => {
   try {
     const includeLogo = await getItem<boolean>(StorageKeys.INCLUDE_LOGO_IN_PRINT);
@@ -115,14 +109,12 @@ const printLogo = async (): Promise<void> => {
     );
 
     await BluetoothEscposPrinter.printPic(logo1Processed, {
-      width: 192,
-      left: 96,
+      width: LOGO_PRINT_WIDTH_30_PCT,
+      left: LOGO_PRINT_LEFT_30_PCT,
       center: false,
       autoCut: false,
-      feed: LOGO_PRINT_FEED,
+      feed: 0,
     });
-
-    await sendLogoSeparator();
   } catch (e) {
     console.warn("[BT] Logo print failed:", e);
   }

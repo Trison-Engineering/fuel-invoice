@@ -19,7 +19,7 @@ import {
   type SlipSession,
 } from "../src/services/SlipCounterService";
 import {
-  getInvoices,
+  getOriginalInvoices,
   saveInvoice,
   formatSlipDateTime,
   storageKeyToProductType,
@@ -155,7 +155,7 @@ export default function AdminScreen() {
       getSessionHistory(),
       isSessionActive(),
       getCurrentSession(),
-      getInvoices(),
+      getOriginalInvoices(),
     ]);
     setPriceHistory(history);
     setSessionHistory(sessions);
@@ -169,20 +169,15 @@ export default function AdminScreen() {
     loadData();
   }, [loadData]);
 
-  const originalInvoices = useMemo(
-    () => invoices.filter((inv) => !inv.isDuplicate),
-    [invoices]
-  );
-
   const invoiceStats = useMemo(() => {
-    const today = originalInvoices.filter((inv) => isPrintedToday(inv.printedAt)).length;
-    const week = originalInvoices.filter((inv) => isPrintedThisWeek(inv.printedAt)).length;
-    return { today, week, total: originalInvoices.length };
-  }, [originalInvoices]);
+    const today = invoices.filter((inv) => isPrintedToday(inv.printedAt)).length;
+    const week = invoices.filter((inv) => isPrintedThisWeek(inv.printedAt)).length;
+    return { today, week, total: invoices.length };
+  }, [invoices]);
 
   const filteredInvoices = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return originalInvoices.filter((inv) => {
+    return invoices.filter((inv) => {
       if (dateFilter === "today" && !isPrintedToday(inv.printedAt)) return false;
       if (dateFilter === "week" && !isPrintedThisWeek(inv.printedAt)) return false;
       if (!query) return true;
@@ -191,7 +186,7 @@ export default function AdminScreen() {
         inv.dateTime.toLowerCase().includes(query)
       );
     });
-  }, [originalInvoices, searchQuery, dateFilter]);
+  }, [invoices, searchQuery, dateFilter]);
 
   const handleReprint = useCallback(
     async (invoice: StoredInvoice) => {
@@ -217,7 +212,7 @@ export default function AdminScreen() {
           isDuplicate: true,
         });
 
-        const updated = await getInvoices();
+        const updated = await getOriginalInvoices();
         setInvoices(updated);
       } catch {
         Alert.alert("Print Failed", "Could not print. Check printer connection.");
@@ -294,8 +289,10 @@ export default function AdminScreen() {
         {filteredInvoices.length === 0 ? (
           <View style={styles.invoiceEmpty}>
             <Text style={styles.invoiceEmptyIcon}>🧾</Text>
-            <Text style={styles.invoiceEmptyTitle}>No invoices yet</Text>
-            <Text style={styles.invoiceEmptySubtitle}>Printed receipts will appear here</Text>
+            <Text style={styles.invoiceEmptyTitle}>No original invoices yet</Text>
+            <Text style={styles.invoiceEmptySubtitle}>
+              Only first-run prints appear here. Duplicates are hidden.
+            </Text>
           </View>
         ) : (
           filteredInvoices.map((invoice) => {

@@ -43,6 +43,16 @@ export function storageKeyToProductType(product: string): string {
   return "Petrol";
 }
 
+/** True for first-run prints; duplicates and legacy rows without the flag count as non-duplicate. */
+export function isOriginalInvoice(invoice: StoredInvoice): boolean {
+  return invoice.isDuplicate !== true;
+}
+
+export const getOriginalInvoices = async (): Promise<StoredInvoice[]> => {
+  const invoices = await getInvoices();
+  return invoices.filter(isOriginalInvoice);
+};
+
 export const saveInvoice = async (
   data: Omit<StoredInvoice, "id" | "printedAt">
 ): Promise<StoredInvoice> => {
