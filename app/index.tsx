@@ -47,9 +47,11 @@ const FUEL_OPTIONS = [
   { id: "Petrol", label: "PETROL", color: "#22c55e" },
   { id: "Diesel", label: "DIESEL", color: "#3b82f6" },
   { id: "Hi-Octane", label: "HI-OCTANE", color: "#a855f7" },
+  { id: "Lubricants", label: "LUBRICANTS", color: "#f59e0b" },
+  { id: "Car Service", label: "CAR SERVICE", color: "#ef4444" },
 ] as const;
 
-type FuelId = (typeof FUEL_OPTIONS)[number]["id"];
+type ProductId = (typeof FUEL_OPTIONS)[number]["id"];
 
 function ProgressDots({ currentStep }: { currentStep: number }) {
   return (
@@ -98,7 +100,7 @@ export default function HomeScreen() {
   const { width: screenWidth } = useWindowDimensions();
 
   const [currentStep, setCurrentStep] = useState(1);
-  const [selectedProduct, setSelectedProduct] = useState<FuelId | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductId | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printSuccess, setPrintSuccess] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" }>({
@@ -239,9 +241,7 @@ export default function HomeScreen() {
   const resetSteps = useCallback(() => {
     setCurrentStep(1);
     setSelectedProduct(null);
-    form.updateFuelRate("");
-    form.updateVolume("");
-    form.updateVehicleNumber("");
+    form.reset();
     setPrintSuccess(false);
     setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
     setLastPrintData(null);
@@ -293,11 +293,19 @@ export default function HomeScreen() {
 
   const saveInvoiceFromReceipt = useCallback(
     async (receiptData: ReceiptData, isDuplicate: boolean) => {
+      const isCarService = receiptData.productType === "Car Service";
+      const isLubricants = receiptData.productType === "Lubricants";
+
       await saveInvoice({
         product: productTypeToStorageKey(receiptData.productType),
-        volume: parseFloat(receiptData.volume),
-        rate: parseFloat(receiptData.fuelRate),
-        totalAmount: receiptData.totalAmount,
+        volume: isCarService || isLubricants ? null : parseFloat(receiptData.volume),
+        rate: isCarService
+          ? null
+          : isLubricants
+            ? parseFloat(receiptData.fuelRate)
+            : parseFloat(receiptData.fuelRate),
+        totalAmount: isCarService ? 0 : receiptData.totalAmount,
+        lubricantName: isLubricants ? receiptData.lubricantName : undefined,
         vehicleNo: receiptData.vehicleNumber || "",
         stationName: receiptData.stationName,
         address: receiptData.stationAddress,
@@ -338,7 +346,11 @@ export default function HomeScreen() {
       }
 
       if (!form.validate()) {
-        Alert.alert("Invalid input", "Please check fuel rate and volume.");
+        const msg =
+          form.productType === "Lubricants"
+            ? "Please enter lubricant name and price."
+            : "Please check fuel rate and volume.";
+        Alert.alert("Invalid input", msg);
         return;
       }
 
@@ -375,15 +387,34 @@ export default function HomeScreen() {
     [form, printer, router, saveInvoiceFromReceipt]
   );
 
-  const handleSelectFuel = useCallback(
-    (fuelId: FuelId) => {
-      setSelectedProduct(fuelId);
-      form.setProductType(fuelId);
-      form.updateFuelRate(form.station.getFuelPrice(fuelId));
-      setTimeout(() => goForward(2), FUEL_SELECT_DELAY_MS);
+  const handleSelectProduct = useCallback(
+    (productId: ProductId) => {
+      setSelectedProduct(productId);
+      form.setProductType(productId);
+
+      if (productId === "Car Service") {
+        form.updateFuelRate("");
+        form.updateVolume("");
+        setTimeout(() => goForward(3), FUEL_SELECT_DELAY_MS);
+      } else if (productId === "Lubricants") {
+        form.updateFuelRate("");
+        form.updateVolume("");
+        setTimeout(() => goForward(2), FUEL_SELECT_DELAY_MS);
+      } else {
+        form.updateFuelRate(form.station.getFuelPrice(productId));
+        setTimeout(() => goForward(2), FUEL_SELECT_DELAY_MS);
+      }
     },
     [form, goForward]
   );
+
+  const handleBack = useCallback(() => {
+    if (currentStep === 3 && selectedProduct === "Car Service") {
+      goBack(1);
+    } else {
+      goBack(currentStep - 1);
+    }
+  }, [currentStep, selectedProduct, goBack]);
 
   if (!form.station.isHydrated) {
     return (
@@ -406,7 +437,7 @@ export default function HomeScreen() {
       case 1:
         return (
           <>
-            <Text style={styles.cardTitle}>Select Fuel Type</Text>
+            <Text style={styles.cardTitle}>Select Product</Text>
             <View style={{ marginTop: 8 }}>
               {FUEL_OPTIONS.map((option) => {
                 const isSelected = selectedProduct === option.id;
@@ -414,7 +445,7 @@ export default function HomeScreen() {
                 return (
                   <Pressable
                     key={option.id}
-                    onPress={() => handleSelectFuel(option.id)}
+                    onPress={() => handleSelectProduct(option.id)}
                     style={[
                       styles.fuelRow,
                       isSelected && {
@@ -444,6 +475,46 @@ export default function HomeScreen() {
         );
 
       case 2:
+        if (selectedProduct === "Lubricants") {
+          const lubricantReady =
+            form.lubricantName.trim().length > 0 && form.lubricantPrice.trim().length > 0;
+          return (
+            <>
+              <Text style={styles.cardTitle}>Lubricant Details</Text>
+              <Text style={styles.cardSubtitle}>Enter name and price</Text>
+              <View style={styles.lubricantFieldGroup}>
+                <Text style={styles.lubricantLabel}>Lubricant Name</Text>
+                <TextInput
+                  style={styles.lubricantInput}
+                  value={form.lubricantName}
+                  onChangeText={form.updateLubricantName}
+                  placeholder="e.g. Engine Oil 5W-30"
+                  placeholderTextColor="#9ca3af"
+                  autoFocus
+                />
+              </View>
+              <View style={styles.lubricantFieldGroup}>
+                <Text style={styles.lubricantLabel}>Lubricant Price (PKR)</Text>
+                <TextInput
+                  style={styles.lubricantInput}
+                  value={form.lubricantPrice}
+                  onChangeText={form.updateLubricantPrice}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+              <Pressable
+                onPress={() => goForward(3)}
+                disabled={!lubricantReady}
+                style={[styles.nextButton, !lubricantReady && styles.buttonDisabled]}
+              >
+                <Text style={styles.nextButtonText}>Next →</Text>
+              </Pressable>
+            </>
+          );
+        }
+
         return (
           <>
             <Text style={styles.cardTitle}>Litres Dispensed</Text>
@@ -524,7 +595,7 @@ export default function HomeScreen() {
         >
           {currentStep > 1 ? (
             <Pressable
-              onPress={() => goBack(currentStep - 1)}
+              onPress={handleBack}
               style={styles.backButton}
               hitSlop={8}
             >
@@ -778,6 +849,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#1a1a2e",
     flex: 1,
+    paddingVertical: 8,
+  },
+  lubricantFieldGroup: {
+    marginBottom: 20,
+  },
+  lubricantLabel: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  lubricantInput: {
+    fontSize: 20,
+    textAlign: "center",
+    color: "#1a1a2e",
+    borderBottomWidth: 2,
+    borderBottomColor: "#1a56db",
     paddingVertical: 8,
   },
   nextButton: {

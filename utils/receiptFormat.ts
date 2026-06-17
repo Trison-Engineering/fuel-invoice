@@ -270,7 +270,16 @@ export interface FuelReceiptPrintView {
   rate: string;
   total: string;
   vehicleNo: string;
+  lubricantName?: string;
   logoDataUrl?: string | null;
+}
+
+function isCarServiceProduct(product: string): boolean {
+  return product.toLowerCase() === "car service";
+}
+
+function isLubricantsProduct(product: string): boolean {
+  return product.toLowerCase() === "lubricants";
 }
 
 export function mapFuelReceiptToPrintView(data: ReceiptData): FuelReceiptPrintView {
@@ -286,12 +295,15 @@ export function mapFuelReceiptToPrintView(data: ReceiptData): FuelReceiptPrintVi
     rate: formatRateRs(data.fuelRate),
     total: formatTotalRs(data.totalAmount),
     vehicleNo: safeStr(data.vehicleNumber).toUpperCase(),
+    lubricantName: data.lubricantName ? toReceiptCase(data.lubricantName) : undefined,
     logoDataUrl: data.logoDataUrl,
   };
 }
 
 export function buildReceiptPrintPlan(view: FuelReceiptPrintView): ReceiptPrintLine[] {
   const lines: ReceiptPrintLine[] = [...buildHeaderPrintLines(view)];
+  const carService = isCarServiceProduct(view.product);
+  const lubricants = isLubricantsProduct(view.product);
 
   lines.push({ text: RECEIPT_DIVIDER, align: 0, font: "body", fontSizePx: RECEIPT_FONT.body });
 
@@ -327,27 +339,43 @@ export function buildReceiptPrintPlan(view: FuelReceiptPrintView): ReceiptPrintL
     font: "body",
     fontSizePx: RECEIPT_FONT.body,
   });
-  lines.push({
-    text: formatRow("Volume", view.volume),
-    align: 0,
-    font: "body",
-    fontSizePx: RECEIPT_FONT.body,
-  });
-  lines.push({
-    text: formatRow("Rate/Ltr", view.rate),
-    align: 0,
-    font: "body",
-    fontSizePx: RECEIPT_FONT.body,
-  });
-  lines.push({ text: RECEIPT_DIVIDER, align: 0, font: "body", fontSizePx: RECEIPT_FONT.body });
 
-  lines.push({
-    text: formatRow("Total Amount", view.total),
-    align: 0,
-    bold: true,
-    font: "total",
-    fontSizePx: RECEIPT_FONT.total,
-  });
+  if (lubricants && view.lubricantName?.trim()) {
+    lines.push({
+      text: formatRow("Lubricant", view.lubricantName),
+      align: 0,
+      font: "body",
+      fontSizePx: RECEIPT_FONT.body,
+    });
+  }
+
+  if (!carService && !lubricants) {
+    lines.push({
+      text: formatRow("Volume", view.volume),
+      align: 0,
+      font: "body",
+      fontSizePx: RECEIPT_FONT.body,
+    });
+    lines.push({
+      text: formatRow("Rate/Ltr", view.rate),
+      align: 0,
+      font: "body",
+      fontSizePx: RECEIPT_FONT.body,
+    });
+  }
+
+  if (!carService) {
+    lines.push({ text: RECEIPT_DIVIDER, align: 0, font: "body", fontSizePx: RECEIPT_FONT.body });
+
+    lines.push({
+      text: formatRow("Total Amount", view.total),
+      align: 0,
+      bold: true,
+      font: "total",
+      fontSizePx: RECEIPT_FONT.total,
+    });
+  }
+
   lines.push({ text: RECEIPT_DIVIDER, align: 0, font: "body", fontSizePx: RECEIPT_FONT.body });
 
   if (view.vehicleNo.trim()) {

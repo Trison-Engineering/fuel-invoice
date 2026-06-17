@@ -23,17 +23,24 @@ export function useFormState() {
   const [fuelRate, setFuelRate] = useState("");
   const [volume, setVolume] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
+  const [lubricantName, setLubricantName] = useState("");
+  const [lubricantPrice, setLubricantPrice] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
 
   const fieldRefs = useRef<Record<string, unknown>>({});
   const scrollRef = useRef<ScrollView>(null);
 
   const totalAmount = useMemo(() => {
+    if (productType === "Lubricants") {
+      const price = parseFloat(lubricantPrice);
+      return isNaN(price) ? 0 : price;
+    }
+    if (productType === "Car Service") return 0;
     const rate = parseFloat(fuelRate);
     const vol = parseFloat(volume);
     if (isNaN(rate) || isNaN(vol)) return 0;
     return rate * vol;
-  }, [fuelRate, volume]);
+  }, [productType, fuelRate, volume, lubricantPrice]);
 
   const totalDisplay = formatCurrency(totalAmount);
 
@@ -83,7 +90,33 @@ export function useFormState() {
     [clearFieldError]
   );
 
+  const updateLubricantName = useCallback((value: string) => {
+    setLubricantName(value);
+  }, []);
+
+  const updateLubricantPrice = useCallback(
+    (value: string) => {
+      if (isValidDecimal(value)) {
+        setLubricantPrice(value);
+      }
+    },
+    []
+  );
+
+  const reset = useCallback(() => {
+    setProductType("Petrol");
+    setFuelRate("");
+    setVolume("");
+    setVehicleNumber("");
+    setLubricantName("");
+    setLubricantPrice("");
+    setErrors({});
+  }, []);
+
   const getReceiptData = useCallback((): ReceiptData => {
+    const isLubricants = productType === "Lubricants";
+    const isCarService = productType === "Car Service";
+
     return {
       stationName: station.stationName,
       stationAddress: station.stationAddress,
@@ -92,11 +125,12 @@ export function useFormState() {
       time: getCurrentTime24(),
       paymentMethod: "Cash",
       productType,
-      fuelRate,
-      volume,
+      fuelRate: isLubricants ? lubricantPrice : isCarService ? "" : fuelRate,
+      volume: isLubricants || isCarService ? "" : volume,
       totalAmount,
       vehicleNumber,
       customerName: "",
+      lubricantName: isLubricants ? lubricantName : undefined,
       stationPhone: station.stationPhone,
       logoDataUrl: station.logoDataUrl,
       logo2DataUrl: station.logo2DataUrl,
@@ -110,6 +144,8 @@ export function useFormState() {
     volume,
     totalAmount,
     vehicleNumber,
+    lubricantName,
+    lubricantPrice,
   ]);
 
   const registerFieldRef = useCallback((field: string, y: number) => {
@@ -124,6 +160,24 @@ export function useFormState() {
   }, []);
 
   const runValidation = useCallback((): boolean => {
+    if (productType === "Car Service") {
+      setErrors({});
+      return true;
+    }
+
+    if (productType === "Lubricants") {
+      const lubricantErrors: FormErrors = {};
+      if (!lubricantName.trim()) {
+        lubricantErrors.fuelRate = "Lubricant name is required";
+      }
+      const price = parseFloat(lubricantPrice);
+      if (!lubricantPrice.trim() || isNaN(price) || price <= 0) {
+        lubricantErrors.volume = "Lubricant price must be greater than 0";
+      }
+      setErrors(lubricantErrors);
+      return Object.keys(lubricantErrors).length === 0;
+    }
+
     const newErrors = validateForm(formData);
     setErrors(newErrors);
     const firstField = getFirstErrorField(newErrors);
@@ -131,7 +185,7 @@ export function useFormState() {
       scrollToField(firstField);
     }
     return Object.keys(newErrors).length === 0;
-  }, [formData, scrollToField]);
+  }, [productType, lubricantName, lubricantPrice, formData, scrollToField]);
 
   return {
     formData,
@@ -148,6 +202,11 @@ export function useFormState() {
     updateVolume,
     vehicleNumber,
     updateVehicleNumber,
+    lubricantName,
+    updateLubricantName,
+    lubricantPrice,
+    updateLubricantPrice,
+    reset,
     clearFieldError,
     validate: runValidation,
     getReceiptData,

@@ -121,6 +121,10 @@ const printLogo = async (): Promise<void> => {
 };
 
 const buildReceiptLines = (data: BluetoothReceiptData, isDuplicate = false): string[] => {
+  const productLower = data.product.toLowerCase();
+  const carService = productLower === "car service";
+  const lubricants = productLower === "lubricants";
+
   const lines: string[] = [
     center("Welcome to"),
     ...wrapWordLines(data.storeName.toUpperCase()),
@@ -132,17 +136,21 @@ const buildReceiptLines = (data: BluetoothReceiptData, isDuplicate = false): str
     lines.push(center("** DUPLICATE COPY **"));
   }
 
-  lines.push(
-    DIV,
-    row("DATE:", data.dateTime),
-    DIV,
-    row("PRODUCT:", data.product),
-    row("VOLUME:", `${data.volume} LTR`),
-    row("RATE/LTR:", `Rs. ${data.rate}`),
-    DIV,
-    row("TOTAL AMOUNT:", `Rs. ${data.total}`),
-    DIV
-  );
+  lines.push(DIV, row("DATE:", data.dateTime), DIV, row("PRODUCT:", data.product));
+
+  if (lubricants && data.lubricantName?.trim()) {
+    lines.push(row("LUBRICANT:", data.lubricantName));
+  }
+
+  if (!carService && !lubricants) {
+    lines.push(row("VOLUME:", `${data.volume} LTR`), row("RATE/LTR:", `Rs. ${data.rate}`));
+  }
+
+  if (!carService) {
+    lines.push(DIV, row("TOTAL AMOUNT:", `Rs. ${data.total}`), DIV);
+  } else {
+    lines.push(DIV);
+  }
 
   if (data.vehicleNo?.trim()) {
     lines.push(row("VEHICLE NO:", data.vehicleNo), DIV);
@@ -216,6 +224,7 @@ export interface BluetoothReceiptData {
   rate: string;
   total: string;
   vehicleNo?: string;
+  lubricantName?: string;
   stationPhone?: string;
 }
 

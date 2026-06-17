@@ -8,14 +8,15 @@ export interface StoredInvoice {
   id: string;
   printedAt: string;
   product: string;
-  volume: number;
-  rate: number;
+  volume?: number | null;
+  rate?: number | null;
   totalAmount: number;
   vehicleNo: string;
   stationName: string;
   address: string;
   dateTime: string;
   isDuplicate: boolean;
+  lubricantName?: string;
 }
 
 export function formatSlipDateTime(date: Date = new Date()): string {
@@ -34,12 +35,16 @@ export function productTypeToStorageKey(productType: string): string {
   const lower = productType.toLowerCase();
   if (lower.includes("diesel")) return "DIESEL";
   if (lower.includes("octane")) return "HI-OCTANE";
+  if (lower.includes("lubricant")) return "LUBRICANTS";
+  if (lower.includes("car service")) return "CAR SERVICE";
   return "PETROL";
 }
 
 export function storageKeyToProductType(product: string): string {
   if (product === "DIESEL") return "Diesel";
   if (product === "HI-OCTANE") return "Hi-Octane";
+  if (product === "LUBRICANTS") return "Lubricants";
+  if (product === "CAR SERVICE") return "Car Service";
   return "Petrol";
 }
 

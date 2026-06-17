@@ -32,6 +32,16 @@ import { colors, spacing } from "../constants/theme";
 
 type Tab = "invoices" | "price" | "slips";
 type DateFilter = "all" | "today" | "week";
+type ProductFilter = "All" | "Petrol" | "Diesel" | "Hi-Octane" | "Lubricants" | "Car Service";
+
+const PRODUCT_FILTERS: ProductFilter[] = [
+  "All",
+  "Petrol",
+  "Diesel",
+  "Hi-Octane",
+  "Lubricants",
+  "Car Service",
+];
 
 const PRODUCT_COLORS: Record<PriceChange["product"], string> = {
   PETROL: "#22c55e",
@@ -46,6 +56,8 @@ const INVOICE_BADGE_STYLES: Record<
   PETROL: { backgroundColor: "#dcfce7", color: "#16a34a" },
   DIESEL: { backgroundColor: "#dbeafe", color: "#1d4ed8" },
   "HI-OCTANE": { backgroundColor: "#f3e8ff", color: "#7e22ce" },
+  LUBRICANTS: { backgroundColor: "#fef3c7", color: "#d97706" },
+  "CAR SERVICE": { backgroundColor: "#fee2e2", color: "#dc2626" },
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -120,11 +132,12 @@ function storedInvoiceToReceiptData(invoice: StoredInvoice): ReceiptData {
     time: `${hours}:${minutes}`,
     paymentMethod: "Cash",
     productType: storageKeyToProductType(invoice.product),
-    fuelRate: String(invoice.rate),
-    volume: String(invoice.volume),
+    fuelRate: invoice.rate != null ? String(invoice.rate) : "",
+    volume: invoice.volume != null ? String(invoice.volume) : "",
     totalAmount: invoice.totalAmount,
     vehicleNumber: invoice.vehicleNo,
     customerName: "",
+    lubricantName: invoice.lubricantName,
     includeLogoInPrint: false,
   };
 }
@@ -146,6 +159,7 @@ export default function AdminScreen() {
   const [sessionActive, setSessionActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [productFilter, setProductFilter] = useState<ProductFilter>("All");
   const [reprintingId, setReprintingId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -180,13 +194,20 @@ export default function AdminScreen() {
     return invoices.filter((inv) => {
       if (dateFilter === "today" && !isPrintedToday(inv.printedAt)) return false;
       if (dateFilter === "week" && !isPrintedThisWeek(inv.printedAt)) return false;
+      if (productFilter !== "All") {
+        const productMatch =
+          inv.product.toLowerCase() === productFilter.toLowerCase() ||
+          storageKeyToProductType(inv.product).toLowerCase() ===
+            productFilter.toLowerCase();
+        if (!productMatch) return false;
+      }
       if (!query) return true;
       return (
         inv.vehicleNo.toLowerCase().includes(query) ||
         inv.dateTime.toLowerCase().includes(query)
       );
     });
-  }, [invoices, searchQuery, dateFilter]);
+  }, [invoices, searchQuery, dateFilter, productFilter]);
 
   const handleReprint = useCallback(
     async (invoice: StoredInvoice) => {
@@ -202,9 +223,10 @@ export default function AdminScreen() {
 
         await saveInvoice({
           product: invoice.product,
-          volume: invoice.volume,
-          rate: invoice.rate,
+          volume: invoice.volume ?? null,
+          rate: invoice.rate ?? null,
           totalAmount: invoice.totalAmount,
+          lubricantName: invoice.lubricantName,
           vehicleNo: invoice.vehicleNo,
           stationName: invoice.stationName,
           address: invoice.address,
@@ -252,6 +274,7 @@ export default function AdminScreen() {
           onChangeText={setSearchQuery}
         />
 
+        {/* Time-based filters — replaced by product filter bar
         <View style={styles.filterRow}>
           {(["all", "today", "week"] as const).map((filter) => (
             <Pressable
@@ -270,6 +293,33 @@ export default function AdminScreen() {
             </Pressable>
           ))}
         </View>
+        */}
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.productFilterScroll}
+        >
+          {PRODUCT_FILTERS.map((filter) => (
+            <Pressable
+              key={filter}
+              onPress={() => setProductFilter(filter)}
+              style={[
+                styles.filterChip,
+                productFilter === filter && styles.filterChipActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  productFilter === filter && styles.filterChipTextActive,
+                ]}
+              >
+                {filter}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
 
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
@@ -298,6 +348,8 @@ export default function AdminScreen() {
           filteredInvoices.map((invoice) => {
             const badgeStyle =
               INVOICE_BADGE_STYLES[invoice.product] ?? INVOICE_BADGE_STYLES.PETROL;
+            const isCarService = invoice.product === "CAR SERVICE";
+            const isLubricants = invoice.product === "LUBRICANTS";
             return (
               <View key={invoice.id} style={styles.invoiceCard}>
                 <View style={styles.invoiceCardTop}>
@@ -309,18 +361,28 @@ export default function AdminScreen() {
                   <Text style={styles.invoiceDateTime}>{invoice.dateTime}</Text>
                 </View>
 
-                <View style={styles.invoiceDetailRow}>
+                {isLubricants && invoice.lubricantName ? (
                   <Text style={styles.invoiceDetailText}>
-                    Volume: {invoice.volume} LTR
+                    {invoice.lubricantName}
                   </Text>
-                  <Text style={styles.invoiceDetailText}>
-                    Rate: {formatCurrency(invoice.rate)}
-                  </Text>
-                </View>
+                ) : null}
 
-                <Text style={styles.invoiceTotal}>
-                  TOTAL: {formatCurrency(invoice.totalAmount)}
-                </Text>
+                {!isCarService && !isLubricants ? (
+                  <View style={styles.invoiceDetailRow}>
+                    <Text style={styles.invoiceDetailText}>
+                      Volume: {invoice.volume} LTR
+                    </Text>
+                    <Text style={styles.invoiceDetailText}>
+                      Rate: {formatCurrency(invoice.rate ?? 0)}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {!isCarService ? (
+                  <Text style={styles.invoiceTotal}>
+                    TOTAL: {formatCurrency(invoice.totalAmount)}
+                  </Text>
+                ) : null}
 
                 <View style={styles.invoiceCardBottom}>
                   <View style={styles.invoiceCardBottomLeft}>
@@ -575,6 +637,12 @@ const styles = StyleSheet.create({
     color: colors.black,
   },
   filterRow: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    gap: 8,
+  },
+  productFilterScroll: {
     flexDirection: "row",
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,

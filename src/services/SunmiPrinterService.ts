@@ -18,6 +18,7 @@ export interface SunmiReceiptData {
   rate: string;
   total: string;
   vehicleNo?: string;
+  lubricantName?: string;
   stationPhone?: string;
   logoBase64?: string;
 }
@@ -50,6 +51,7 @@ export async function printSunmiReceipt(
       rate: data.rate,
       total: data.total,
       vehicleNo: data.vehicleNo,
+      lubricantName: data.lubricantName,
       stationPhone: data.stationPhone,
     },
     isDuplicate
@@ -69,10 +71,17 @@ export async function printSunmiReceiptFromFuelData(
       address: view.address,
       dateTime,
       product: view.product,
-      volume: formatVolume(data.volume),
-      rate: formatCurrency(data.fuelRate),
-      total: formatCurrency(data.totalAmount),
+      volume: data.productType === "Car Service" || data.productType === "Lubricants"
+        ? ""
+        : formatVolume(data.volume),
+      rate: data.productType === "Car Service"
+        ? ""
+        : formatCurrency(data.fuelRate),
+      total: data.productType === "Car Service"
+        ? ""
+        : formatCurrency(data.totalAmount),
       vehicleNo: view.vehicleNo.trim() || undefined,
+      lubricantName: view.lubricantName,
       stationPhone: data.stationPhone?.trim() || undefined,
     },
     isDuplicate

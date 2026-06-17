@@ -21,6 +21,7 @@ export interface ReceiptData {
   totalAmount: number;
   vehicleNumber: string;
   customerName: string;
+  lubricantName?: string;
   stationPhone?: string;
   logoDataUrl?: string | null;
   logo2DataUrl?: string | null;
