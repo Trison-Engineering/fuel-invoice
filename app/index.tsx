@@ -15,13 +15,14 @@ import {
   Platform,
   StyleSheet,
   Modal,
+  ScrollView,
   Vibration,
 } from "react-native";
 import { useRouter, useNavigation } from "expo-router";
 import { useFormState } from "../hooks/useFormState";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { Toast } from "../components/Toast";
-import { colors } from "../constants/theme";
+import { colors, spacing } from "../constants/theme";
 import { ReceiptData } from "../utils/generateReceipt";
 import { formatCurrency } from "../utils/formatters";
 import {
@@ -43,54 +44,57 @@ const DUPLICATE_COUNTDOWN_SECONDS = 10;
 const ADMIN_EMAIL = "admin@admin.com";
 const ADMIN_PASSWORD = "admin@123";
 
-const BG = "#0A0F1E";
-const TEXT_PRIMARY = "#FFFFFF";
-const TEXT_SECONDARY = "#5A6478";
-const ACCENT = "#3B82F6";
-const ICON_MUTED = "#8B9BB4";
-const PLACEHOLDER = "#3A4258";
-
 const FUEL_OPTIONS = [
-  { id: "Petrol", label: "PETROL", color: "#22C55E", initial: "P" },
-  { id: "Diesel", label: "DIESEL", color: "#3B82F6", initial: "D" },
-  { id: "Hi-Octane", label: "HI-OCTANE", color: "#A855F7", initial: "H" },
-  { id: "Lubricants", label: "LUBRICANTS", color: "#F59E0B", initial: "L" },
-  { id: "Car Service", label: "CAR SERVICE", color: "#EF4444", initial: "C" },
+  { id: "Petrol", label: "PETROL", color: "#22c55e" },
+  { id: "Diesel", label: "DIESEL", color: "#3b82f6" },
+  { id: "Hi-Octane", label: "HI-OCTANE", color: "#a855f7" },
+  { id: "Lubricants", label: "LUBRICANTS", color: "#f59e0b" },
+  { id: "Car Service", label: "CAR SERVICE", color: "#ef4444" },
 ] as const;
 
 type ProductId = (typeof FUEL_OPTIONS)[number]["id"];
 
-function ProgressBar({
-  progress,
-  width,
-}: {
-  progress: Animated.Value;
-  width: number;
-}) {
-  const fillWidth = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, width],
-  });
+const PRODUCT_BADGES: Record<
+  ProductId,
+  { backgroundColor: string; color: string }
+> = {
+  Petrol: { backgroundColor: "#dcfce7", color: "#16a34a" },
+  Diesel: { backgroundColor: "#dbeafe", color: "#1d4ed8" },
+  "Hi-Octane": { backgroundColor: "#f3e8ff", color: "#7e22ce" },
+  Lubricants: { backgroundColor: "#fef3c7", color: "#d97706" },
+  "Car Service": { backgroundColor: "#fee2e2", color: "#dc2626" },
+};
 
+function ProgressDots({ currentStep }: { currentStep: number }) {
   return (
-    <View style={[styles.progressTrack, { width }]}>
-      <Animated.View style={[styles.progressFill, { width: fillWidth }]} />
+    <View style={styles.progressDots}>
+      {Array.from({ length: TOTAL_STEPS }, (_, i) => {
+        const stepNum = i + 1;
+        const filled = stepNum <= currentStep;
+        return (
+          <View
+            key={stepNum}
+            style={[styles.dot, filled ? styles.dotFilled : styles.dotEmpty]}
+          />
+        );
+      })}
     </View>
   );
 }
 
-function ProductPill({ label, color }: { label: string; color: string }) {
+function ProductBadge({ label, productId }: { label: string; productId: ProductId }) {
+  const badge = PRODUCT_BADGES[productId];
   return (
-    <View style={[styles.productPill, { backgroundColor: `${color}26` }]}>
-      <View style={[styles.productPillDot, { backgroundColor: color }]} />
-      <Text style={[styles.productPillText, { color }]}>{label}</Text>
+    <View style={[styles.productBadge, { backgroundColor: badge.backgroundColor }]}>
+      <Text style={[styles.productBadgeText, { color: badge.color }]}>{label}</Text>
     </View>
   );
 }
 
 function CountdownRing({ countdown, total }: { countdown: number; total: number }) {
   const progress = countdown / total;
-  const ringColor = (segment: number) => (progress >= segment ? ACCENT : "rgba(255,255,255,0.12)");
+  const ringColor = (segment: number) =>
+    progress >= segment ? colors.primary : colors.border;
 
   return (
     <View style={styles.ringOuter}>
@@ -138,8 +142,6 @@ export default function HomeScreen() {
   const [adminPassword, setAdminPassword] = useState("");
 
   const contentOpacity = useRef(new Animated.Value(1)).current;
-  const progressAnim = useRef(new Animated.Value(1 / TOTAL_STEPS)).current;
-  const continueBtnAnim = useRef(new Animated.Value(0)).current;
   const duplicateSlideAnim = useRef(new Animated.Value(0)).current;
   const closingDuplicate = useRef(false);
   const cardWidth = screenWidth * 0.85;
@@ -185,38 +187,16 @@ export default function HomeScreen() {
     router,
   ]);
 
-  useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: currentStep / TOTAL_STEPS,
-      duration: 300,
-      easing: Easing.ease,
-      useNativeDriver: false,
-    }).start();
-  }, [currentStep, progressAnim]);
-
-  useEffect(() => {
-    if (selectedProduct && currentStep === 1) {
-      Animated.spring(continueBtnAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      continueBtnAnim.setValue(0);
-    }
-  }, [selectedProduct, currentStep, continueBtnAnim]);
-
   useLayoutEffect(() => {
     navigation.setOptions({
       headerStyle: {
-        backgroundColor: BG,
+        backgroundColor: colors.white,
         borderBottomWidth: 1,
-        borderBottomColor: "rgba(255,255,255,0.06)",
+        borderBottomColor: colors.border,
       },
-      headerTintColor: TEXT_PRIMARY,
+      headerTintColor: colors.primary,
       headerTitleStyle: {
-        color: TEXT_PRIMARY,
+        color: colors.black,
         fontSize: 18,
         fontWeight: "600",
       },
@@ -224,22 +204,21 @@ export default function HomeScreen() {
         <View style={styles.headerRight}>
           {sessionActive ? (
             <View style={styles.sessionPill}>
-              <View style={styles.sessionPillDot} />
-              <Text style={styles.sessionPillText}>Active</Text>
+              <Text style={styles.sessionActiveIndicator}>Active ●</Text>
               {sessionCount > 0 ? (
-                <Text style={styles.sessionPillCount}>{sessionCount}</Text>
+                <Text style={styles.sessionCount}>{sessionCount}</Text>
               ) : null}
             </View>
           ) : (
             <View style={styles.headerBadgeWrap}>
-              <Ionicons name="print-outline" size={22} color={ICON_MUTED} />
+              <Ionicons name="print-outline" size={22} color={colors.muted} />
             </View>
           )}
           <Pressable onPress={() => setShowAdminLogin(true)} style={styles.headerIconBtn}>
-            <Ionicons name="person-outline" size={22} color={ICON_MUTED} />
+            <Ionicons name="person-outline" size={22} color={colors.primary} />
           </Pressable>
           <Pressable onPress={() => router.push("/settings")} style={styles.headerIconBtn}>
-            <Ionicons name="settings-outline" size={22} color={ICON_MUTED} />
+            <Ionicons name="settings-outline" size={22} color={colors.primary} />
           </Pressable>
         </View>
       ),
@@ -468,7 +447,7 @@ export default function HomeScreen() {
   if (!form.station.isHydrated) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={ACCENT} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -476,145 +455,210 @@ export default function HomeScreen() {
   if (!form.station.isProfileComplete()) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={ACCENT} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
+
+  const renderStepActions = () => {
+    if (currentStep === 1 && selectedProduct) {
+      return (
+        <Pressable
+          onPress={() => {
+            if (selectedProduct === "Car Service") goForward(3);
+            else goForward(2);
+          }}
+          style={styles.primaryButton}
+        >
+          <Text style={styles.primaryButtonText}>Continue</Text>
+        </Pressable>
+      );
+    }
+
+    if (currentStep === 2) {
+      const ready = isLubricants ? lubricantReady : volumeReady;
+      return (
+        <Pressable
+          onPress={() => goForward(3)}
+          disabled={!ready}
+          style={[styles.primaryButton, !ready && styles.buttonDisabled]}
+        >
+          <Text style={styles.primaryButtonText}>Continue</Text>
+        </Pressable>
+      );
+    }
+
+    if (currentStep === 3) {
+      return (
+        <Pressable
+          onPress={handlePrintPress}
+          disabled={isPrinting || printer.isReconnecting}
+          style={[
+            styles.primaryButton,
+            styles.printButton,
+            (isPrinting || printer.isReconnecting) && styles.buttonDisabled,
+          ]}
+        >
+          {isPrinting || printer.isReconnecting ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <Text style={styles.printButtonEmoji}>🖨️</Text>
+          )}
+          <Text style={styles.primaryButtonText}>
+            {isPrinting || printer.isReconnecting ? "Printing..." : "Print Receipt"}
+          </Text>
+        </Pressable>
+      );
+    }
+
+    return null;
+  };
 
   const renderStepBody = () => {
     switch (currentStep) {
       case 1:
         return (
-          <View style={styles.productList}>
-            {FUEL_OPTIONS.map((option, index) => {
-              const isSelected = selectedProduct === option.id;
-              return (
-                <React.Fragment key={option.id}>
-                  {index > 0 ? <View style={styles.rowSeparator} /> : null}
+          <>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrap}>
+                <Ionicons name="water-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.cardTitle}>Select Product</Text>
+                <Text style={styles.cardSubtitle}>Tap a fuel type to continue</Text>
+              </View>
+            </View>
+            <View style={styles.productList}>
+              {FUEL_OPTIONS.map((option) => {
+                const isSelected = selectedProduct === option.id;
+                const badge = PRODUCT_BADGES[option.id];
+                const tintBg = `${option.color}18`;
+                return (
                   <Pressable
+                    key={option.id}
                     onPress={() => handleSelectProduct(option.id)}
                     style={[
                       styles.productRow,
-                      isSelected && { backgroundColor: "rgba(59,130,246,0.08)" },
+                      isSelected && {
+                        borderColor: option.color,
+                        backgroundColor: tintBg,
+                      },
                     ]}
                   >
                     <View
                       style={[
-                        styles.productCircle,
-                        {
-                          backgroundColor: isSelected ? option.color : "rgba(255,255,255,0.08)",
-                          borderColor: isSelected ? option.color : "rgba(255,255,255,0.12)",
-                        },
-                        isSelected && styles.productCircleSelected,
+                        styles.radioOuter,
+                        isSelected && { borderColor: option.color },
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.productInitial,
-                          { color: isSelected ? TEXT_PRIMARY : TEXT_SECONDARY },
-                        ]}
-                      >
-                        {option.initial}
-                      </Text>
+                      {isSelected ? (
+                        <View style={[styles.radioInner, { backgroundColor: option.color }]} />
+                      ) : null}
                     </View>
-                    <Text
-                      style={[
-                        styles.productName,
-                        isSelected && { color: option.color },
-                      ]}
-                    >
+                    <Text style={[styles.productLabel, { color: option.color }]}>
                       {option.label}
                     </Text>
                     {isSelected ? (
-                      <View style={styles.checkCircle}>
-                        <Ionicons name="checkmark" size={16} color={TEXT_PRIMARY} />
+                      <View style={[styles.productBadge, { backgroundColor: badge.backgroundColor }]}>
+                        <Ionicons name="checkmark" size={14} color={badge.color} />
                       </View>
-                    ) : (
-                      <View style={styles.checkPlaceholder} />
-                    )}
+                    ) : null}
                   </Pressable>
-                </React.Fragment>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          </>
         );
 
       case 2:
         if (isLubricants) {
           return (
-            <View style={styles.lubricantStep}>
+            <>
               {activeOption ? (
-                <View style={styles.pillWrap}>
-                  <ProductPill label={activeOption.label} color={activeOption.color} />
+                <View style={styles.badgeCenter}>
+                  <ProductBadge label={activeOption.label} productId={activeOption.id} />
                 </View>
               ) : null}
-              <View style={styles.lubricantFields}>
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.fieldLabel}>Lubricant Name</Text>
-                  <TextInput
-                    style={styles.underlineInput}
-                    value={form.lubricantName}
-                    onChangeText={form.updateLubricantName}
-                    placeholder="e.g. Engine Oil 5W-30"
-                    placeholderTextColor={PLACEHOLDER}
-                    autoFocus
-                  />
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionIconWrap}>
+                  <Ionicons name="construct-outline" size={20} color={colors.primary} />
                 </View>
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.fieldLabel}>Lubricant Price (PKR)</Text>
-                  <TextInput
-                    style={styles.underlineInput}
-                    value={form.lubricantPrice}
-                    onChangeText={form.updateLubricantPrice}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                    placeholderTextColor={PLACEHOLDER}
-                  />
+                <View style={styles.sectionHeaderText}>
+                  <Text style={styles.cardTitle}>Lubricant Details</Text>
+                  <Text style={styles.cardSubtitle}>Enter name and price</Text>
                 </View>
               </View>
-            </View>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.inputLabel}>Lubricant Name</Text>
+                <TextInput
+                  style={styles.borderedInput}
+                  value={form.lubricantName}
+                  onChangeText={form.updateLubricantName}
+                  placeholder="e.g. Engine Oil 5W-30"
+                  placeholderTextColor={colors.muted}
+                  autoFocus
+                />
+              </View>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.inputLabel}>Lubricant Price (PKR)</Text>
+                <TextInput
+                  style={styles.borderedInput}
+                  value={form.lubricantPrice}
+                  onChangeText={form.updateLubricantPrice}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+            </>
           );
         }
 
         return (
-          <View style={styles.volumeStep}>
+          <>
             {activeOption ? (
-              <View style={styles.pillWrap}>
-                <ProductPill label={activeOption.label} color={activeOption.color} />
+              <View style={styles.badgeCenter}>
+                <ProductBadge label={activeOption.label} productId={activeOption.id} />
               </View>
             ) : null}
-            <View style={styles.volumeCenter}>
-              <View style={styles.volumeInputRow}>
-                <TextInput
-                  style={styles.hugeInput}
-                  value={form.volume}
-                  onChangeText={form.updateVolume}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor={PLACEHOLDER}
-                  autoFocus
-                  selectionColor={ACCENT}
-                />
-                <Text style={styles.ltrLabel}>LTR</Text>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrap}>
+                <Ionicons name="speedometer-outline" size={20} color={colors.primary} />
               </View>
-              <View style={styles.accentLine} />
-              <Text style={styles.rateHint}>
-                Rate: PKR {form.fuelRate || "0.00"} / ltr
-              </Text>
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.cardTitle}>Litres Dispensed</Text>
+                <Text style={styles.cardSubtitle}>Enter volume from pump</Text>
+              </View>
             </View>
-          </View>
+            <View style={styles.volumeInputRow}>
+              <TextInput
+                style={styles.volumeInput}
+                value={form.volume}
+                onChangeText={form.updateVolume}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={colors.muted}
+                autoFocus
+                selectionColor={colors.primary}
+              />
+              <Text style={styles.volumeSuffix}>LTR</Text>
+            </View>
+            <Text style={styles.rateHint}>
+              Rate: {formatCurrency(parseFloat(form.fuelRate) || 0)} / ltr
+            </Text>
+          </>
         );
 
       case 3:
         return (
-          <View style={styles.summaryStep}>
+          <>
             {activeOption ? (
-              <View style={styles.pillWrap}>
-                <ProductPill label={activeOption.label} color={activeOption.color} />
+              <View style={styles.badgeCenter}>
+                <ProductBadge label={activeOption.label} productId={activeOption.id} />
               </View>
             ) : null}
 
-            <View style={styles.summaryBlock}>
+            <View style={styles.summaryCard}>
               <Text style={styles.summaryProduct}>
                 {isLubricants && form.lubricantName.trim()
                   ? form.lubricantName.trim()
@@ -623,13 +667,12 @@ export default function HomeScreen() {
 
               {!isCarService && !isLubricants ? (
                 <Text style={styles.summaryMeta}>
-                  {form.volume || "0"} LTR  •  PKR {form.fuelRate || "0"}/ltr
+                  {form.volume || "0"} LTR  •  {formatCurrency(parseFloat(form.fuelRate) || 0)}/ltr
                 </Text>
               ) : null}
 
               {!isCarService ? (
                 <Text style={styles.summaryTotal}>
-                  PKR{" "}
                   {isLubricants
                     ? formatCurrency(parseFloat(form.lubricantPrice) || 0)
                     : form.totalDisplay}
@@ -637,21 +680,28 @@ export default function HomeScreen() {
               ) : null}
             </View>
 
-            <View style={styles.summaryDivider} />
-
-            <Text style={styles.vehicleLabel}>VEHICLE NUMBER</Text>
-            <TextInput
-              style={styles.vehicleInput}
-              value={form.vehicleNumber}
-              onChangeText={form.updateVehicleNumber}
-              placeholder="e.g. ABC-428"
-              placeholderTextColor={PLACEHOLDER}
-              autoCapitalize="characters"
-              autoFocus
-              selectionColor={ACCENT}
-            />
-            <Text style={styles.vehicleHint}>Optional — tap Print to skip</Text>
-          </View>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrap}>
+                <Ionicons name="car-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.cardTitle}>Vehicle Number</Text>
+                <Text style={styles.cardSubtitle}>Optional — tap Print to skip</Text>
+              </View>
+            </View>
+            <View style={styles.fieldGroup}>
+              <TextInput
+                style={styles.vehicleInput}
+                value={form.vehicleNumber}
+                onChangeText={form.updateVehicleNumber}
+                placeholder="e.g. ABC-428"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                autoFocus
+                selectionColor={colors.primary}
+              />
+            </View>
+          </>
         );
 
       default:
@@ -659,117 +709,44 @@ export default function HomeScreen() {
     }
   };
 
-  const renderStepHeading = () => {
-    if (currentStep === 1) {
-      return (
-        <>
-          <Text style={styles.heading}>What are you{"\n"}dispensing?</Text>
-          <Text style={styles.subheading}>Tap to select</Text>
-        </>
-      );
-    }
-    return null;
-  };
-
-  const showContinueStep1 = currentStep === 1 && selectedProduct !== null;
-  const showContinueStep2 =
-    currentStep === 2 && (isLubricants ? lubricantReady : volumeReady);
-
-  const continueTranslate = continueBtnAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [80, 0],
-  });
-
   return (
     <View style={styles.root}>
-      <ProgressBar progress={progressAnim} width={screenWidth} />
-
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {!sessionActive ? (
-          <Pressable onPress={handleStartCounter} style={styles.startCounterButton}>
-            <Text style={styles.startCounterText}>▶ Start Counter</Text>
-          </Pressable>
-        ) : null}
-
-        {currentStep > 1 ? (
-          <Pressable onPress={handleBack} style={styles.backRow} hitSlop={12}>
-            <Ionicons name="arrow-back" size={18} color={TEXT_SECONDARY} />
-            <Text style={styles.backText}>Back</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.backSpacer} />
-        )}
-
-        <Animated.View style={[styles.stepContent, { opacity: contentOpacity }]}>
-          <Text style={styles.stepLabel}>
-            STEP {currentStep} OF {TOTAL_STEPS}
-          </Text>
-          {renderStepHeading()}
-          {renderStepBody()}
-        </Animated.View>
-
-        {showContinueStep1 ? (
-          <Animated.View
-            style={[
-              styles.floatingBtnWrap,
-              {
-                opacity: continueBtnAnim,
-                transform: [{ translateY: continueTranslate }],
-              },
-            ]}
-          >
-            <Pressable
-              onPress={() => {
-                if (selectedProduct === "Car Service") goForward(3);
-                else goForward(2);
-              }}
-              style={styles.floatingBtn}
-            >
-              <Text style={styles.floatingBtnText}>Continue</Text>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {!sessionActive ? (
+            <Pressable onPress={handleStartCounter} style={styles.startCounterBanner}>
+              <Text style={styles.startCounterTitle}>Slip Counter</Text>
+              <Text style={styles.startCounterText}>▶ Start Counter</Text>
             </Pressable>
-          </Animated.View>
-        ) : null}
+          ) : null}
 
-        {showContinueStep2 ? (
-          <View style={styles.floatingBtnWrap}>
-            <Pressable onPress={() => goForward(3)} style={styles.floatingBtn}>
-              <Text style={styles.floatingBtnText}>Continue</Text>
-            </Pressable>
+          <View style={styles.stepCard}>
+            {currentStep > 1 ? (
+              <Pressable onPress={handleBack} style={styles.backRow} hitSlop={12}>
+                <Ionicons name="arrow-back" size={18} color={colors.primary} />
+                <Text style={styles.backText}>Back</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.backSpacer} />
+            )}
+
+            <ProgressDots currentStep={currentStep} />
+            <Text style={styles.stepLabel}>
+              Step {currentStep} of {TOTAL_STEPS}
+            </Text>
+
+            <Animated.View style={{ opacity: contentOpacity }}>
+              {renderStepBody()}
+              {renderStepActions()}
+            </Animated.View>
           </View>
-        ) : null}
-
-        {currentStep === 2 && !showContinueStep2 ? (
-          <View style={styles.floatingBtnWrap}>
-            <Pressable disabled style={[styles.floatingBtn, styles.floatingBtnDisabled]}>
-              <Text style={styles.floatingBtnText}>Continue</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {currentStep === 3 ? (
-          <View style={styles.floatingBtnWrap}>
-            <Pressable
-              onPress={handlePrintPress}
-              disabled={isPrinting || printer.isReconnecting}
-              style={[
-                styles.printBtn,
-                (isPrinting || printer.isReconnecting) && styles.printBtnLoading,
-              ]}
-            >
-              {isPrinting || printer.isReconnecting ? (
-                <ActivityIndicator size="small" color={TEXT_PRIMARY} />
-              ) : (
-                <Text style={styles.printIcon}>🖨️</Text>
-              )}
-              <Text style={styles.floatingBtnText}>
-                {isPrinting || printer.isReconnecting ? "Printing..." : "Print Receipt"}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
+        </ScrollView>
       </KeyboardAvoidingView>
 
       {printSuccess ? (
@@ -791,9 +768,9 @@ export default function HomeScreen() {
             <Pressable
               onPress={handleDuplicatePrint}
               disabled={isPrintingDuplicate}
-              style={[styles.duplicateButton, isPrintingDuplicate && styles.buttonDisabled]}
+              style={[styles.primaryButton, isPrintingDuplicate && styles.buttonDisabled]}
             >
-              <Text style={styles.duplicateButtonText}>🖨️ Print Duplicate</Text>
+              <Text style={styles.primaryButtonText}>🖨️ Print Duplicate</Text>
             </Pressable>
             <Text style={styles.autoCloseText}>
               {isPrintingDuplicate
@@ -811,7 +788,7 @@ export default function HomeScreen() {
             <TextInput
               style={styles.loginInput}
               placeholder="Email"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={colors.muted}
               value={adminEmail}
               onChangeText={setAdminEmail}
               autoCapitalize="none"
@@ -820,13 +797,13 @@ export default function HomeScreen() {
             <TextInput
               style={styles.loginInput}
               placeholder="Password"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={colors.muted}
               value={adminPassword}
               onChangeText={setAdminPassword}
               secureTextEntry
             />
-            <Pressable onPress={handleAdminLogin} style={styles.loginButton}>
-              <Text style={styles.loginButtonText}>Login</Text>
+            <Pressable onPress={handleAdminLogin} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>Login</Text>
             </Pressable>
             <Pressable
               onPress={() => {
@@ -855,7 +832,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: BG,
+    backgroundColor: colors.background,
   },
   flex: {
     flex: 1,
@@ -864,15 +841,37 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: BG,
+    backgroundColor: colors.background,
   },
-  progressTrack: {
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
+  scrollContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl * 2,
   },
-  progressFill: {
-    height: 3,
-    backgroundColor: ACCENT,
+  startCounterBanner: {
+    backgroundColor: colors.primaryLight,
+    borderRadius: 8,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  startCounterTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  startCounterText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  stepCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.lg,
   },
   headerRight: {
     flexDirection: "row",
@@ -889,326 +888,259 @@ const styles = StyleSheet.create({
   sessionPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(34,197,94,0.12)",
+    backgroundColor: "#dcfce7",
     borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.3)",
+    borderColor: "#bbf7d0",
     borderRadius: 100,
     paddingHorizontal: 10,
     paddingVertical: 4,
     marginRight: 8,
     gap: 6,
   },
-  sessionPillDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#22C55E",
-  },
-  sessionPillText: {
-    color: "#22C55E",
+  sessionActiveIndicator: {
+    color: colors.success,
     fontSize: 12,
     fontWeight: "600",
   },
-  sessionPillCount: {
-    color: "#22C55E",
-    fontSize: 11,
+  sessionCount: {
+    color: colors.success,
+    fontSize: 12,
     fontWeight: "700",
-  },
-  startCounterButton: {
-    alignSelf: "center",
-    marginTop: 12,
-    marginBottom: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  startCounterText: {
-    color: ACCENT,
-    fontSize: 13,
-    fontWeight: "600",
   },
   backRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    gap: 6,
+    marginBottom: spacing.sm,
+    gap: 4,
   },
   backSpacer: {
-    height: 36,
+    height: 28,
   },
   backText: {
-    color: TEXT_SECONDARY,
-    fontSize: 15,
-  },
-  stepContent: {
-    flex: 1,
-    paddingBottom: 100,
-  },
-  stepLabel: {
-    marginTop: 20,
-    textAlign: "center",
-    fontSize: 11,
-    letterSpacing: 2,
-    color: TEXT_SECONDARY,
-    textTransform: "uppercase",
-  },
-  heading: {
-    marginTop: 8,
-    textAlign: "center",
-    fontSize: 32,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
-    lineHeight: 40,
-  },
-  subheading: {
-    marginTop: 4,
-    textAlign: "center",
+    color: colors.primary,
     fontSize: 14,
-    color: TEXT_SECONDARY,
-    marginBottom: 24,
+    fontWeight: "600",
   },
-  productList: {
-    marginTop: 8,
-  },
-  productRow: {
-    height: 72,
+  progressDots: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  rowSeparator: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    marginHorizontal: 24,
-  },
-  productCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 16,
-  },
-  productCircleSelected: {
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  productInitial: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  productName: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
-  },
-  checkCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: ACCENT,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkPlaceholder: {
-    width: 28,
-  },
-  pillWrap: {
-    alignItems: "center",
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  productPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 100,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
     gap: 8,
+    marginBottom: spacing.md,
+    justifyContent: "center",
   },
-  productPillDot: {
-    width: 8,
-    height: 8,
+  dot: {
     borderRadius: 4,
   },
-  productPillText: {
-    fontSize: 13,
+  dotFilled: {
+    width: 24,
+    height: 8,
+    backgroundColor: colors.primary,
+  },
+  dotEmpty: {
+    width: 8,
+    height: 8,
+    backgroundColor: colors.border,
+  },
+  stepLabel: {
+    fontSize: 12,
+    color: colors.muted,
+    textAlign: "center",
+    marginBottom: spacing.lg,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
+  sectionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.sm,
+  },
+  sectionHeaderText: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.black,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  productList: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  productRow: {
+    height: 56,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.white,
+  },
+  radioOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  productLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    flex: 1,
+  },
+  productBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  productBadgeText: {
+    fontSize: 11,
     fontWeight: "700",
   },
-  volumeStep: {
-    flex: 1,
-  },
-  volumeCenter: {
-    flex: 1,
-    justifyContent: "center",
+  badgeCenter: {
     alignItems: "center",
-    paddingHorizontal: 24,
+    marginBottom: spacing.lg,
+  },
+  fieldGroup: {
+    marginBottom: spacing.lg,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: colors.black,
+    marginBottom: 6,
+  },
+  borderedInput: {
+    height: 44,
+    fontSize: 14,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    color: colors.black,
   },
   volumeInputRow: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     justifyContent: "center",
+    marginBottom: spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+    paddingVertical: spacing.sm,
   },
-  hugeInput: {
-    fontSize: 64,
+  volumeInput: {
+    fontSize: 40,
     fontWeight: "700",
-    color: TEXT_PRIMARY,
-    minWidth: 80,
     textAlign: "center",
-    padding: 0,
+    color: colors.black,
+    minWidth: 120,
+    paddingVertical: spacing.sm,
   },
-  ltrLabel: {
-    fontSize: 20,
-    color: TEXT_SECONDARY,
-    marginLeft: 8,
-    fontWeight: "500",
-  },
-  accentLine: {
-    width: 120,
-    height: 1,
-    backgroundColor: ACCENT,
-    marginTop: 12,
+  volumeSuffix: {
+    fontSize: 24,
+    color: colors.muted,
+    fontWeight: "600",
+    marginLeft: spacing.sm,
   },
   rateHint: {
-    marginTop: 12,
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: colors.muted,
     textAlign: "center",
+    marginBottom: spacing.lg,
   },
-  lubricantStep: {
-    flex: 1,
-    paddingHorizontal: 24,
-  },
-  lubricantFields: {
-    gap: 32,
-  },
-  fieldBlock: {
-    gap: 8,
-  },
-  fieldLabel: {
-    fontSize: 11,
-    color: TEXT_SECONDARY,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  underlineInput: {
-    fontSize: 20,
-    color: TEXT_PRIMARY,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.15)",
-  },
-  summaryStep: {
-    flex: 1,
-    paddingHorizontal: 24,
-  },
-  summaryBlock: {
+  summaryCard: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
-    gap: 8,
-    marginTop: 8,
+    gap: spacing.sm,
   },
   summaryProduct: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    color: TEXT_PRIMARY,
+    color: colors.black,
     textAlign: "center",
   },
   summaryMeta: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: colors.muted,
     textAlign: "center",
-    lineHeight: 22,
   },
   summaryTotal: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: "700",
-    color: ACCENT,
+    color: colors.primary,
     textAlign: "center",
-    marginTop: 4,
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    marginVertical: 24,
-  },
-  vehicleLabel: {
-    fontSize: 11,
-    color: TEXT_SECONDARY,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginBottom: 8,
   },
   vehicleInput: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
-    height: 52,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.12)",
-    paddingVertical: 8,
+    height: 44,
+    fontSize: 18,
+    fontWeight: "600",
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    color: colors.black,
+    textTransform: "uppercase",
   },
-  vehicleHint: {
-    fontSize: 12,
-    color: TEXT_SECONDARY,
-    textAlign: "center",
-    marginTop: 8,
-  },
-  floatingBtnWrap: {
-    position: "absolute",
-    bottom: 32,
-    left: 24,
-    right: 24,
-  },
-  floatingBtn: {
-    height: 56,
-    backgroundColor: ACCENT,
-    borderRadius: 16,
+  primaryButton: {
+    height: 48,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: spacing.sm,
   },
-  floatingBtnDisabled: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  floatingBtnText: {
-    color: TEXT_PRIMARY,
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  printBtn: {
-    height: 60,
-    backgroundColor: ACCENT,
-    borderRadius: 16,
+  printButton: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
+    gap: spacing.sm,
   },
-  printBtnLoading: {
-    backgroundColor: "#2563EB",
+  printButtonEmoji: {
+    fontSize: 18,
   },
-  printIcon: {
-    fontSize: 20,
+  primaryButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "600",
   },
   buttonDisabled: {
-    opacity: 0.4,
+    opacity: 0.5,
   },
   fullOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
     gap: 12,
   },
   successText: {
-    color: "#22c55e",
+    color: colors.success,
     fontSize: 24,
     fontWeight: "700",
   },
@@ -1217,7 +1149,7 @@ const styles = StyleSheet.create({
     height: 120,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 24,
+    marginBottom: spacing.lg,
   },
   ringProgress: {
     position: "absolute",
@@ -1229,93 +1161,68 @@ const styles = StyleSheet.create({
   countdownNumber: {
     fontSize: 48,
     fontWeight: "700",
-    color: ACCENT,
+    color: colors.primary,
   },
   duplicateCard: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 28,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: spacing.xl,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   duplicateTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 24,
-  },
-  duplicateButton: {
-    backgroundColor: ACCENT,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  duplicateButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    color: colors.black,
+    marginBottom: spacing.lg,
   },
   autoCloseText: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: colors.muted,
+    marginTop: spacing.sm,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing.lg,
   },
   loginCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: spacing.lg,
     width: "100%",
     maxWidth: 360,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   loginTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 20,
+    color: colors.black,
+    marginBottom: spacing.lg,
     textAlign: "center",
   },
   loginInput: {
     borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: colors.border,
     borderRadius: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
     fontSize: 16,
-    marginBottom: 12,
-    color: "#1a1a2e",
-  },
-  loginButton: {
-    backgroundColor: ACCENT,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  loginButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    marginBottom: spacing.md,
+    color: colors.black,
+    backgroundColor: colors.white,
   },
   cancelButton: {
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     alignItems: "center",
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   cancelButtonText: {
-    color: "#6b7280",
+    color: colors.muted,
     fontSize: 15,
     fontWeight: "500",
   },
