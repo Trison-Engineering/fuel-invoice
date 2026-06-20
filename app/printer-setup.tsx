@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator, ScrollView, Alert } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  ActivityIndicator,
+  ScrollView,
+  Alert,
+  StyleSheet,
+  Platform,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { PAPER_WIDTH_MM, RECEIPT_LINE_WIDTH } from "../constants/printerPaper";
-import { colors, spacing } from "../constants/theme";
+import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
 
 function DismissButton({ onPress }: { onPress: () => void }) {
   return (
@@ -11,15 +21,9 @@ function DismissButton({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       hitSlop={12}
       accessibilityLabel="Dismiss"
-      style={{
-        width: 28,
-        height: 28,
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 14,
-      }}
+      style={styles.dismissButton}
     >
-      <Ionicons name="close" size={20} color={colors.muted} />
+      <Ionicons name="close" size={20} color={Colors.text.tertiary} />
     </Pressable>
   );
 }
@@ -31,13 +35,18 @@ function statusColor(
 ): string {
   if (connectionStatus === "warming_up") return connectionStatusColor;
   if (connectionStatus !== "connected") return connectionStatusColor;
-  if (status === "Normal") return colors.success;
-  if (status === "Out of paper") return colors.error;
-  return colors.error;
+  if (status === "Normal") return Colors.text.success;
+  if (status === "Out of paper") return Colors.text.danger;
+  return Colors.text.danger;
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
 export default function PrinterSetupScreen() {
   const printer = usePrinterContext();
+  const insets = useSafeAreaInsets();
   const [isPrinting, setIsPrinting] = useState(false);
 
   const isBusy = printer.isInitializing || printer.isReconnecting || isPrinting;
@@ -115,141 +124,125 @@ export default function PrinterSetupScreen() {
     printer.connectionStatus === "connected" || printer.connectionStatus === "warming_up";
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
-      <View
-        style={{
-          backgroundColor: colors.white,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 12,
-          padding: spacing.lg,
-          marginBottom: spacing.lg,
-        }}
-      >
-        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-          Connected Device
-        </Text>
-        <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: spacing.sm }}>
-          {isConnected ? "🟢" : "🔴"} Sunmi V2s_GL
-        </Text>
-        <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
-          SDK: woyou.aidlservice.jiuiv5 (built-in thermal printer)
-        </Text>
-        <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18, marginBottom: spacing.md }}>
-          Auto-detected on startup — no Bluetooth pairing required.
-        </Text>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={[
+        styles.scrollContent,
+        { paddingTop: insets.top + Spacing.xl, paddingBottom: Math.max(insets.bottom, 32) },
+      ]}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={styles.pageTitle}>Printer Setup</Text>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
-          {isBusy ? (
-            <ActivityIndicator color={colors.primary} size="small" />
-          ) : (
-            <View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 5,
-                backgroundColor: dotColor,
-              }}
-            />
-          )}
-          <Text style={{ fontSize: 14, fontWeight: "600", color: dotColor }}>
-            {printer.connectionStatusLabel}
+      <View style={styles.statusCard}>
+        <View style={styles.statusRow}>
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: isConnected ? Colors.text.success : Colors.text.danger },
+            ]}
+          />
+          <Text
+            style={[
+              styles.statusText,
+              { color: isConnected ? Colors.text.success : Colors.text.danger },
+            ]}
+          >
+            {isConnected ? "Printer Connected" : "Not Connected"}
           </Text>
         </View>
 
-        <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 4 }}>Printer status</Text>
-        <Text style={{ fontSize: 15, fontWeight: "600", color: dotColor }}>{printerStatusLabel}</Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Printer</Text>
+          <Text style={styles.infoValue}>Sunmi V2s_GL</Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>SDK</Text>
+          <Text style={styles.infoValueMono}>woyou.aidlservice.jiuiv5</Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Status</Text>
+          <Text style={[styles.infoValue, { color: dotColor }]}>{printerStatusLabel}</Text>
+        </View>
+
+        <Text style={styles.statusHint}>
+          Auto-detected on startup — no Bluetooth pairing required.
+        </Text>
       </View>
 
       {printer.isInitializing ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-            marginBottom: spacing.md,
-            padding: spacing.md,
-            backgroundColor: colors.primaryLight,
-            borderRadius: 8,
-          }}
-        >
-          <ActivityIndicator color={colors.primary} size="small" />
-          <Text style={{ color: colors.primary, fontSize: 14 }}>Initializing printer...</Text>
+        <View style={styles.initBanner}>
+          <ActivityIndicator color={Colors.accent} size="small" />
+          <Text style={styles.initBannerText}>Initializing printer...</Text>
         </View>
       ) : null}
+
+      <SectionLabel>SELECT DEVICE</SectionLabel>
+      <View style={styles.deviceGroup}>
+        <View style={styles.deviceRowSelected}>
+          <View style={styles.deviceRowContent}>
+            <Text style={styles.deviceName}>Sunmi V2s_GL</Text>
+            <Text style={styles.deviceSubtext}>Built-in thermal printer</Text>
+          </View>
+          <Ionicons name="checkmark-circle" size={20} color={Colors.accent} />
+        </View>
+      </View>
 
       <Pressable
         onPress={handleTestPrint}
         disabled={isBusy}
-        style={{
-          height: 48,
-          backgroundColor: colors.primary,
-          borderRadius: 8,
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: spacing.md,
-          opacity: isBusy ? 0.7 : 1,
-        }}
+        style={({ pressed }) => [
+          styles.connectButton,
+          isBusy && styles.buttonDisabled,
+          pressed && !isBusy && styles.connectButtonPressed,
+        ]}
       >
         {isPrinting || printer.isTestingPrint ? (
-          <ActivityIndicator color={colors.white} />
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={Colors.text.primary} />
+            <Text style={styles.connectButtonText}>Printing...</Text>
+          </View>
         ) : (
-          <Text style={{ color: colors.white, fontSize: 16, fontWeight: "600" }}>Test Print</Text>
+          <Text style={styles.connectButtonText}>Test Print</Text>
         )}
       </Pressable>
 
       <Pressable
         onPress={handleHelloWorldPrint}
         disabled={isBusy}
-        style={{
-          height: 44,
-          backgroundColor: colors.white,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: colors.border,
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: spacing.md,
-          opacity: isBusy ? 0.7 : 1,
-        }}
+        style={({ pressed }) => [
+          styles.secondaryButton,
+          isBusy && styles.buttonDisabled,
+          pressed && styles.secondaryButtonPressed,
+        ]}
       >
-        <Text style={{ color: colors.muted, fontWeight: "600" }}>Hello World (RAW test)</Text>
+        <Text style={styles.secondaryButtonText}>Hello World (RAW test)</Text>
       </Pressable>
 
       <Pressable
         onPress={handleDiagnosticPrint}
         disabled={isBusy}
-        style={{
-          height: 44,
-          backgroundColor: colors.white,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: colors.border,
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: spacing.md,
-          opacity: isBusy ? 0.7 : 1,
-        }}
+        style={({ pressed }) => [
+          styles.secondaryButton,
+          isBusy && styles.buttonDisabled,
+          pressed && styles.secondaryButtonPressed,
+        ]}
       >
-        <Text style={{ color: colors.muted, fontWeight: "600" }}>Diagnostic Print</Text>
+        <Text style={styles.secondaryButtonText}>Diagnostic Print</Text>
       </Pressable>
 
       <Pressable
         onPress={handleCalibrationPrint}
         disabled={isBusy}
-        style={{
-          height: 44,
-          backgroundColor: colors.white,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: colors.border,
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: spacing.md,
-          opacity: isBusy ? 0.7 : 1,
-        }}
+        style={({ pressed }) => [
+          styles.secondaryButton,
+          isBusy && styles.buttonDisabled,
+          pressed && styles.secondaryButtonPressed,
+        ]}
       >
-        <Text style={{ color: colors.muted, fontWeight: "600" }}>
+        <Text style={styles.secondaryButtonText}>
           Print width calibration ({RECEIPT_LINE_WIDTH} chars, {PAPER_WIDTH_MM}mm paper)
         </Text>
       </Pressable>
@@ -257,37 +250,229 @@ export default function PrinterSetupScreen() {
       <Pressable
         onPress={runInit}
         disabled={isBusy}
-        style={{
-          height: 44,
-          backgroundColor: colors.white,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: colors.primary,
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: spacing.lg,
-          opacity: isBusy ? 0.7 : 1,
-        }}
+        style={({ pressed }) => [
+          styles.outlineButton,
+          isBusy && styles.buttonDisabled,
+          pressed && styles.outlineButtonPressed,
+        ]}
       >
-        <Text style={{ color: colors.primary, fontWeight: "600" }}>Refresh printer status</Text>
+        <Text style={styles.outlineButtonText}>Refresh printer status</Text>
       </Pressable>
 
       {printer.error ? (
-        <View
-          style={{
-            backgroundColor: "#FEE2E2",
-            padding: spacing.md,
-            borderRadius: 8,
-            marginBottom: spacing.md,
-            flexDirection: "row",
-            alignItems: "flex-start",
-            gap: spacing.sm,
-          }}
-        >
-          <Text style={{ color: colors.error, fontSize: 14, flex: 1 }}>{printer.error}</Text>
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{printer.error}</Text>
           <DismissButton onPress={printer.dismissError} />
         </View>
       ) : null}
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: Colors.bg.primary,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+  },
+  pageTitle: {
+    fontSize: Typography.xl,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+    marginBottom: Spacing.lg,
+  },
+  statusCard: {
+    backgroundColor: Colors.bg.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+  },
+  infoRow: {
+    marginBottom: Spacing.sm,
+  },
+  infoLabel: {
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
+    marginBottom: 2,
+  },
+  infoValue: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+  },
+  infoValueMono: {
+    fontSize: Typography.sm,
+    color: Colors.text.secondary,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  statusHint: {
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
+    lineHeight: 18,
+    marginTop: Spacing.sm,
+  },
+  initBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.accentAlpha,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
+  },
+  initBannerText: {
+    color: Colors.text.accent,
+    fontSize: Typography.sm,
+  },
+  sectionLabel: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+    color: Colors.text.tertiary,
+    letterSpacing: Typography.widest,
+    textTransform: "uppercase",
+    marginBottom: Spacing.sm,
+    marginLeft: Spacing.xs,
+  },
+  deviceGroup: {
+    backgroundColor: Colors.bg.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    overflow: "hidden",
+    marginBottom: Spacing.lg,
+  },
+  deviceRowSelected: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: 56,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.accentAlpha,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+  },
+  deviceRowContent: {
+    flex: 1,
+  },
+  deviceName: {
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+    color: Colors.text.primary,
+  },
+  deviceSubtext: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  connectButton: {
+    height: 52,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.md,
+    ...Shadow.glow,
+  },
+  connectButtonPressed: {
+    backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.97 }],
+  },
+  connectButtonText: {
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  secondaryButton: {
+    minHeight: 44,
+    backgroundColor: Colors.bg.card,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  secondaryButtonPressed: {
+    borderColor: Colors.border.strong,
+    backgroundColor: Colors.bg.elevated,
+  },
+  secondaryButtonText: {
+    color: Colors.text.secondary,
+    fontWeight: Typography.semibold,
+    fontSize: Typography.sm,
+    textAlign: "center",
+  },
+  outlineButton: {
+    height: 44,
+    backgroundColor: "transparent",
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.lg,
+  },
+  outlineButtonPressed: {
+    borderColor: Colors.border.strong,
+    backgroundColor: Colors.accentAlpha,
+  },
+  outlineButtonText: {
+    color: Colors.text.accent,
+    fontWeight: Typography.semibold,
+    fontSize: Typography.sm,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  errorBanner: {
+    backgroundColor: "rgba(239,68,68,0.12)",
+    padding: Spacing.md,
+    borderRadius: Radius.sm,
+    marginBottom: Spacing.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.3)",
+  },
+  errorText: {
+    color: Colors.text.danger,
+    fontSize: Typography.sm,
+    flex: 1,
+  },
+  dismissButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+  },
+});

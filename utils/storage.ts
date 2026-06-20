@@ -49,3 +49,6 @@ export const StorageKeys = {
   INCLUDE_LOGO_IN_PRINT: "include_logo_in_print",
   USE_TWO_LOGOS: "use_two_logos",
 } as const;
+
+export const EZPUMP_EMAIL = "@fuel_receipt:ezpump_email";
+export const EZPUMP_PASSWORD = "@fuel_receipt:ezpump_password";

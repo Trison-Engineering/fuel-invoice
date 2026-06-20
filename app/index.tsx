@@ -15,77 +15,227 @@ import {
   Platform,
   StyleSheet,
   Modal,
+  ScrollView,
+  RefreshControl,
 } from "react-native";
-import { useRouter, useNavigation } from "expo-router";
+import { useRouter, useNavigation, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFormState } from "../hooks/useFormState";
 import { usePrinterContext } from "../contexts/PrinterContext";
 // import { PrinterStatus } from "../components/PrinterStatus";
 import { Toast } from "../components/Toast";
 // import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
-import { colors } from "../constants/theme";
+import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
 import { ReceiptData } from "../utils/generateReceipt";
 import {
-  startSlipSession,
   getCurrentSession,
   isSessionActive,
   incrementSlipCount,
+  getTodaySlipCount,
 } from "../src/services/SlipCounterService";
 import {
   saveInvoice,
   formatSlipDateTime,
   productTypeToStorageKey,
 } from "../src/services/InvoiceHistoryService";
+import { EzPumpService, type EzPumpSale } from "../src/services/EzPumpService";
 
 const TOTAL_STEPS = 3;
-const STEP_ANIM_MS = 100;
+const STEP_ANIM_MS = 180;
 const FUEL_SELECT_DELAY_MS = 60;
 const DUPLICATE_COUNTDOWN_SECONDS = 10;
 const ADMIN_EMAIL = "admin@admin.com";
 const ADMIN_PASSWORD = "admin@123";
 
 const FUEL_OPTIONS = [
-  { id: "Petrol", label: "PETROL", color: "#22c55e" },
-  { id: "Diesel", label: "DIESEL", color: "#3b82f6" },
-  { id: "Hi-Octane", label: "HI-OCTANE", color: "#a855f7" },
+  { id: "Petrol", label: "PETROL", color: Colors.product.petrol },
+  { id: "Diesel", label: "DIESEL", color: Colors.product.diesel },
+  { id: "Hi-Octane", label: "HI-OCTANE", color: Colors.product.hiOctane },
 ] as const;
 
 type FuelId = (typeof FUEL_OPTIONS)[number]["id"];
 
-function ProgressDots({ currentStep }: { currentStep: number }) {
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function getProductColor(product: string): string {
+  const map: Record<string, string> = {
+    Petrol: Colors.product.petrol,
+    Diesel: Colors.product.diesel,
+    HiOctane: Colors.product.hiOctane,
+    "Hi-Octane": Colors.product.hiOctane,
+    Lubricants: Colors.product.lubricants,
+    "Car Service": Colors.product.carService,
+  };
+  return map[product] ?? Colors.text.secondary;
+}
+
+function formatCardDateTime(dateStr: string): string {
+  const commaMatch = dateStr.match(/^(\d{1,2}\s+\w{3}\s+\d{4}),\s*(.+)$/);
+  if (commaMatch) {
+    const datePart = commaMatch[1].trim();
+    const dayMonth = datePart.split(" ").slice(0, 2).join(" ");
+    return `${dayMonth} · ${commaMatch[2].trim()}`;
+  }
+  const parsed = new Date(dateStr);
+  if (!Number.isNaN(parsed.getTime())) {
+    const hours = parsed.getHours();
+    const minutes = String(parsed.getMinutes()).padStart(2, "0");
+    const period = hours >= 12 ? "PM" : "AM";
+    const hours12 = hours % 12 || 12;
+    return `${parsed.getDate()} ${MONTHS_SHORT[parsed.getMonth()]} · ${String(hours12).padStart(2, "0")}:${minutes} ${period}`;
+  }
+  return dateStr;
+}
+
+function mapEzPumpProduct(product: string): string {
+  if (product === "HiOctane") return "Hi-Octane";
+  return product;
+}
+
+function productToBadgeKey(product: string): string {
+  const map: Record<string, string> = {
+    Petrol: "PETROL",
+    Diesel: "DIESEL",
+    HiOctane: "HI-OCTANE",
+    "Hi-Octane": "HI-OCTANE",
+    Lubricants: "LUBRICANTS",
+    "Car Service": "CAR SERVICE",
+  };
+  return map[product] ?? product.toUpperCase();
+}
+
+function ezPumpSaleToReceiptData(
+  sale: EzPumpSale,
+  stationName: string,
+  stationAddress: string,
+  stationExtras: {
+    stationPhone?: string;
+    logoDataUrl?: string | null;
+    logo2DataUrl?: string | null;
+    includeLogoInPrint?: boolean;
+    useTwoLogos?: boolean;
+  }
+): ReceiptData {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+
+  const amount = parseFloat(sale.amount) || 0;
+  const qty = parseFloat(sale.qty) || 0;
+  const rate = qty > 0 ? parseFloat((amount / qty).toFixed(2)) : null;
+
+  return {
+    stationName,
+    stationAddress,
+    invoiceNumber: sale.id,
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`,
+    paymentMethod: sale.payment || "Cash",
+    productType: mapEzPumpProduct(sale.product),
+    fuelRate: rate !== null ? String(rate) : "0",
+    volume: qty > 0 ? String(qty) : sale.qty || "0",
+    totalAmount: amount,
+    vehicleNumber: sale.vehicle,
+    customerName: sale.customer,
+    stationPhone: stationExtras.stationPhone,
+    logoDataUrl: stationExtras.logoDataUrl,
+    logo2DataUrl: stationExtras.logo2DataUrl,
+    includeLogoInPrint: stationExtras.includeLogoInPrint,
+    useTwoLogos: stationExtras.useTwoLogos,
+  };
+}
+
+function CardSkeleton() {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
   return (
-    <View style={styles.progressDots}>
-      {Array.from({ length: TOTAL_STEPS }, (_, i) => {
-        const stepNum = i + 1;
-        const filled = stepNum <= currentStep;
-        return (
-          <View
-            key={stepNum}
-            style={[styles.dot, filled ? styles.dotFilled : styles.dotEmpty]}
-          />
-        );
-      })}
+    <Animated.View style={[styles.skeletonCard, { opacity }]}>
+      <View style={styles.skeletonRow}>
+        <View style={[styles.skeletonBar, { width: 70, height: 22, borderRadius: Radius.full }]} />
+        <View style={[styles.skeletonBar, { width: 80, height: 22, borderRadius: Radius.full }]} />
+      </View>
+      <View style={[styles.skeletonRow, { marginTop: Spacing.md }]}>
+        <View style={[styles.skeletonBar, { width: 130, height: 16 }]} />
+        <View style={[styles.skeletonBar, { width: 60, height: 16 }]} />
+      </View>
+      <View style={[styles.skeletonRow, { marginTop: Spacing.md }]}>
+        <View style={[styles.skeletonBar, { width: 100, height: 16 }]} />
+        <View style={[styles.skeletonBar, { width: 60, height: 28, borderRadius: Radius.sm }]} />
+      </View>
+    </Animated.View>
+  );
+}
+
+function EmptyState({
+  icon,
+  title,
+  subtitle,
+  actionLabel,
+  onAction,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyStateIconWrap}>{icon}</View>
+      <Text style={styles.emptyStateTitle}>{title}</Text>
+      <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
+      {actionLabel && onAction ? (
+        <Pressable onPress={onAction} style={styles.emptyStateAction}>
+          <Text style={styles.emptyStateActionText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-function CountdownRing({ countdown, total }: { countdown: number; total: number }) {
-  const progress = countdown / total;
-  const ringColor = (segment: number) => (progress >= segment ? "#1a56db" : "#e5e7eb");
+function StepProgressBar({
+  currentStep,
+  screenWidth,
+}: {
+  currentStep: number;
+  screenWidth: number;
+}) {
+  const progress = useRef(new Animated.Value((currentStep / TOTAL_STEPS) * screenWidth)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: (currentStep / TOTAL_STEPS) * screenWidth,
+      duration: 300,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: false,
+    }).start();
+  }, [currentStep, screenWidth, progress]);
 
   return (
-    <View style={styles.ringOuter}>
-      <View
-        style={[
-          styles.ringProgress,
-          {
-            borderTopColor: ringColor(0.875),
-            borderRightColor: ringColor(0.625),
-            borderBottomColor: ringColor(0.375),
-            borderLeftColor: ringColor(0.125),
-          },
-        ]}
-      />
-      <Text style={styles.countdownNumber}>{countdown}</Text>
+    <View style={[styles.progressTrack, { width: screenWidth }]}>
+      <Animated.View style={[styles.progressFill, { width: progress }]} />
     </View>
   );
 }
@@ -93,11 +243,13 @@ function CountdownRing({ countdown, total }: { countdown: number; total: number 
 export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const printer = usePrinterContext();
   const form = useFormState();
   const { width: screenWidth } = useWindowDimensions();
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [cardReprintingId, setCardReprintingId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<FuelId | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printSuccess, setPrintSuccess] = useState(false);
@@ -113,14 +265,24 @@ export default function HomeScreen() {
   const [isPrintingDuplicate, setIsPrintingDuplicate] = useState(false);
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
+  const [sessionTotal, setSessionTotal] = useState(0);
+  const [ezPumpPollEnabled, setEzPumpPollEnabled] = useState(true);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminSigningIn, setAdminSigningIn] = useState(false);
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  const [ezPumpSales, setEzPumpSales] = useState<EzPumpSale[]>([]);
+  const [ezPumpLoading, setEzPumpLoading] = useState(false);
+  const [ezPumpError, setEzPumpError] = useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [vehicleFocused, setVehicleFocused] = useState(false);
+  const [adminEmailFocused, setAdminEmailFocused] = useState(false);
+  const [adminPasswordFocused, setAdminPasswordFocused] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const stepOpacity = useRef(new Animated.Value(1)).current;
   const duplicateSlideAnim = useRef(new Animated.Value(0)).current;
   const closingDuplicate = useRef(false);
-  const cardWidth = screenWidth * 0.85;
 
   const hideToast = useCallback(() => {
     setToast((t) => ({ ...t, visible: false }));
@@ -137,11 +299,12 @@ export default function HomeScreen() {
 
   useEffect(() => {
     (async () => {
+      const session = await getCurrentSession();
       const active = await isSessionActive();
       setSessionActive(active);
-      if (active) {
-        const session = await getCurrentSession();
-        setSessionCount(session?.count ?? 0);
+      if (session) {
+        setSessionCount(getTodaySlipCount(session));
+        setSessionTotal(session.totalSlips);
       }
     })();
   }, []);
@@ -163,38 +326,39 @@ export default function HomeScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      headerTitle: () => (
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerBrand}>PetrolSlip</Text>
+          <Text style={styles.headerProMax}>PRO MAX</Text>
+        </View>
+      ),
+      headerStyle: {
+        backgroundColor: Colors.bg.primary,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border.subtle,
+        height: 56,
+      },
+      headerShadowVisible: false,
+      headerTintColor: Colors.text.secondary,
       headerRight: () => (
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <View style={styles.headerBadgeWrap}>
-            <Ionicons
-              name="print-outline"
-              size={22}
-              color={sessionActive ? "#1a56db" : "#9ca3af"}
-            />
-            {sessionActive && sessionCount > 0 ? (
-              <View style={styles.badgeNumber}>
-                <Text style={styles.badgeText}>{sessionCount}</Text>
-              </View>
-            ) : null}
-          </View>
-          {sessionActive ? (
-            <Text style={styles.sessionActiveText}>Session active</Text>
+        <View style={styles.headerRight}>
+          {sessionActive && sessionCount > 0 ? (
+            <View style={styles.counterBadge}>
+              <Text style={styles.counterBadgeText}>● {sessionCount}</Text>
+            </View>
           ) : null}
-          <Pressable onPress={() => setShowAdminLogin(true)} style={{ padding: 8 }}>
-            <Ionicons name="person-outline" size={24} color={colors.primary} />
+          <Pressable
+            onPress={() => setShowAdminLogin(true)}
+            style={({ pressed }) => [styles.headerIconBtn, pressed && styles.headerIconPressed]}
+          >
+            <Ionicons name="person-outline" size={22} color={Colors.text.secondary} />
           </Pressable>
-          <Pressable onPress={() => router.push("/settings")} style={{ padding: 8, marginRight: 4 }}>
-            <Ionicons name="settings-outline" size={24} color={colors.primary} />
+          <Pressable
+            onPress={() => router.push("/settings")}
+            style={({ pressed }) => [styles.headerIconBtn, pressed && styles.headerIconPressed]}
+          >
+            <Ionicons name="settings-outline" size={22} color={Colors.text.secondary} />
           </Pressable>
-          {/* Printer status icon hidden for now
-          <PrinterStatus
-            connected={printer.connectionStatus === "connected"}
-            connectionStatus={printer.connectionStatus}
-            connectionStatusLabel={printer.connectionStatusLabel}
-            printerName={printer.connectedDevice?.name}
-            onPress={() => router.push("/printer-setup")}
-          />
-          */}
         </View>
       ),
     });
@@ -202,28 +366,39 @@ export default function HomeScreen() {
 
   const animateToStep = useCallback(
     (nextStep: number, direction: "forward" | "back") => {
-      const travel = screenWidth * 0.15;
-      const exitTo = direction === "forward" ? -travel : travel;
-      const enterFrom = direction === "forward" ? travel : -travel;
-      const easing = Easing.out(Easing.cubic);
+      const exitTo = direction === "forward" ? -30 : 30;
+      const enterFrom = direction === "forward" ? 30 : -30;
 
-      Animated.timing(slideAnim, {
-        toValue: exitTo,
-        duration: STEP_ANIM_MS,
-        easing,
-        useNativeDriver: true,
-      }).start(() => {
-        setCurrentStep(nextStep);
-        slideAnim.setValue(enterFrom);
+      Animated.parallel([
         Animated.timing(slideAnim, {
+          toValue: exitTo,
+          duration: STEP_ANIM_MS,
+          useNativeDriver: true,
+        }),
+        Animated.timing(stepOpacity, {
           toValue: 0,
           duration: STEP_ANIM_MS,
-          easing,
           useNativeDriver: true,
-        }).start();
+        }),
+      ]).start(() => {
+        setCurrentStep(nextStep);
+        slideAnim.setValue(enterFrom);
+        stepOpacity.setValue(0);
+        Animated.parallel([
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: STEP_ANIM_MS,
+            useNativeDriver: true,
+          }),
+          Animated.timing(stepOpacity, {
+            toValue: 1,
+            duration: STEP_ANIM_MS,
+            useNativeDriver: true,
+          }),
+        ]).start();
       });
     },
-    [slideAnim, screenWidth]
+    [slideAnim, stepOpacity]
   );
 
   const goForward = useCallback(
@@ -237,7 +412,7 @@ export default function HomeScreen() {
   );
 
   const resetSteps = useCallback(() => {
-    setCurrentStep(1);
+    setCurrentStep(0);
     setSelectedProduct(null);
     form.updateFuelRate("");
     form.updateVolume("");
@@ -274,13 +449,8 @@ export default function HomeScreen() {
     return () => clearTimeout(timer);
   }, [showDuplicate, duplicateCountdown, duplicateSlideAnim, screenWidth, resetSteps]);
 
-  const handleStartCounter = useCallback(async () => {
-    await startSlipSession();
-    setSessionActive(true);
-    setSessionCount(0);
-  }, []);
-
   const handleAdminLogin = useCallback(() => {
+    setAdminSigningIn(true);
     if (adminEmail === ADMIN_EMAIL && adminPassword === ADMIN_PASSWORD) {
       setShowAdminLogin(false);
       setAdminEmail("");
@@ -289,6 +459,7 @@ export default function HomeScreen() {
     } else {
       Alert.alert("Invalid credentials");
     }
+    setAdminSigningIn(false);
   }, [adminEmail, adminPassword, router]);
 
   const saveInvoiceFromReceipt = useCallback(
@@ -329,6 +500,93 @@ export default function HomeScreen() {
     }
   }, [lastPrintData, printer, resetSteps, saveInvoiceFromReceipt]);
 
+  const fetchEzPumpSales = useCallback(async () => {
+    try {
+      setEzPumpLoading(true);
+      setEzPumpError(null);
+      const sales = await EzPumpService.getRecentSales();
+      setEzPumpSales(sales);
+      setLastRefreshed(new Date());
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "CREDENTIALS_NOT_SET") {
+        setEzPumpError("CREDENTIALS_NOT_SET");
+        setEzPumpPollEnabled(false);
+      } else if (err instanceof Error && err.message === "NETWORK_UNAVAILABLE") {
+        setEzPumpError("Not connected to station network");
+      } else {
+        setEzPumpError("Unable to load live data");
+      }
+    } finally {
+      setEzPumpLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (currentStep === 0) {
+        setEzPumpPollEnabled(true);
+      }
+    }, [currentStep])
+  );
+
+  useEffect(() => {
+    if (currentStep !== 0 || !ezPumpPollEnabled) return;
+
+    fetchEzPumpSales();
+    const interval = setInterval(fetchEzPumpSales, 10000);
+    return () => clearInterval(interval);
+  }, [currentStep, ezPumpPollEnabled, fetchEzPumpSales]);
+
+  const handleDismissDuplicate = useCallback(() => {
+    if (closingDuplicate.current) return;
+    setDuplicateCountdown(0);
+  }, []);
+
+  const handleCardReprint = useCallback(
+    async (sale: EzPumpSale) => {
+      setCardReprintingId(sale.id);
+      try {
+        try {
+          await printer.ensureConnected();
+        } catch {
+          // Native printReceipt retries bind — continue even if JS check failed
+        }
+
+        const receiptData = ezPumpSaleToReceiptData(
+          sale,
+          form.station.stationName,
+          form.station.stationAddress,
+          {
+            stationPhone: form.station.stationPhone,
+            logoDataUrl: form.station.logoDataUrl,
+            logo2DataUrl: form.station.logo2DataUrl,
+            includeLogoInPrint: form.station.includeLogoInPrint,
+            useTwoLogos: form.station.useTwoLogos,
+          }
+        );
+
+        await printer.printReceipt(receiptData, false);
+        setPrintSuccess(true);
+
+        const slipCounts = await incrementSlipCount();
+        setSessionActive(true);
+        setSessionCount(slipCounts.todayCount);
+        setSessionTotal(slipCounts.totalSlips);
+
+        setLastPrintData(receiptData);
+        setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
+        setShowDuplicate(true);
+        setTimeout(() => setPrintSuccess(false), 800);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Print failed";
+        Alert.alert("Print failed", msg);
+      } finally {
+        setCardReprintingId(null);
+      }
+    },
+    [form.station, printer]
+  );
+
   const handlePrint = useCallback(
     async () => {
       if (!form.station.isProfileComplete()) {
@@ -354,10 +612,10 @@ export default function HomeScreen() {
         await printer.printReceipt(receiptData);
         setPrintSuccess(true);
 
-        const count = await incrementSlipCount();
-        if (count > 0) {
-          setSessionCount(count);
-        }
+        const slipCounts = await incrementSlipCount();
+        setSessionActive(true);
+        setSessionCount(slipCounts.todayCount);
+        setSessionTotal(slipCounts.totalSlips);
 
         await saveInvoiceFromReceipt(receiptData, false);
 
@@ -388,7 +646,7 @@ export default function HomeScreen() {
   if (!form.station.isHydrated) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={Colors.accent} />
       </View>
     );
   }
@@ -396,47 +654,68 @@ export default function HomeScreen() {
   if (!form.station.isProfileComplete()) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={Colors.accent} />
       </View>
     );
   }
+
+  const selectedFuelColor = selectedProduct ? getProductColor(selectedProduct) : Colors.accent;
+  const stepRate = form.fuelRate || "0";
+  const stepVolume = form.volume || "0";
+  const stepTotal = form.totalAmount ?? 0;
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
           <>
-            <Text style={styles.cardTitle}>Select Fuel Type</Text>
-            <View style={{ marginTop: 8 }}>
-              {FUEL_OPTIONS.map((option) => {
+            <Text style={styles.stepHeading}>What are you dispensing?</Text>
+            <Text style={styles.stepSubheading}>Select a product to continue</Text>
+            <View style={styles.fuelList}>
+              {FUEL_OPTIONS.map((option, index) => {
                 const isSelected = selectedProduct === option.id;
-                const tintBg = `${option.color}18`;
                 return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => handleSelectFuel(option.id)}
-                    style={[
-                      styles.fuelRow,
-                      isSelected && {
-                        borderColor: option.color,
-                        backgroundColor: tintBg,
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.radioOuter,
-                        isSelected && { borderColor: option.color },
+                  <View key={option.id}>
+                    <Pressable
+                      onPress={() => handleSelectFuel(option.id)}
+                      style={({ pressed }) => [
+                        styles.fuelRow,
+                        isSelected && { backgroundColor: `${option.color}0F` },
+                        pressed && !isSelected && { backgroundColor: Colors.bg.elevated },
                       ]}
                     >
+                      <View style={styles.fuelRowLeft}>
+                        <View
+                          style={[
+                            styles.fuelDot,
+                            { backgroundColor: option.color },
+                            isSelected && {
+                              shadowColor: option.color,
+                              shadowOpacity: 0.4,
+                              shadowRadius: 6,
+                              shadowOffset: { width: 0, height: 0 },
+                            },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.fuelName,
+                            isSelected && { color: option.color },
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </View>
                       {isSelected ? (
-                        <View style={[styles.radioInner, { backgroundColor: option.color }]} />
+                        <View style={styles.fuelCheck}>
+                          <Ionicons name="checkmark" size={12} color={Colors.text.primary} />
+                        </View>
                       ) : null}
-                    </View>
-                    <Text style={[styles.fuelLabel, { color: option.color }]}>
-                      {option.label}
-                    </Text>
-                  </Pressable>
+                    </Pressable>
+                    {index < FUEL_OPTIONS.length - 1 ? (
+                      <View style={styles.fuelSeparator} />
+                    ) : null}
+                  </View>
                 );
               })}
             </View>
@@ -446,26 +725,50 @@ export default function HomeScreen() {
       case 2:
         return (
           <>
-            <Text style={styles.cardTitle}>Litres Dispensed</Text>
-            <Text style={styles.cardSubtitle}>Enter volume from pump</Text>
-            <View style={styles.volumeInputRow}>
-              <TextInput
-                style={[styles.numberInput, { flex: 1 }]}
-                value={form.volume}
-                onChangeText={form.updateVolume}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor="#9ca3af"
-                autoFocus
-              />
-              <Text style={styles.volumeSuffix}>LTR</Text>
+            {selectedProduct ? (
+              <View style={styles.stepProductPillWrap}>
+                <View
+                  style={[
+                    styles.productPill,
+                    {
+                      backgroundColor: `${selectedFuelColor}1A`,
+                      borderColor: `${selectedFuelColor}40`,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.productPillText, { color: selectedFuelColor }]}>
+                    ● {productToBadgeKey(selectedProduct)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.volumeBlock}>
+              <View style={styles.volumeInputRow}>
+                <TextInput
+                  style={styles.volumeNumberInput}
+                  value={form.volume}
+                  onChangeText={form.updateVolume}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={Colors.text.tertiary}
+                  autoFocus
+                />
+                <Text style={styles.volumeSuffix}>LTR</Text>
+              </View>
+              <View style={styles.volumeUnderline} />
+              <Text style={styles.volumeRateText}>PKR {stepRate} / ltr</Text>
             </View>
             <Pressable
               onPress={() => goForward(3)}
               disabled={!form.volume.trim()}
-              style={[styles.nextButton, !form.volume.trim() && styles.buttonDisabled]}
+              style={({ pressed }) => [
+                styles.continueButton,
+                { width: screenWidth - 40 },
+                !form.volume.trim() && styles.buttonDisabled,
+                pressed && form.volume.trim() && styles.continueButtonPressed,
+              ]}
             >
-              <Text style={styles.nextButtonText}>Next →</Text>
+              <Text style={styles.continueButtonText}>Continue</Text>
             </Pressable>
           </>
         );
@@ -473,28 +776,69 @@ export default function HomeScreen() {
       case 3:
         return (
           <>
-            <Text style={styles.cardTitle}>Vehicle Number</Text>
-            <Text style={styles.cardSubtitle}>Optional — leave blank to skip</Text>
-            <View style={styles.vehicleInputRow}>
-              <TextInput
-                style={[styles.numberInput, { flex: 1 }]}
-                value={form.vehicleNumber}
-                onChangeText={form.updateVehicleNumber}
-                placeholder="e.g. ASX-428"
-                placeholderTextColor="#9ca3af"
-                autoCapitalize="characters"
-                autoFocus
-              />
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryProduct}>
+                {selectedProduct ?? form.productType}
+              </Text>
+              <Text style={styles.summaryMeta}>
+                {stepVolume} LTR · PKR {stepRate}/ltr
+              </Text>
+              <Text style={styles.summaryTotal}>PKR {stepTotal.toFixed(2)}</Text>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryDetailRow}>
+                <Text style={styles.summaryDetailLabel}>Volume</Text>
+                <Text style={styles.summaryDetailValue}>{stepVolume} LTR</Text>
+              </View>
+              <View style={styles.summaryDetailRow}>
+                <Text style={styles.summaryDetailLabel}>Rate</Text>
+                <Text style={styles.summaryDetailValue}>PKR {stepRate}/ltr</Text>
+              </View>
+              <View style={styles.summaryDetailRow}>
+                <Text style={styles.summaryDetailLabel}>Total</Text>
+                <Text style={styles.summaryDetailValue}>PKR {stepTotal.toFixed(2)}</Text>
+              </View>
             </View>
+
+            <Text style={styles.vehicleLabel}>VEHICLE NUMBER</Text>
+            <TextInput
+              style={[
+                styles.vehicleInput,
+                {
+                  borderColor: vehicleFocused ? Colors.border.strong : Colors.border.default,
+                },
+              ]}
+              value={form.vehicleNumber}
+              onChangeText={form.updateVehicleNumber}
+              placeholder="e.g. ABC-428"
+              placeholderTextColor={Colors.text.tertiary}
+              autoCapitalize="characters"
+              autoFocus
+              onFocus={() => setVehicleFocused(true)}
+              onBlur={() => setVehicleFocused(false)}
+            />
+            <Text style={styles.vehicleHint}>Optional — tap Print to skip</Text>
+
             <Pressable
               onPress={handlePrint}
               disabled={isPrinting || printer.isReconnecting}
-              style={[
-                styles.nextButton,
-                (isPrinting || printer.isReconnecting) && styles.buttonDisabled,
+              style={({ pressed }) => [
+                styles.printReceiptButton,
+                { width: screenWidth - 40 },
+                (isPrinting || printer.isReconnecting) && styles.printReceiptButtonLoading,
+                pressed && !isPrinting && styles.continueButtonPressed,
               ]}
             >
-              <Text style={styles.nextButtonText}>Print</Text>
+              {isPrinting || printer.isReconnecting ? (
+                <View style={styles.loadingButtonRow}>
+                  <ActivityIndicator size="small" color={Colors.text.primary} />
+                  <Text style={styles.printReceiptButtonText}>Printing...</Text>
+                </View>
+              ) : (
+                <>
+                  <Ionicons name="print-outline" size={18} color={Colors.text.primary} />
+                  <Text style={styles.printReceiptButtonText}>Print Receipt</Text>
+                </>
+              )}
             </Pressable>
           </>
         );
@@ -504,48 +848,217 @@ export default function HomeScreen() {
     }
   };
 
+  const renderDashboard = () => (
+    <ScrollView
+      style={styles.dashboardScroll}
+      contentContainerStyle={[
+        styles.dashboardContent,
+        { paddingBottom: Math.max(insets.bottom, 32) },
+      ]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={ezPumpLoading}
+          onRefresh={fetchEzPumpSales}
+          tintColor={Colors.accent}
+        />
+      }
+    >
+      <Pressable
+        onPress={() => setCurrentStep(1)}
+        style={({ pressed }) => [
+          styles.printNewReceiptButton,
+          pressed && styles.printNewReceiptButtonPressed,
+        ]}
+      >
+        <View style={styles.printNewReceiptLeft}>
+          <Ionicons name="print-outline" size={20} color={Colors.text.primary} />
+          <Text style={styles.printNewReceiptText}>Print New Receipt</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
+      </Pressable>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>LIVE RECEIPTS</Text>
+        <View style={styles.sectionHeaderRight}>
+          {ezPumpLoading ? (
+            <ActivityIndicator size="small" color={Colors.accent} />
+          ) : null}
+          {lastRefreshed && !ezPumpLoading ? (
+            <Text style={styles.sectionSubtitle}>
+              Updated{" "}
+              {lastRefreshed.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      {ezPumpError && ezPumpSales.length === 0 ? (
+        <EmptyState
+          icon={<Ionicons name="cloud-offline-outline" size={48} color={Colors.text.tertiary} />}
+          title={
+            ezPumpError === "CREDENTIALS_NOT_SET"
+              ? "Portal not configured"
+              : ezPumpError === "Not connected to station network"
+                ? "Not connected to station network"
+                : "Unable to load live data"
+          }
+          subtitle={
+            ezPumpError === "CREDENTIALS_NOT_SET"
+              ? "Set credentials in Settings to enable live receipts"
+              : ezPumpError === "Not connected to station network"
+                ? "Connect to TrisonPumpController WiFi"
+                : "Check your connection and try again"
+          }
+          actionLabel={ezPumpError !== "CREDENTIALS_NOT_SET" ? "Retry" : undefined}
+          onAction={ezPumpError !== "CREDENTIALS_NOT_SET" ? fetchEzPumpSales : undefined}
+        />
+      ) : null}
+
+      {!ezPumpError && !ezPumpLoading && ezPumpSales.length === 0 ? (
+        <EmptyState
+          icon={<Ionicons name="receipt-outline" size={48} color={Colors.text.tertiary} />}
+          title="No receipts found"
+          subtitle="Printed receipts will appear here"
+        />
+      ) : null}
+
+      {ezPumpLoading && ezPumpSales.length === 0 ? (
+        <>
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </>
+      ) : null}
+
+      {ezPumpSales.map((sale) => {
+        const displayProduct = mapEzPumpProduct(sale.product);
+        const badgeKey = productToBadgeKey(displayProduct);
+        const productColor = getProductColor(displayProduct);
+        const amount = parseFloat(sale.amount) || 0;
+        const qty = parseFloat(sale.qty) || 0;
+        const rate = qty > 0 ? (amount / qty).toFixed(2) : "0.00";
+
+        return (
+          <View key={sale.id} style={styles.receiptCardWrap}>
+            <View style={[styles.receiptCardAccent, { backgroundColor: productColor }]} />
+            <View style={styles.receiptCard}>
+              <View style={styles.receiptRow1}>
+                <View
+                  style={[
+                    styles.productPill,
+                    {
+                      backgroundColor: `${productColor}1A`,
+                      borderColor: `${productColor}40`,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.productPillText, { color: productColor }]}>
+                    ● {badgeKey}
+                  </Text>
+                </View>
+                <Text style={styles.receiptMeta}>
+                  N°{sale.nozzleId || "—"}
+                  <Text style={styles.receiptMetaDot}> · </Text>#{sale.id}
+                </Text>
+              </View>
+
+              <View style={styles.receiptRow2}>
+                <View style={styles.receiptAmountBlock}>
+                  <Text style={styles.receiptAmount}>PKR {sale.amount}</Text>
+                  <Text style={styles.receiptVolumeRate}>
+                    {sale.qty} LTR · PKR {rate}/ltr
+                  </Text>
+                </View>
+                {sale.vehicle.trim() ? (
+                  <View style={styles.vehiclePill}>
+                    <Text style={styles.vehiclePillText}>{sale.vehicle}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.receiptRow3}>
+                <Text style={styles.receiptDate}>{formatCardDateTime(sale.date)}</Text>
+                <Pressable
+                  onPress={() => handleCardReprint(sale)}
+                  disabled={cardReprintingId === sale.id}
+                  style={({ pressed }) => [
+                    styles.cardPrintButton,
+                    cardReprintingId === sale.id && styles.printButtonDisabled,
+                    pressed && styles.cardPrintButtonPressed,
+                  ]}
+                >
+                  {cardReprintingId === sale.id ? (
+                    <ActivityIndicator size="small" color={Colors.text.accent} />
+                  ) : (
+                    <>
+                      <Ionicons name="print-outline" size={13} color={Colors.text.accent} />
+                      <Text style={styles.cardPrintButtonText}>Print</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+
   return (
     <View style={styles.root}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        {!sessionActive ? (
-          <Pressable onPress={handleStartCounter} style={styles.startCounterButton}>
-            <Text style={styles.startCounterText}>▶ Start Counter</Text>
-          </Pressable>
-        ) : null}
-
-        <Animated.View
-          style={[
-            styles.card,
-            { width: cardWidth, transform: [{ translateX: slideAnim }] },
-          ]}
-        >
-          {currentStep > 1 ? (
-            <Pressable
-              onPress={() => goBack(currentStep - 1)}
-              style={styles.backButton}
-              hitSlop={8}
+      {currentStep === 0 ? (
+        renderDashboard()
+      ) : (
+        <View style={styles.stepScreen}>
+          <StepProgressBar currentStep={currentStep} screenWidth={screenWidth} />
+          <KeyboardAvoidingView
+            style={styles.stepKeyboard}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+          >
+            <ScrollView
+              contentContainerStyle={[
+                styles.stepScrollContent,
+                { paddingBottom: Math.max(insets.bottom, 48) },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </Pressable>
-          ) : (
-            <View style={styles.backButtonPlaceholder} />
-          )}
+              <Animated.View
+                style={[
+                  styles.stepContent,
+                  {
+                    transform: [{ translateX: slideAnim }],
+                    opacity: stepOpacity,
+                  },
+                ]}
+              >
+                <Pressable
+                  onPress={() => goBack(currentStep - 1)}
+                  style={styles.backButton}
+                  hitSlop={8}
+                >
+                  <Text style={styles.backButtonText}>← Back</Text>
+                </Pressable>
 
-          <ProgressDots currentStep={currentStep} />
-          <Text style={styles.stepIndicator}>
-            Step {currentStep} of {TOTAL_STEPS}
-          </Text>
+                <Text style={styles.stepIndicator}>
+                  STEP {currentStep} OF {TOTAL_STEPS}
+                </Text>
 
-          {renderStepContent()}
-        </Animated.View>
-      </KeyboardAvoidingView>
+                {renderStepContent()}
+              </Animated.View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      )}
 
       {isPrinting ? (
         <View style={styles.fullOverlay}>
-          <ActivityIndicator size="large" color="#fff" />
+          <ActivityIndicator size="large" color={Colors.text.primary} />
           <Text style={styles.overlayText}>Printing...</Text>
         </View>
       ) : null}
@@ -557,54 +1070,105 @@ export default function HomeScreen() {
       ) : null}
 
       {showDuplicate ? (
-        <View style={styles.fullOverlay}>
+        <View style={styles.duplicateOverlay}>
           <Animated.View
             style={[
               styles.duplicateCard,
-              { width: cardWidth, transform: [{ translateX: duplicateSlideAnim }] },
+              { transform: [{ translateX: duplicateSlideAnim }] },
             ]}
           >
-            <Text style={styles.duplicateTitle}>Print Duplicate?</Text>
-            <CountdownRing countdown={duplicateCountdown} total={DUPLICATE_COUNTDOWN_SECONDS} />
+            <Pressable
+              onPress={handleDismissDuplicate}
+              style={styles.duplicateCloseButton}
+              hitSlop={8}
+            >
+              <Text style={styles.duplicateCloseText}>✕</Text>
+            </Pressable>
+
+            <View style={styles.duplicateSuccessIcon}>
+              <Ionicons name="checkmark" size={24} color={Colors.text.success} />
+            </View>
+
+            <Text style={styles.duplicateSuccessTitle}>✓ Printed!</Text>
+
+            <Text style={styles.duplicateCountdownText}>
+              Print duplicate in {duplicateCountdown}s
+            </Text>
+
             <Pressable
               onPress={handleDuplicatePrint}
               disabled={isPrintingDuplicate}
               style={[styles.duplicateButton, isPrintingDuplicate && styles.buttonDisabled]}
             >
-              <Text style={styles.duplicateButtonText}>🖨️ Print Duplicate</Text>
+              <Text style={styles.duplicateButtonText}>
+                {isPrintingDuplicate ? "Printing duplicate..." : "Print Duplicate?"}
+              </Text>
             </Pressable>
-            <Text style={styles.autoCloseText}>
-              {isPrintingDuplicate
-                ? "Printing duplicate..."
-                : `Auto-closing in ${duplicateCountdown} seconds`}
-            </Text>
+
+            <Pressable onPress={handleDismissDuplicate} style={styles.duplicateSkipButton}>
+              <Text style={styles.duplicateSkipText}>Skip</Text>
+            </Pressable>
           </Animated.View>
         </View>
       ) : null}
 
       <Modal visible={showAdminLogin} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
           <View style={styles.loginCard}>
-            <Text style={styles.loginTitle}>Admin Login</Text>
+            <Ionicons name="lock-closed-outline" size={40} color={Colors.text.tertiary} style={styles.loginLockIcon} />
+            <Text style={styles.loginTitle}>Admin Access</Text>
+            <Text style={styles.loginSubtitle}>Enter credentials to continue</Text>
             <TextInput
-              style={styles.loginInput}
+              style={[
+                styles.loginInput,
+                {
+                  borderColor: adminEmailFocused ? Colors.border.strong : Colors.border.default,
+                },
+              ]}
               placeholder="Email"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={Colors.text.tertiary}
               value={adminEmail}
               onChangeText={setAdminEmail}
               autoCapitalize="none"
               keyboardType="email-address"
+              onFocus={() => setAdminEmailFocused(true)}
+              onBlur={() => setAdminEmailFocused(false)}
             />
             <TextInput
-              style={styles.loginInput}
+              style={[
+                styles.loginInput,
+                {
+                  borderColor: adminPasswordFocused ? Colors.border.strong : Colors.border.default,
+                },
+              ]}
               placeholder="Password"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={Colors.text.tertiary}
               value={adminPassword}
               onChangeText={setAdminPassword}
               secureTextEntry
+              onFocus={() => setAdminPasswordFocused(true)}
+              onBlur={() => setAdminPasswordFocused(false)}
             />
-            <Pressable onPress={handleAdminLogin} style={styles.loginButton}>
-              <Text style={styles.loginButtonText}>Login</Text>
+            <Pressable
+              onPress={handleAdminLogin}
+              disabled={adminSigningIn}
+              style={({ pressed }) => [
+                styles.loginButton,
+                adminSigningIn && styles.buttonLoading,
+                pressed && !adminSigningIn && styles.loginButtonPressed,
+              ]}
+            >
+              {adminSigningIn ? (
+                <View style={styles.loadingButtonRow}>
+                  <ActivityIndicator size="small" color={Colors.text.primary} />
+                  <Text style={styles.loginButtonText}>Signing in...</Text>
+                </View>
+              ) : (
+                <Text style={styles.loginButtonText}>Login</Text>
+              )}
             </Pressable>
             <Pressable
               onPress={() => {
@@ -617,7 +1181,7 @@ export default function HomeScreen() {
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Receipt preview skipped — print fires directly from Step 4
@@ -645,318 +1209,718 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: Colors.bg.primary,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: colors.background,
+    backgroundColor: Colors.bg.primary,
   },
-  overlay: {
-    flex: 1,
+  headerTitleWrap: {
     justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
   },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 10,
+  headerBrand: {
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+  },
+  headerProMax: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    color: Colors.text.accent,
+    letterSpacing: Typography.widest,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginRight: Spacing.sm,
+  },
+  counterBadge: {
+    backgroundColor: Colors.accentAlpha,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
+    borderRadius: Radius.full,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: 10,
+  },
+  counterBadgeText: {
+    color: Colors.text.accent,
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+  },
+  headerIconBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerIconPressed: {
+    transform: [{ scale: 0.92 }],
+  },
+  dashboardScroll: {
+    flex: 1,
+  },
+  dashboardContent: {
+    paddingBottom: Spacing.xxxl,
+  },
+  printNewReceiptButton: {
+    backgroundColor: Colors.accent,
+    height: 60,
+    borderRadius: Radius.lg,
+    marginTop: Spacing.lg,
+    marginHorizontal: Spacing.xl,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.xl,
+    ...Shadow.glow,
+  },
+  printNewReceiptButtonPressed: {
+    transform: [{ scale: 0.97 }],
+    backgroundColor: Colors.accentDark,
+  },
+  printNewReceiptLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  printNewReceiptText: {
+    color: Colors.text.primary,
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: Spacing.xl,
+    marginBottom: 10,
+    marginHorizontal: Spacing.lg,
+  },
+  sectionHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+    color: Colors.text.tertiary,
+    letterSpacing: Typography.widest,
+  },
+  sectionSubtitle: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+  },
+  errorState: {
+    alignItems: "center",
+    marginHorizontal: Spacing.xxxl,
+    marginTop: Spacing.xxl,
+    marginBottom: Spacing.lg,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+  },
+  emptyStateIconWrap: {
+    marginBottom: Spacing.lg,
+    alignItems: "center",
+  },
+  emptyStateTitle: {
+    color: Colors.text.secondary,
+    fontSize: Typography.md,
+    fontWeight: Typography.semibold,
+    textAlign: "center",
+  },
+  emptyStateSubtitle: {
+    color: Colors.text.tertiary,
+    fontSize: Typography.sm,
+    textAlign: "center",
+    marginTop: 6,
+    lineHeight: 20,
+  },
+  emptyStateAction: {
+    marginTop: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
+    backgroundColor: "transparent",
+    borderRadius: Radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: Spacing.xxl,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  emptyStateActionText: {
+    color: Colors.text.accent,
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+  },
+  loadingButtonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  buttonLoading: {
+    backgroundColor: Colors.accentDark,
+    opacity: 0.7,
+  },
+  skeletonCard: {
+    backgroundColor: Colors.bg.elevated,
+    borderRadius: Radius.md,
+    marginHorizontal: Spacing.lg,
+    marginBottom: 10,
+    padding: 14,
+    paddingLeft: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+  },
+  skeletonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  skeletonBar: {
+    backgroundColor: Colors.bg.hover,
+    borderRadius: Radius.xs,
+  },
+  receiptCardWrap: {
+    flexDirection: "row",
+    marginHorizontal: Spacing.lg,
+    marginBottom: 10,
+    borderRadius: Radius.md,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+  },
+  receiptCardAccent: {
+    width: 3,
+  },
+  receiptCard: {
+    flex: 1,
+    backgroundColor: Colors.bg.card,
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.lg,
+  },
+  receiptRow1: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  productPill: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+  },
+  productPillText: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    letterSpacing: Typography.wider,
+    textTransform: "uppercase",
+  },
+  receiptMeta: {
+    color: Colors.text.tertiary,
+    fontSize: Typography.sm,
+  },
+  receiptMetaDot: {
+    color: Colors.text.tertiary,
+  },
+  receiptRow2: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginTop: Spacing.md,
+  },
+  receiptAmountBlock: {
+    flex: 1,
+  },
+  receiptAmount: {
+    color: Colors.text.primary,
+    fontSize: Typography.xl,
+    fontWeight: Typography.bold,
+    letterSpacing: Typography.tight,
+  },
+  receiptVolumeRate: {
+    color: Colors.text.secondary,
+    fontSize: Typography.sm,
+    marginTop: Spacing.xs,
+  },
+  vehiclePill: {
+    backgroundColor: Colors.bg.elevated,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.full,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: 10,
+    marginLeft: Spacing.sm,
+  },
+  vehiclePillText: {
+    color: Colors.text.secondary,
+    fontSize: Typography.sm,
+  },
+  receiptRow3: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  receiptDate: {
+    color: Colors.text.tertiary,
+    fontSize: 12,
+  },
+  cardPrintButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    backgroundColor: "rgba(59,130,246,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(59,130,246,0.3)",
+    borderRadius: Radius.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  cardPrintButtonPressed: {
+    backgroundColor: "rgba(59,130,246,0.2)",
+    transform: [{ scale: 0.95 }],
+  },
+  cardPrintButtonText: {
+    color: Colors.text.accent,
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+  },
+  printButtonDisabled: {
+    opacity: 0.7,
+  },
+  stepScreen: {
+    flex: 1,
+    backgroundColor: Colors.bg.primary,
+  },
+  stepKeyboard: {
+    flex: 1,
+  },
+  stepScrollContent: {
+    flexGrow: 1,
+  },
+  stepContent: {
+    paddingHorizontal: Spacing.xl,
+  },
+  progressTrack: {
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  progressFill: {
+    height: 3,
+    backgroundColor: Colors.accent,
   },
   backButton: {
     alignSelf: "flex-start",
-    marginBottom: 8,
-  },
-  backButtonPlaceholder: {
-    height: 24,
-    marginBottom: 8,
+    minHeight: 44,
+    justifyContent: "center",
+    marginTop: Spacing.sm,
   },
   backButtonText: {
-    fontSize: 14,
-    color: "#1a56db",
-    fontWeight: "500",
-  },
-  progressDots: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 20,
-    justifyContent: "center",
-  },
-  dot: {
-    borderRadius: 4,
-  },
-  dotFilled: {
-    width: 24,
-    height: 8,
-    backgroundColor: "#1a56db",
-  },
-  dotEmpty: {
-    width: 8,
-    height: 8,
-    backgroundColor: "#d1d5db",
+    fontSize: Typography.base,
+    color: Colors.text.tertiary,
   },
   stepIndicator: {
-    fontSize: 12,
-    color: "#9ca3af",
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+    color: Colors.text.tertiary,
+    letterSpacing: Typography.widest,
+    textTransform: "uppercase",
     textAlign: "center",
-    marginBottom: 16,
+    marginTop: Spacing.xl,
   },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 8,
+  stepHeading: {
+    fontSize: Typography.xxxl,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+    letterSpacing: Typography.tight,
     textAlign: "center",
+    marginTop: Spacing.sm,
   },
-  cardSubtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 24,
+  stepSubheading: {
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
     textAlign: "center",
+    marginTop: Spacing.xs,
+  },
+  fuelList: {
+    marginTop: Spacing.xxl,
   },
   fuelRow: {
-    height: 56,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    marginBottom: 12,
-    paddingHorizontal: 16,
+    height: 64,
+    paddingHorizontal: Spacing.xl,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
-  radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: "#d1d5db",
+  fuelRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  fuelDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  fuelName: {
+    fontSize: Typography.md,
+    fontWeight: Typography.semibold,
+    color: Colors.text.primary,
+  },
+  fuelCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 16,
   },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+  fuelSeparator: {
+    height: 1,
+    backgroundColor: Colors.border.subtle,
   },
-  fuelLabel: {
-    fontSize: 18,
-    fontWeight: "700",
+  stepProductPillWrap: {
+    alignItems: "center",
+    marginTop: Spacing.xxl,
+  },
+  volumeBlock: {
     flex: 1,
-    textAlign: "center",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: Spacing.xxxl,
   },
   volumeInputRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 24,
-    borderBottomWidth: 2,
-    borderBottomColor: "#1a56db",
-    paddingVertical: 8,
+    alignItems: "baseline",
+    justifyContent: "center",
   },
-  vehicleInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 24,
-    borderBottomWidth: 2,
-    borderBottomColor: "#1a56db",
-    paddingVertical: 8,
+  volumeNumberInput: {
+    fontSize: 64,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+    textAlign: "center",
+    minWidth: 120,
+    padding: 0,
   },
   volumeSuffix: {
-    fontSize: 32,
-    color: "#1a1a2e",
-    fontWeight: "600",
-    marginLeft: 8,
+    fontSize: Typography.lg,
+    color: Colors.text.tertiary,
+    marginLeft: Spacing.sm,
   },
-  numberInput: {
-    fontSize: 32,
+  volumeUnderline: {
+    width: 100,
+    height: 1.5,
+    backgroundColor: Colors.accent,
+    marginTop: Spacing.sm,
+  },
+  volumeRateText: {
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
+    marginTop: Spacing.md,
     textAlign: "center",
-    color: "#1a1a2e",
-    flex: 1,
-    paddingVertical: 8,
   },
-  nextButton: {
-    backgroundColor: "#1a56db",
-    borderRadius: 12,
-    padding: 16,
-    width: "100%",
+  continueButton: {
+    alignSelf: "center",
+    height: 56,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
     alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.xxxl,
+    ...Shadow.glow,
   },
-  nextButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+  continueButtonPressed: {
+    transform: [{ scale: 0.97 }],
+    backgroundColor: Colors.accentDark,
+  },
+  continueButtonText: {
+    color: Colors.text.primary,
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+  },
+  summaryCard: {
+    backgroundColor: Colors.bg.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    marginTop: Spacing.lg,
+  },
+  summaryProduct: {
+    color: Colors.text.primary,
+    fontSize: Typography.md,
+    fontWeight: Typography.semibold,
+  },
+  summaryMeta: {
+    color: Colors.text.secondary,
+    fontSize: Typography.sm,
+    marginTop: Spacing.xs,
+  },
+  summaryTotal: {
+    color: Colors.accent,
+    fontSize: Typography.xxl,
+    fontWeight: Typography.bold,
+    marginTop: Spacing.sm,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: Colors.border.subtle,
+    marginVertical: Spacing.md,
+  },
+  summaryDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    height: 36,
+  },
+  summaryDetailLabel: {
+    color: Colors.text.tertiary,
+    fontSize: 12,
+  },
+  summaryDetailValue: {
+    color: Colors.text.primary,
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+  },
+  vehicleLabel: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
+  },
+  vehicleInput: {
+    backgroundColor: Colors.bg.input,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.sm,
+    height: 52,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    color: Colors.text.primary,
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    textTransform: "uppercase",
+  },
+  vehicleHint: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    textAlign: "center",
+    marginTop: Spacing.sm,
+  },
+  printReceiptButton: {
+    alignSelf: "center",
+    height: 60,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    marginTop: Spacing.xxl,
+    marginBottom: Spacing.xxxl,
+    ...Shadow.glow,
+  },
+  printReceiptButtonLoading: {
+    backgroundColor: Colors.accentDark,
+    opacity: 0.7,
+  },
+  printReceiptButtonText: {
+    color: Colors.text.primary,
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
   },
   buttonDisabled: {
     opacity: 0.4,
   },
   fullOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    backgroundColor: "rgba(0,0,0,0.75)",
     justifyContent: "center",
     alignItems: "center",
-    gap: 12,
+    gap: Spacing.md,
   },
   overlayText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "500",
+    color: Colors.text.primary,
+    fontSize: Typography.md,
+    fontWeight: Typography.medium,
   },
   successText: {
-    color: "#22c55e",
-    fontSize: 24,
-    fontWeight: "700",
+    color: Colors.text.success,
+    fontSize: Typography.xl,
+    fontWeight: Typography.bold,
   },
-  headerBadgeWrap: {
-    position: "relative",
-    marginRight: 8,
-    padding: 4,
-  },
-  badgeNumber: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    backgroundColor: "#ef4444",
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: "center",
+  duplicateOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.75)",
     justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: "white",
-    fontSize: 11,
-    fontWeight: "bold",
-  },
-  sessionActiveText: {
-    fontSize: 11,
-    color: "#1a56db",
-    marginRight: 4,
-    fontWeight: "500",
-  },
-  startCounterButton: {
-    backgroundColor: "#1a56db",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginBottom: 16,
-  },
-  startCounterText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
+    alignItems: "center",
+    paddingHorizontal: Spacing.xxl,
   },
   duplicateCard: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 28,
+    width: "100%",
+    backgroundColor: Colors.bg.elevated,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.xl,
+    paddingVertical: 28,
+    paddingHorizontal: Spacing.xxl,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 10,
+    ...Shadow.elevated,
   },
-  duplicateTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 24,
-  },
-  ringOuter: {
-    width: 120,
-    height: 120,
+  duplicateCloseButton: {
+    position: "absolute",
+    top: Spacing.lg,
+    right: Spacing.lg,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.bg.hover,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 24,
+    zIndex: 1,
   },
-  ringProgress: {
-    position: "absolute",
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 8,
+  duplicateCloseText: {
+    color: Colors.text.secondary,
+    fontSize: Typography.md,
+    lineHeight: 20,
   },
-  countdownNumber: {
-    fontSize: 48,
-    fontWeight: "700",
-    color: "#1a56db",
+  duplicateSuccessIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(34,197,94,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  duplicateSuccessTitle: {
+    fontSize: Typography.xl,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+    marginTop: Spacing.md,
+    textAlign: "center",
+  },
+  duplicateCountdownText: {
+    fontSize: Typography.sm,
+    color: Colors.text.secondary,
+    textAlign: "center",
+    marginTop: Spacing.sm,
   },
   duplicateButton: {
-    backgroundColor: "#1a56db",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
     width: "100%",
+    height: 50,
+    borderRadius: Radius.md,
+    marginTop: 18,
+    backgroundColor: Colors.accentAlpha,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "center",
   },
   duplicateButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    color: Colors.text.accent,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
   },
-  autoCloseText: {
-    fontSize: 12,
-    color: "#9ca3af",
+  duplicateSkipButton: {
+    marginTop: Spacing.sm,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  duplicateSkipText: {
+    color: Colors.text.tertiary,
+    fontSize: Typography.sm,
+    textAlign: "center",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.75)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: Spacing.xxl,
   },
   loginCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: Colors.bg.elevated,
+    borderRadius: Radius.xl,
+    paddingVertical: Spacing.xxxl,
+    paddingHorizontal: Spacing.xxl,
     width: "100%",
     maxWidth: 360,
+    marginHorizontal: Spacing.xxl,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    alignItems: "center",
+    ...Shadow.elevated,
+  },
+  loginLockIcon: {
+    marginBottom: Spacing.xl,
   },
   loginTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 20,
+    fontSize: Typography.xl,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
     textAlign: "center",
+  },
+  loginSubtitle: {
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
+    textAlign: "center",
+    marginTop: 6,
+    marginBottom: Spacing.xl,
   },
   loginInput: {
     borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    marginBottom: 12,
-    color: "#1a1a2e",
+    borderColor: Colors.border.default,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 14,
+    height: 48,
+    fontSize: Typography.base,
+    marginBottom: Spacing.md,
+    color: Colors.text.primary,
+    backgroundColor: Colors.bg.input,
+    width: "100%",
   },
   loginButton: {
-    backgroundColor: "#1a56db",
-    borderRadius: 8,
-    paddingVertical: 12,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    height: 50,
     alignItems: "center",
-    marginTop: 4,
+    marginTop: Spacing.xl,
+    minHeight: 50,
+    justifyContent: "center",
+    width: "100%",
+  },
+  loginButtonPressed: {
+    transform: [{ scale: 0.97 }],
+    backgroundColor: Colors.accentDark,
   },
   loginButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
   },
   cancelButton: {
-    paddingVertical: 12,
+    paddingVertical: Spacing.md,
     alignItems: "center",
-    marginTop: 8,
+    marginTop: Spacing.sm,
+    minHeight: 44,
+    justifyContent: "center",
   },
   cancelButtonText: {
-    color: "#6b7280",
-    fontSize: 15,
-    fontWeight: "500",
+    color: Colors.text.tertiary,
+    fontSize: Typography.base,
+    fontWeight: Typography.medium,
   },
 });

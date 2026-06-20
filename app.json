@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "PetrolSlip Pro",
-    "slug": "petrolslip-pro",
+    "name": "petrolslip-dynamic",
+    "slug": "petrolslip-dynamic",
     "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -63,6 +63,7 @@
       "./plugins/withSunmiPrinter.js",
       "./plugins/withUnifiedPrinter.js",
       "./plugins/withBluetoothRawPrinter.js",
+      "./plugins/withCleartextTraffic",
       "expo-asset",
       "expo-font",
       "@react-native-community/datetimepicker"
@@ -73,7 +74,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5a2c7bf0-bd4c-4852-9735-b86adb7135c2"
+        "projectId": "334ba58c-0282-4131-96ec-9f958d7b2005"
       }
     },
     "owner": "arslan_eas_3"
