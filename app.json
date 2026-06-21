@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "petrolslip-dynamic",
-    "slug": "petrolslip-dynamic",
+    "name": "petroslip-pro",
+    "slug": "petroslip-pro",
     "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.petrolslip.pro",
+      "bundleIdentifier": "com.petroslip.pro",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to thermal receipt printers.",
         "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to thermal receipt printers.",
@@ -28,7 +28,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1D4ED8"
       },
-      "package": "com.petrolslip.pro",
+      "package": "com.petroslip.pro",
       "versionCode": 2,
       "statusBar": {
         "backgroundColor": "#FFFFFF",
@@ -74,9 +74,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "334ba58c-0282-4131-96ec-9f958d7b2005"
+        "projectId": "40f8de57-bfbb-41c3-a328-9a4c226bee4f"
       }
     },
-    "owner": "arslan_eas_3"
+    "owner": "arslan_eas_4"
   }
 }

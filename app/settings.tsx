@@ -588,14 +588,14 @@ export default function SettingsScreen() {
           {!isInitialSetup ? (
             <View style={styles.pageHeader}>
               <Text style={styles.pageTitle}>Settings</Text>
-              <Text style={styles.pageSubtitle}>PetrolSlip Pro Max</Text>
+              <Text style={styles.pageSubtitle}>PetroSlip Pro Max</Text>
             </View>
           ) : null}
 
           {isInitialSetup && setupWelcomeVisible ? (
             <View style={styles.setupWelcomeCard}>
               <View style={styles.setupIconPlaceholder} />
-              <Text style={styles.setupWelcomeTitle}>Welcome to PetrolSlip</Text>
+              <Text style={styles.setupWelcomeTitle}>Welcome to PetroSlip</Text>
               <Text style={styles.setupWelcomeSubtitle}>Let's set up your station</Text>
               <Pressable
                 onPress={() => setSetupWelcomeVisible(false)}

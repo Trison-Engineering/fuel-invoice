@@ -328,7 +328,7 @@ export default function HomeScreen() {
     navigation.setOptions({
       headerTitle: () => (
         <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerBrand}>PetrolSlip</Text>
+          <Text style={styles.headerBrand}>PetroSlip</Text>
           <Text style={styles.headerProMax}>PRO MAX</Text>
         </View>
       ),
