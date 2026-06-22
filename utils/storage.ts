@@ -52,3 +52,5 @@ export const StorageKeys = {
 
 export const EZPUMP_EMAIL = "@fuel_receipt:ezpump_email";
 export const EZPUMP_PASSWORD = "@fuel_receipt:ezpump_password";
+export const LIVE_FEED_FILTER_ENABLED = "@fuel_receipt:live_feed_filter_enabled";
+export const LIVE_FEED_FILTER_PRODUCT = "@fuel_receipt:live_feed_filter_product";

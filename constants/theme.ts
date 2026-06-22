@@ -98,3 +98,20 @@ export const Shadow = {
     elevation: 8,
   },
 };
+
+/** @deprecated Use Colors — kept for legacy components */
+export const colors = {
+  primary: Colors.accent,
+  primaryLight: Colors.accentAlpha,
+  background: Colors.bg.primary,
+  white: Colors.text.primary,
+  black: Colors.text.primary,
+  muted: Colors.text.tertiary,
+  border: Colors.border.default,
+  success: Colors.text.success,
+  error: Colors.text.danger,
+  disabled: Colors.bg.input,
+};
+
+/** @deprecated Use Spacing — kept for legacy components */
+export const spacing = Spacing;

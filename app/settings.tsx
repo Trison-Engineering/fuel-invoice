@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStationStore } from "../stores/stationStore";
 import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
 import { isValidDecimal } from "../utils/validation";
-import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD } from "../utils/storage";
+import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
 import { recordPriceChange } from "../src/services/PriceHistoryService";
 import { preprocessLogoForUpload } from "../src/utils/printLogoUtil";
 import type { StationProfile } from "../stores/stationStore";
@@ -39,12 +39,125 @@ const FUEL_PRICE_ROWS = [
   { key: "hiOctane", label: "Hi-Octane", color: Colors.product.hiOctane },
 ] as const;
 
+const LIVE_FEED_PRODUCTS = [
+  { id: "Petrol" as const, label: "Petrol", color: Colors.product.petrol },
+  { id: "Diesel" as const, label: "Diesel", color: Colors.product.diesel },
+  { id: "Hi-Octane" as const, label: "Hi-Octane", color: Colors.product.hiOctane },
+];
+
 function SectionLabel({ children }: { children: string }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
 function SectionGroup({ children }: { children: ReactNode }) {
   return <View style={styles.sectionGroup}>{children}</View>;
+}
+
+function LiveFeedRadioRow({
+  label,
+  color,
+  selected,
+  isLast,
+  onPress,
+}: {
+  label: string;
+  color: string;
+  selected: boolean;
+  isLast?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <>
+      <Pressable onPress={onPress} style={styles.liveFeedRadioRow}>
+        <View style={styles.liveFeedRadioLeft}>
+          <View
+            style={[
+              styles.liveFeedRadioOuter,
+              selected && { borderColor: color },
+            ]}
+          >
+            {selected ? (
+              <View style={[styles.liveFeedRadioInner, { backgroundColor: color }]} />
+            ) : null}
+          </View>
+          <Text
+            style={[
+              styles.liveFeedRadioLabel,
+              { color: selected ? color : Colors.text.secondary },
+            ]}
+          >
+            {label}
+          </Text>
+        </View>
+        <View style={[styles.liveFeedColorDot, { backgroundColor: color }]} />
+      </Pressable>
+      {!isLast ? <View style={styles.liveFeedRadioSeparator} /> : null}
+    </>
+  );
+}
+
+function LiveFeedFilterSection({
+  filterEnabled,
+  selectedProduct,
+  onToggle,
+  onSelectProduct,
+}: {
+  filterEnabled: boolean;
+  selectedProduct: string | null;
+  onToggle: (value: boolean) => void;
+  onSelectProduct: (product: "Petrol" | "Diesel" | "Hi-Octane") => void;
+}) {
+  const radioAnim = useRef(new Animated.Value(filterEnabled ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(radioAnim, {
+      toValue: filterEnabled ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [filterEnabled, radioAnim]);
+
+  const radioMaxHeight = radioAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 170],
+  });
+
+  return (
+    <>
+      <Text style={styles.liveFeedSectionLabel}>LIVE FEED</Text>
+      <SectionGroup>
+        <View style={[styles.row, !filterEnabled && styles.rowLast]}>
+          <Text style={styles.rowLabel}>Filter by specific product</Text>
+          <Switch
+            value={filterEnabled}
+            onValueChange={onToggle}
+            trackColor={{ false: Colors.bg.hover, true: Colors.accentAlpha }}
+            thumbColor={filterEnabled ? Colors.accent : Colors.text.tertiary}
+          />
+        </View>
+        <Animated.View
+          style={{
+            opacity: radioAnim,
+            maxHeight: radioMaxHeight,
+            overflow: "hidden",
+          }}
+        >
+          <View style={styles.liveFeedRadioContainer}>
+            {LIVE_FEED_PRODUCTS.map((product, index) => (
+              <LiveFeedRadioRow
+                key={product.id}
+                label={product.label}
+                color={product.color}
+                selected={selectedProduct === product.id}
+                isLast={index === LIVE_FEED_PRODUCTS.length - 1}
+                onPress={() => onSelectProduct(product.id)}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      </SectionGroup>
+    </>
+  );
 }
 
 function SetupProgressHeader({ currentStep }: { currentStep: number }) {
@@ -135,25 +248,30 @@ function LoadingButtonContent({ label, variant = "primary" }: { label: string; v
 
 function SettingsInputRow({
   label,
+  fieldLabel,
   value,
   onChangeText,
   placeholder,
   multiline,
   isLast,
+  textAlign,
   ...props
 }: {
   label: string;
+  fieldLabel?: string;
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
   multiline?: boolean;
   isLast?: boolean;
+  textAlign?: "left" | "right" | "center";
 } & Omit<TextInputProps, "value" | "onChangeText">) {
   const [focused, setFocused] = useState(false);
+  const displayLabel = fieldLabel ?? label.toUpperCase();
 
   return (
-    <View style={[styles.row, multiline && styles.rowMultiline, isLast && styles.rowLast]}>
-      <Text style={styles.rowLabel}>{label}</Text>
+    <View style={[styles.stackedField, isLast && styles.stackedFieldLast]}>
+      <Text style={styles.stackedFieldLabel}>{displayLabel}</Text>
       <TextInput
         {...props}
         value={value}
@@ -170,10 +288,11 @@ function SettingsInputRow({
         }}
         placeholderTextColor={Colors.text.tertiary}
         style={[
-          styles.rowInput,
-          multiline && styles.rowInputMultiline,
+          styles.stackedFieldInput,
+          multiline && styles.stackedFieldInputMultiline,
+          textAlign === "right" && styles.stackedFieldInputRight,
           {
-            borderBottomColor: focused ? Colors.border.strong : Colors.border.default,
+            borderColor: focused ? Colors.border.strong : Colors.border.default,
           },
           props.style,
         ]}
@@ -283,7 +402,8 @@ export default function SettingsScreen() {
   const [ezPumpPassword, setEzPumpPassword] = useState("");
   const [savingEzPump, setSavingEzPump] = useState(false);
   const [logoProcessing, setLogoProcessing] = useState(false);
-  const [setupWelcomeVisible, setSetupWelcomeVisible] = useState(true);
+  const [filterEnabled, setFilterEnabled] = useState(false);
+  const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -298,8 +418,30 @@ export default function SettingsScreen() {
     (async () => {
       const savedEmail = await AsyncStorage.getItem(EZPUMP_EMAIL);
       setShowEzPumpSetup(!savedEmail);
+
+      const enabled = await AsyncStorage.getItem(LIVE_FEED_FILTER_ENABLED);
+      const product = await AsyncStorage.getItem(LIVE_FEED_FILTER_PRODUCT);
+      setFilterEnabled(enabled === "true");
+      setLiveFeedFilterProduct(product || null);
     })();
   }, []);
+
+  const handleToggleLiveFeedFilter = useCallback(async (value: boolean) => {
+    setFilterEnabled(value);
+    await AsyncStorage.setItem(LIVE_FEED_FILTER_ENABLED, value ? "true" : "false");
+    if (!value) {
+      setLiveFeedFilterProduct(null);
+      await AsyncStorage.removeItem(LIVE_FEED_FILTER_PRODUCT);
+    }
+  }, []);
+
+  const handleSelectLiveFeedProduct = useCallback(
+    async (product: "Petrol" | "Diesel" | "Hi-Octane") => {
+      setLiveFeedFilterProduct(product);
+      await AsyncStorage.setItem(LIVE_FEED_FILTER_PRODUCT, product);
+    },
+    []
+  );
 
   const handleSaveEzPumpCredentials = async () => {
     if (!ezPumpEmail.trim() || !ezPumpPassword.trim()) {
@@ -408,24 +550,24 @@ export default function SettingsScreen() {
     setSaving(true);
 
     const oldProfile = await getItem<StationProfile>(StorageKeys.STATION_PROFILE);
-    if (oldProfile?.fuelPrices) {
-      const oldPetrol = parseFloat(oldProfile.fuelPrices.petrol);
-      const oldDiesel = parseFloat(oldProfile.fuelPrices.diesel);
-      const oldHiOctane = parseFloat(oldProfile.fuelPrices.hiOctane);
-      const newPetrol = parseFloat(petrol);
-      const newDiesel = parseFloat(diesel);
-      const newHiOctane = parseFloat(hiOctane);
+    const oldPrices = oldProfile?.fuelPrices;
 
-      if (oldPetrol > 0 && oldPetrol !== newPetrol) {
-        await recordPriceChange("PETROL", oldPetrol, newPetrol);
+    const recordIfChanged = async (
+      product: "PETROL" | "DIESEL" | "HI-OCTANE",
+      oldVal: string | undefined,
+      newVal: string
+    ) => {
+      const oldP = parseFloat(oldVal ?? "0");
+      const newP = parseFloat(newVal);
+      if (isNaN(newP)) return;
+      if (oldPrices && !isNaN(oldP) && oldP > 0 && Math.abs(oldP - newP) > 0.001) {
+        await recordPriceChange(product, oldP, newP);
       }
-      if (oldDiesel > 0 && oldDiesel !== newDiesel) {
-        await recordPriceChange("DIESEL", oldDiesel, newDiesel);
-      }
-      if (oldHiOctane > 0 && oldHiOctane !== newHiOctane) {
-        await recordPriceChange("HI-OCTANE", oldHiOctane, newHiOctane);
-      }
-    }
+    };
+
+    await recordIfChanged("PETROL", oldPrices?.petrol, petrol);
+    await recordIfChanged("DIESEL", oldPrices?.diesel, diesel);
+    await recordIfChanged("HI-OCTANE", oldPrices?.hiOctane, hiOctane);
 
     await station.saveProfile();
     setSaving(false);
@@ -469,24 +611,22 @@ export default function SettingsScreen() {
     hiOctane: handlePriceChange(station.setHiOctanePrice),
   };
 
-  const setupStep = isInitialSetup
-    ? setupWelcomeVisible
-      ? 1
-      : 2
-    : 0;
+  const setupStep = isInitialSetup ? 1 : 0;
 
   const renderSetupForm = () => (
     <>
       <SetupSectionCard step={1} title="Station Profile">
-        <SectionGroup>
+        <View style={styles.stackedFieldsWrap}>
           <SettingsInputRow
             label="Station Name"
+            fieldLabel="STATION NAME"
             value={station.stationName}
             onChangeText={station.setStationName}
             placeholder="Enter station name"
           />
           <SettingsInputRow
             label="Station Address"
+            fieldLabel="STATION ADDRESS"
             value={station.stationAddress}
             onChangeText={station.setStationAddress}
             placeholder="Enter station address"
@@ -494,28 +634,28 @@ export default function SettingsScreen() {
           />
           <SettingsInputRow
             label="Contact Phone"
+            fieldLabel="CONTACT PHONE"
             value={station.stationPhone}
             onChangeText={station.setStationPhone}
             placeholder="e.g. 03001234567"
             keyboardType="number-pad"
             isLast
           />
-        </SectionGroup>
+        </View>
       </SetupSectionCard>
 
       <SetupSectionCard step={2} title="Fuel Prices">
-        <SectionGroup>
+        <View style={styles.stackedFieldsWrap}>
           {FUEL_PRICE_ROWS.map((fuel, index) => (
             <FuelPriceRow
               key={fuel.key}
               label={fuel.label}
-              color={fuel.color}
               value={fuelValues[fuel.key]}
               onChangeText={fuelSetters[fuel.key]}
               isLast={index === FUEL_PRICE_ROWS.length - 1}
             />
           ))}
-        </SectionGroup>
+        </View>
       </SetupSectionCard>
 
       <SetupSectionCard step={3} title="Station Logo">
@@ -560,6 +700,13 @@ export default function SettingsScreen() {
           </View>
         </SectionGroup>
       </SetupSectionCard>
+
+      <LiveFeedFilterSection
+        filterEnabled={filterEnabled}
+        selectedProduct={liveFeedFilterProduct}
+        onToggle={handleToggleLiveFeedFilter}
+        onSelectProduct={handleSelectLiveFeedProduct}
+      />
     </>
   );
 
@@ -588,68 +735,57 @@ export default function SettingsScreen() {
           {!isInitialSetup ? (
             <View style={styles.pageHeader}>
               <Text style={styles.pageTitle}>Settings</Text>
-              <Text style={styles.pageSubtitle}>PetroSlip Pro Max</Text>
+              <Text style={styles.pageSubtitle}>Petro Slip Pro</Text>
             </View>
           ) : null}
 
-          {isInitialSetup && setupWelcomeVisible ? (
-            <View style={styles.setupWelcomeCard}>
-              <View style={styles.setupIconPlaceholder} />
-              <Text style={styles.setupWelcomeTitle}>Welcome to PetroSlip</Text>
-              <Text style={styles.setupWelcomeSubtitle}>Let's set up your station</Text>
-              <Pressable
-                onPress={() => setSetupWelcomeVisible(false)}
-                style={({ pressed }) => [
-                  styles.setupGetStartedButton,
-                  pressed && styles.primaryButtonPressed,
-                ]}
-              >
-                <Text style={styles.primaryButtonText}>Get Started</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {isInitialSetup && !setupWelcomeVisible ? renderSetupForm() : null}
+          {isInitialSetup ? renderSetupForm() : null}
 
           {!isInitialSetup ? (
             <>
               <SectionLabel>STATION PROFILE</SectionLabel>
               <SectionGroup>
-                <SettingsInputRow
-                  label="Station Name"
-                  value={station.stationName}
-                  onChangeText={station.setStationName}
-                  placeholder="Enter station name"
-                />
-                <SettingsInputRow
-                  label="Station Address"
-                  value={station.stationAddress}
-                  onChangeText={station.setStationAddress}
-                  placeholder="Enter station address"
-                  multiline
-                />
-                <SettingsInputRow
-                  label="Contact Phone"
-                  value={station.stationPhone}
-                  onChangeText={station.setStationPhone}
-                  placeholder="e.g. 03001234567"
-                  keyboardType="number-pad"
-                  isLast
-                />
+                <View style={styles.sectionGroupPadded}>
+                  <SettingsInputRow
+                    label="Station Name"
+                    fieldLabel="STATION NAME"
+                    value={station.stationName}
+                    onChangeText={station.setStationName}
+                    placeholder="Enter station name"
+                  />
+                  <SettingsInputRow
+                    label="Station Address"
+                    fieldLabel="STATION ADDRESS"
+                    value={station.stationAddress}
+                    onChangeText={station.setStationAddress}
+                    placeholder="Enter station address"
+                    multiline
+                  />
+                  <SettingsInputRow
+                    label="Contact Phone"
+                    fieldLabel="CONTACT PHONE"
+                    value={station.stationPhone}
+                    onChangeText={station.setStationPhone}
+                    placeholder="e.g. 03001234567"
+                    keyboardType="number-pad"
+                    isLast
+                  />
+                </View>
               </SectionGroup>
 
               <SectionLabel>FUEL PRICES</SectionLabel>
               <SectionGroup>
-                {FUEL_PRICE_ROWS.map((fuel, index) => (
-                  <FuelPriceRow
-                    key={fuel.key}
-                    label={fuel.label}
-                    color={fuel.color}
-                    value={fuelValues[fuel.key]}
-                    onChangeText={fuelSetters[fuel.key]}
-                    isLast={index === FUEL_PRICE_ROWS.length - 1}
-                  />
-                ))}
+                <View style={styles.sectionGroupPadded}>
+                  {FUEL_PRICE_ROWS.map((fuel, index) => (
+                    <FuelPriceRow
+                      key={fuel.key}
+                      label={fuel.label}
+                      value={fuelValues[fuel.key]}
+                      onChangeText={fuelSetters[fuel.key]}
+                      isLast={index === FUEL_PRICE_ROWS.length - 1}
+                    />
+                  ))}
+                </View>
               </SectionGroup>
 
               <SectionLabel>STATION LOGO</SectionLabel>
@@ -695,7 +831,7 @@ export default function SettingsScreen() {
             </>
           ) : null}
 
-          {showEzPumpSetup ? (
+          {showEzPumpSetup && !isInitialSetup ? (
             <>
               <SectionLabel>EZPUMP PORTAL</SectionLabel>
               <SectionGroup>
@@ -703,21 +839,26 @@ export default function SettingsScreen() {
                   <Ionicons name="wifi-outline" size={16} color={Colors.text.tertiary} />
                   <Text style={styles.ezPumpInfoText}>Connect to live receipt feed</Text>
                 </View>
-                <SettingsInputRow
-                  label="Portal Email"
-                  value={ezPumpEmail}
-                  onChangeText={setEzPumpEmail}
-                  placeholder="admin@ez-pump.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-                <SettingsInputRow
-                  label="Portal Password"
-                  value={ezPumpPassword}
-                  onChangeText={setEzPumpPassword}
-                  placeholder="Enter password"
-                  secureTextEntry
-                />
+                <View style={styles.sectionGroupPadded}>
+                  <SettingsInputRow
+                    label="Portal Email"
+                    fieldLabel="PORTAL EMAIL"
+                    value={ezPumpEmail}
+                    onChangeText={setEzPumpEmail}
+                    placeholder="admin@ez-pump.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  <SettingsInputRow
+                    label="Portal Password"
+                    fieldLabel="PORTAL PASSWORD"
+                    value={ezPumpPassword}
+                    onChangeText={setEzPumpPassword}
+                    placeholder="Enter password"
+                    secureTextEntry
+                    isLast
+                  />
+                </View>
                 <Pressable
                   onPress={handleSaveEzPumpCredentials}
                   disabled={savingEzPump}
@@ -733,25 +874,32 @@ export default function SettingsScreen() {
             </>
           ) : null}
 
-          {(!isInitialSetup || !setupWelcomeVisible) ? (
-            <Pressable
-              onPress={handleSave}
-              disabled={saving}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                saving && styles.buttonLoading,
-                pressed && !saving && styles.primaryButtonPressed,
-              ]}
-            >
-              {saving ? (
-                <LoadingButtonContent label="Saving..." />
-              ) : (
-                <Text style={styles.primaryButtonText}>
-                  {isInitialSetup ? "Save & Continue" : "Save Station Profile"}
-                </Text>
-              )}
-            </Pressable>
+          {!isInitialSetup ? (
+            <LiveFeedFilterSection
+              filterEnabled={filterEnabled}
+              selectedProduct={liveFeedFilterProduct}
+              onToggle={handleToggleLiveFeedFilter}
+              onSelectProduct={handleSelectLiveFeedProduct}
+            />
           ) : null}
+
+          <Pressable
+            onPress={handleSave}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.saveContinueButton,
+              saving && styles.buttonLoading,
+              pressed && !saving && styles.saveContinueButtonPressed,
+            ]}
+          >
+            {saving ? (
+              <LoadingButtonContent label="Saving..." />
+            ) : (
+              <Text style={styles.saveContinueButtonText}>
+                {isInitialSetup ? "Save & Continue" : "Save Station Profile"}
+              </Text>
+            )}
+          </Pressable>
 
           {!isInitialSetup ? (
             <Pressable
@@ -780,43 +928,38 @@ export default function SettingsScreen() {
 
 function FuelPriceRow({
   label,
-  color,
   value,
   onChangeText,
   isLast,
 }: {
   label: string;
-  color: string;
   value: string;
   onChangeText: (text: string) => void;
   isLast?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
+  const fieldLabel = `${label.toUpperCase()} PRICE (PKR)`;
 
   return (
-    <View style={[styles.row, isLast && styles.rowLast]}>
-      <View style={styles.fuelLabelWrap}>
-        <View style={[styles.fuelDot, { backgroundColor: color }]} />
-        <Text style={styles.rowLabel}>{label}</Text>
-      </View>
-      <View style={styles.fuelPriceInputWrap}>
-        <Text style={styles.fuelPricePrefix}>PKR </Text>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType="decimal-pad"
-          placeholder="0.00"
-          placeholderTextColor={Colors.text.tertiary}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={[
-            styles.fuelPriceInput,
-            {
-              borderBottomColor: focused ? Colors.border.strong : Colors.border.default,
-            },
-          ]}
-        />
-      </View>
+    <View style={[styles.stackedField, isLast && styles.stackedFieldLast]}>
+      <Text style={styles.stackedFieldLabel}>{fieldLabel}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType="decimal-pad"
+        placeholder="0.00"
+        placeholderTextColor={Colors.text.tertiary}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={[
+          styles.stackedFieldInput,
+          styles.stackedFieldInputRight,
+          styles.fuelPriceStackedInput,
+          {
+            borderColor: focused ? Colors.border.strong : Colors.border.default,
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -893,6 +1036,85 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xxl,
     ...Shadow.glow,
   },
+  setupGetStartedText: {
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    fontWeight: Typography.bold,
+  },
+  welcomeProgressDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  welcomeProgressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.accent,
+  },
+  stackedFieldsWrap: {
+    width: "100%",
+  },
+  sectionGroupPadded: {
+    padding: Spacing.lg,
+  },
+  stackedField: {
+    marginBottom: Spacing.lg,
+  },
+  stackedFieldLast: {
+    marginBottom: 0,
+  },
+  stackedFieldLabel: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  stackedFieldInput: {
+    backgroundColor: Colors.bg.input,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.sm,
+    height: 48,
+    paddingHorizontal: 14,
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    width: "100%",
+  },
+  stackedFieldInputMultiline: {
+    height: 88,
+    paddingTop: 14,
+    textAlignVertical: "top",
+  },
+  stackedFieldInputRight: {
+    textAlign: "right",
+  },
+  fuelPriceStackedInput: {
+    fontWeight: Typography.bold,
+    color: Colors.text.accent,
+  },
+  saveContinueButton: {
+    height: 56,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xxl,
+    ...Shadow.glow,
+  },
+  saveContinueButtonPressed: {
+    transform: [{ scale: 0.97 }],
+    backgroundColor: Colors.accentDark,
+  },
+  saveContinueButtonText: {
+    color: "#FFFFFF",
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+  },
   setupSectionCard: {
     backgroundColor: Colors.bg.card,
     borderWidth: 1,
@@ -950,11 +1172,19 @@ const styles = StyleSheet.create({
   backLink: {
     marginHorizontal: Spacing.xl,
     minHeight: 44,
+    height: 44,
     justifyContent: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    backgroundColor: "transparent",
   },
   backLinkText: {
-    color: Colors.text.tertiary,
+    color: Colors.text.secondary,
     fontSize: Typography.base,
+    fontWeight: Typography.medium,
   },
   pageHeader: {
     paddingHorizontal: Spacing.xl,
@@ -999,6 +1229,64 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
+  },
+  liveFeedSectionLabel: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+    color: Colors.text.tertiary,
+    letterSpacing: Typography.widest,
+    textTransform: "uppercase",
+    marginHorizontal: Spacing.lg,
+    marginTop: 28,
+    marginBottom: Spacing.sm,
+  },
+  liveFeedRadioContainer: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.subtle,
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.bg.secondary,
+  },
+  liveFeedRadioRow: {
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.xs,
+  },
+  liveFeedRadioLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  liveFeedRadioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border.default,
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  liveFeedRadioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  liveFeedRadioLabel: {
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+    marginLeft: Spacing.md,
+  },
+  liveFeedColorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  liveFeedRadioSeparator: {
+    height: 1,
+    backgroundColor: Colors.border.subtle,
   },
   sectionGroup: {
     backgroundColor: Colors.bg.card,
@@ -1141,8 +1429,8 @@ const styles = StyleSheet.create({
     fontWeight: Typography.semibold,
   },
   primaryButton: {
-    height: 52,
-    borderRadius: Radius.md,
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -1155,23 +1443,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentDark,
   },
   primaryButtonText: {
-    color: Colors.text.primary,
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
+    color: "#FFFFFF",
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
   },
   dangerButton: {
-    height: 52,
+    height: 48,
     borderRadius: Radius.md,
+    backgroundColor: "rgba(239,68,68,0.1)",
     borderWidth: 1,
-    borderColor: Colors.text.danger,
+    borderColor: "rgba(239,68,68,0.35)",
     alignItems: "center",
     justifyContent: "center",
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.md,
-    minHeight: 44,
+    minHeight: 48,
   },
   dangerButtonPressed: {
-    opacity: 0.85,
+    backgroundColor: "rgba(239,68,68,0.18)",
+    borderColor: Colors.text.danger,
   },
   dangerButtonText: {
     color: Colors.text.danger,

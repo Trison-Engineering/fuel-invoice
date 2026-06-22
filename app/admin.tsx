@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getPriceHistory, type PriceChange } from "../src/services/PriceHistoryService";
 import {
@@ -35,13 +35,24 @@ import {
   type StoredInvoice,
 } from "../src/services/InvoiceHistoryService";
 import { usePrinterContext } from "../contexts/PrinterContext";
-import { formatCurrency, generateInvoiceNumber } from "../utils/formatters";
+import { formatCurrency, formatCurrencyValue, generateInvoiceNumber } from "../utils/formatters";
 import type { ReceiptData } from "../utils/generateReceipt";
 import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
 import { EZPUMP_EMAIL, EZPUMP_PASSWORD } from "../utils/storage";
 
 type Tab = "invoices" | "price" | "slips" | "portal";
-type DateFilter = "all" | "today" | "week";
+type ProductFilter = "all" | "Petrol" | "Diesel" | "Hi-Octane";
+
+const PRODUCT_FILTERS: {
+  id: ProductFilter;
+  label: string;
+  color?: string;
+}[] = [
+  { id: "all", label: "All" },
+  { id: "Petrol", label: "Petrol", color: Colors.product.petrol },
+  { id: "Diesel", label: "Diesel", color: Colors.product.diesel },
+  { id: "Hi-Octane", label: "Hi-Octane", color: Colors.product.hiOctane },
+];
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "invoices", label: "Invoices" },
@@ -81,24 +92,36 @@ function formatDayDate(isoDate: string): string {
   return `${String(day).padStart(2, "0")} ${MONTHS[month - 1]} ${year}`;
 }
 
+function formatPriceTableDateTime(iso: string): { dateLine: string; timeLine: string } {
+  const d = new Date(iso);
+  const hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const period = hours >= 12 ? "PM" : "AM";
+  const hours12 = hours % 12 || 12;
+  return {
+    dateLine: `${d.getDate()} ${MONTHS[d.getMonth()]}`,
+    timeLine: `${String(hours12).padStart(2, "0")}:${minutes} ${period}`,
+  };
+}
+
+function invoiceMatchesProductFilter(product: string, filter: ProductFilter): boolean {
+  if (filter === "all") return true;
+  const normalized =
+    product === "PETROL" || product === "Petrol"
+      ? "Petrol"
+      : product === "DIESEL" || product === "Diesel"
+        ? "Diesel"
+        : product === "HI-OCTANE" || product === "Hi-Octane"
+          ? "Hi-Octane"
+          : product;
+  return normalized === filter;
+}
+
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
   if (!domain) return email;
   const visible = local.slice(0, Math.min(3, local.length));
   return `${visible}***@${domain}`;
-}
-
-function isPrintedToday(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  return d.toDateString() === now.toDateString();
-}
-
-function isPrintedThisWeek(iso: string): boolean {
-  const d = new Date(iso);
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 7);
-  return d > cutoff;
 }
 
 function storedInvoiceToReceiptData(invoice: StoredInvoice): ReceiptData {
@@ -223,7 +246,7 @@ export default function AdminScreen() {
   const [currentSession, setCurrentSession] = useState<CurrentSlipSession | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [reprintingId, setReprintingId] = useState<string | null>(null);
   const [showReprintOverlay, setShowReprintOverlay] = useState(false);
   const [portalEmail, setPortalEmail] = useState("");
@@ -259,22 +282,29 @@ export default function AdminScreen() {
     setLoading(false);
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (activeTab === "price") {
+      getPriceHistory().then(setPriceHistory);
+    }
+  }, [activeTab]);
 
   const filteredInvoices = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return invoices.filter((inv) => {
-      if (dateFilter === "today" && !isPrintedToday(inv.printedAt)) return false;
-      if (dateFilter === "week" && !isPrintedThisWeek(inv.printedAt)) return false;
+      if (!invoiceMatchesProductFilter(inv.product, productFilter)) return false;
       if (!query) return true;
       return (
         inv.vehicleNo.toLowerCase().includes(query) ||
         inv.dateTime.toLowerCase().includes(query)
       );
     });
-  }, [invoices, searchQuery, dateFilter]);
+  }, [invoices, searchQuery, productFilter]);
 
   const handleReprint = useCallback(
     async (invoice: StoredInvoice) => {
@@ -403,18 +433,39 @@ export default function AdminScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.filterPillsScroll}
           contentContainerStyle={styles.filterPillsRow}
         >
-          {(["all", "today", "week"] as const).map((filter) => {
-            const active = dateFilter === filter;
+          {PRODUCT_FILTERS.map((filter) => {
+            const active = productFilter === filter.id;
+            const productColor = filter.color;
+            const pillActiveStyle =
+              active && productColor
+                ? {
+                    backgroundColor: `${productColor}1F`,
+                    borderColor: `${productColor}59`,
+                  }
+                : null;
+            const textActiveStyle =
+              active && productColor ? { color: productColor } : null;
             return (
               <Pressable
-                key={filter}
-                onPress={() => setDateFilter(filter)}
-                style={[styles.filterPill, active && styles.filterPillActive]}
+                key={filter.id}
+                onPress={() => setProductFilter(filter.id)}
+                style={[
+                  styles.filterPill,
+                  active && styles.filterPillActive,
+                  pillActiveStyle,
+                ]}
               >
-                <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
-                  {filter === "all" ? "All" : filter === "today" ? "Today" : "This Week"}
+                <Text
+                  style={[
+                    styles.filterPillText,
+                    active && styles.filterPillTextActive,
+                    textActiveStyle,
+                  ]}
+                >
+                  {filter.label}
                 </Text>
               </Pressable>
             );
@@ -501,36 +552,47 @@ export default function AdminScreen() {
       {priceHistory.length === 0 ? (
         <Text style={styles.emptyText}>No price changes recorded yet</Text>
       ) : (
-        <View style={styles.timeline}>
-          <View style={styles.timelineLine} />
-          {priceHistory.map((row) => {
+        <View style={styles.priceTable}>
+          <View style={styles.priceTableHeader}>
+            <Text style={[styles.priceTableHeaderCell, styles.priceTableColDate]}>DATE & TIME</Text>
+            <Text style={[styles.priceTableHeaderCell, styles.priceTableColProduct]}>PRODUCT</Text>
+            <Text style={[styles.priceTableHeaderCell, styles.priceTableColOld]}>OLD</Text>
+            <Text style={[styles.priceTableHeaderCell, styles.priceTableColNew]}>NEW</Text>
+          </View>
+          {priceHistory.map((row, index) => {
             const productColor = getProductColor(row.product);
+            const { dateLine, timeLine } = formatPriceTableDateTime(row.changedAt);
+            const rowBg = index % 2 === 0 ? Colors.bg.card : Colors.bg.secondary;
             return (
-              <View key={row.id} style={styles.timelineEntry}>
-                <View style={styles.timelineDot} />
-                <View style={styles.timelineContent}>
-                  <Text style={styles.timelineDate}>{formatDateTime(row.changedAt)}</Text>
+              <View
+                key={row.id}
+                style={[styles.priceTableRow, { backgroundColor: rowBg }]}
+              >
+                <View style={styles.priceTableColDate}>
+                  <Text style={styles.priceTableDatePrimary}>{dateLine}</Text>
+                  <Text style={styles.priceTableDateSecondary}>{timeLine}</Text>
+                </View>
+                <View style={styles.priceTableColProduct}>
                   <View
                     style={[
-                      styles.productPill,
+                      styles.priceTableProductPill,
                       {
                         backgroundColor: `${productColor}1A`,
                         borderColor: `${productColor}40`,
-                        alignSelf: "flex-start",
-                        marginTop: Spacing.sm,
                       },
                     ]}
                   >
-                    <Text style={[styles.productPillText, { color: productColor }]}>
-                      ● {row.product}
+                    <Text style={[styles.priceTableProductPillText, { color: productColor }]}>
+                      {row.product}
                     </Text>
                   </View>
-                  <Text style={styles.priceChangeRow}>
-                    <Text style={styles.oldPrice}>{formatCurrency(row.oldPrice)}</Text>
-                    <Text style={styles.priceArrow}> → </Text>
-                    <Text style={styles.newPrice}>{formatCurrency(row.newPrice)}</Text>
-                  </Text>
                 </View>
+                <Text style={styles.priceTableOldPrice}>
+                  {formatCurrencyValue(row.oldPrice)}
+                </Text>
+                <Text style={styles.priceTableNewPrice}>
+                  {formatCurrencyValue(row.newPrice)}
+                </Text>
               </View>
             );
           })}
@@ -541,35 +603,42 @@ export default function AdminScreen() {
 
   const renderSlipsTab = () => (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.activeSessionCard}>
+      <View style={styles.slipTableSection}>
         {sessionActive && currentSession ? (
           <>
             <Text style={styles.activeSessionLabel}>ACTIVE SESSION</Text>
-            <Text style={styles.activeSessionStarted}>
-              Started {formatDateTime(currentSession.startedAt)}
-            </Text>
-            <Text style={styles.activeSessionTotal}>{currentSession.totalSlips}</Text>
-            <Text style={styles.activeSessionTotalLabel}>total slips</Text>
+            <View style={styles.slipSummaryRow}>
+              <View>
+                <Text style={styles.activeSessionStarted}>
+                  Started {formatDateTime(currentSession.startedAt)}
+                </Text>
+                <Text style={styles.activeSessionTotalLabel}>total slips</Text>
+              </View>
+              <Text style={styles.activeSessionTotal}>{currentSession.totalSlips}</Text>
+            </View>
 
-            <View style={styles.sessionDivider} />
+            <View style={styles.sessionDayTableHeader}>
+              <Text style={[styles.sessionDayHeaderCell, styles.sessionDayColDay]}>DAY</Text>
+              <Text style={[styles.sessionDayHeaderCell, styles.sessionDayColDate]}>DATE</Text>
+              <Text style={[styles.sessionDayHeaderCell, styles.sessionDayColSlips]}>SLIPS</Text>
+            </View>
 
-            {currentSession.days.map((day, index) => {
+            {currentSession.days.map((day) => {
               const isToday = day.date === todayDate;
-              const isLast = index === currentSession.days.length - 1;
               return (
                 <View
                   key={`${day.day}-${day.date}`}
-                  style={[
-                    styles.sessionDayRow,
-                    isToday && styles.sessionDayRowToday,
-                    isLast && styles.sessionDayRowLast,
-                  ]}
+                  style={[styles.sessionDayTableRow, isToday && styles.sessionDayTableRowToday]}
                 >
-                  <View>
-                    <Text style={styles.sessionDayTitle}>Day {day.day}</Text>
-                    <Text style={styles.sessionDayDate}>{formatDayDate(day.date)}</Text>
-                  </View>
-                  <Text style={styles.sessionDayCount}>{day.slipCount} slips</Text>
+                  <Text style={[styles.sessionDayCellDay, styles.sessionDayColDay]}>
+                    {day.day}
+                  </Text>
+                  <Text style={[styles.sessionDayCellDate, styles.sessionDayColDate]}>
+                    {formatDayDate(day.date)}
+                  </Text>
+                  <Text style={[styles.sessionDayCellSlips, styles.sessionDayColSlips]}>
+                    {day.slipCount}
+                  </Text>
                 </View>
               );
             })}
@@ -596,31 +665,38 @@ export default function AdminScreen() {
       ) : (
         <>
           <SectionLabel>HISTORY</SectionLabel>
-          {sessionHistory.map((session) => (
-            <View key={session.id} style={styles.historySessionCard}>
-              <Text style={styles.historySessionTitle}>
-                Session — {formatDateTime(session.startedAt)}
+          <View style={styles.slipHistoryTable}>
+            <View style={styles.slipHistoryHeader}>
+              <Text style={[styles.slipHistoryHeaderCell, styles.slipHistoryColStarted]}>
+                STARTED
               </Text>
-              <Text style={styles.historySessionTotal}>
-                {session.totalSlips} total slips
+              <Text style={[styles.slipHistoryHeaderCell, styles.slipHistoryColEnded]}>
+                ENDED
               </Text>
-              {session.days.map((day, index) => (
-                <View
-                  key={`${session.id}-${day.day}`}
-                  style={[
-                    styles.sessionDayRow,
-                    index === session.days.length - 1 && styles.sessionDayRowLast,
-                  ]}
-                >
-                  <View>
-                    <Text style={styles.sessionDayTitle}>Day {day.day}</Text>
-                    <Text style={styles.sessionDayDate}>{formatDayDate(day.date)}</Text>
-                  </View>
-                  <Text style={styles.sessionDayCount}>{day.slipCount} slips</Text>
-                </View>
-              ))}
+              <Text style={[styles.slipHistoryHeaderCell, styles.slipHistoryColSlips]}>
+                SLIPS
+              </Text>
             </View>
-          ))}
+            {sessionHistory.map((session, index) => (
+              <View
+                key={session.id}
+                style={[
+                  styles.slipHistoryRow,
+                  index % 2 === 1 && styles.slipHistoryRowAlt,
+                ]}
+              >
+                <Text style={[styles.slipHistoryCell, styles.slipHistoryColStarted]}>
+                  {formatDateTime(session.startedAt)}
+                </Text>
+                <Text style={[styles.slipHistoryCell, styles.slipHistoryColEnded]}>
+                  {formatDateTime(session.endTime)}
+                </Text>
+                <Text style={[styles.slipHistoryCellBold, styles.slipHistoryColSlips]}>
+                  {session.totalSlips}
+                </Text>
+              </View>
+            ))}
+          </View>
           <Text style={styles.weekTotalText}>Total this week: {weekTotal} slips</Text>
         </>
       )}
@@ -697,7 +773,7 @@ export default function AdminScreen() {
       >
         {portalSaving ? (
           <View style={styles.loadingButtonRow}>
-            <ActivityIndicator size="small" color={Colors.text.primary} />
+            <ActivityIndicator size="small" color="#FFFFFF" />
             <Text style={styles.portalPrimaryButtonText}>Updating...</Text>
           </View>
         ) : (
@@ -836,13 +912,19 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   headerButton: {
-    padding: Spacing.sm,
+    paddingHorizontal: Spacing.md,
     minWidth: 72,
     minHeight: 44,
+    height: 44,
     justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    backgroundColor: "transparent",
   },
   headerButtonText: {
-    color: Colors.text.accent,
+    color: Colors.text.secondary,
     fontSize: Typography.sm,
     fontWeight: Typography.semibold,
   },
@@ -908,19 +990,23 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     minHeight: 40,
   },
+  filterPillsScroll: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: 12,
+  },
   filterPillsRow: {
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
+    paddingRight: Spacing.lg,
   },
   filterPill: {
+    height: 32,
     backgroundColor: Colors.bg.card,
     borderWidth: 1,
     borderColor: Colors.border.default,
     borderRadius: Radius.full,
-    paddingVertical: 6,
     paddingHorizontal: 14,
     marginRight: Spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
   },
   filterPillActive: {
     backgroundColor: Colors.accentAlpha,
@@ -928,7 +1014,7 @@ const styles = StyleSheet.create({
   },
   filterPillText: {
     color: Colors.text.secondary,
-    fontSize: 12,
+    fontSize: Typography.xs,
     fontWeight: Typography.semibold,
   },
   filterPillTextActive: {
@@ -1066,67 +1152,166 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xxxl,
     paddingHorizontal: Spacing.lg,
   },
-  timeline: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    paddingLeft: 20,
-    position: "relative",
-  },
-  timelineLine: {
-    position: "absolute",
-    left: 3,
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: Colors.border.default,
-  },
-  timelineEntry: {
-    flexDirection: "row",
-    marginBottom: Spacing.xl,
-    paddingLeft: Spacing.lg,
-  },
-  timelineDot: {
-    position: "absolute",
-    left: -1,
-    top: 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.accent,
-  },
-  timelineContent: {
-    flex: 1,
-  },
-  timelineDate: {
-    color: Colors.text.tertiary,
-    fontSize: Typography.xs,
-  },
-  priceChangeRow: {
+  priceTable: {
     marginTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.default,
   },
-  oldPrice: {
-    color: Colors.text.secondary,
+  priceTableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 36,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.bg.elevated,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.default,
+  },
+  priceTableHeaderCell: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    fontWeight: Typography.semibold,
+  },
+  priceTableColDate: {
+    flex: 2,
+  },
+  priceTableColProduct: {
+    flex: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  priceTableColOld: {
+    flex: 1,
+    textAlign: "center",
+  },
+  priceTableColNew: {
+    flex: 1,
+    textAlign: "right",
+  },
+  priceTableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 48,
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  priceTableDatePrimary: {
     fontSize: Typography.sm,
+    color: Colors.text.primary,
+    fontWeight: Typography.bold,
+  },
+  priceTableDateSecondary: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  priceTableProductPill: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    alignSelf: "center",
+  },
+  priceTableProductPillText: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    textTransform: "uppercase",
+  },
+  priceTableOldPrice: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
     textDecorationLine: "line-through",
   },
-  priceArrow: {
-    color: Colors.text.tertiary,
+  priceTableNewPrice: {
+    flex: 1,
+    textAlign: "right",
     fontSize: Typography.sm,
-  },
-  newPrice: {
     color: Colors.text.primary,
-    fontSize: Typography.sm,
     fontWeight: Typography.bold,
   },
   activeSessionCard: {
-    backgroundColor: Colors.bg.card,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+  },
+  slipTableSection: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accent,
     borderRadius: Radius.md,
-    padding: Spacing.lg,
-    margin: Spacing.lg,
+    overflow: "hidden",
+    backgroundColor: Colors.bg.card,
+    paddingBottom: Spacing.lg,
+  },
+  slipSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  slipHistoryTable: {
+    marginHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    overflow: "hidden",
+  },
+  slipHistoryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 36,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.bg.elevated,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.default,
+  },
+  slipHistoryHeaderCell: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    fontWeight: Typography.semibold,
+  },
+  slipHistoryColStarted: {
+    flex: 2,
+  },
+  slipHistoryColEnded: {
+    flex: 2,
+  },
+  slipHistoryColSlips: {
+    flex: 1,
+    textAlign: "right",
+  },
+  slipHistoryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 48,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+    backgroundColor: Colors.bg.card,
+  },
+  slipHistoryRowAlt: {
+    backgroundColor: Colors.bg.secondary,
+  },
+  slipHistoryCell: {
+    fontSize: Typography.sm,
+    color: Colors.text.secondary,
+  },
+  slipHistoryCellBold: {
+    fontSize: Typography.base,
+    color: Colors.text.primary,
+    fontWeight: Typography.bold,
+    textAlign: "right",
   },
   activeSessionLabel: {
     color: Colors.text.accent,
@@ -1134,6 +1319,8 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
     letterSpacing: Typography.widest,
     textTransform: "uppercase",
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
   },
   activeSessionStarted: {
     color: Colors.text.secondary,
@@ -1158,22 +1345,71 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border.subtle,
     marginVertical: 14,
   },
+  sessionDayTableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 30,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.bg.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+    marginHorizontal: -Spacing.lg,
+  },
+  sessionDayHeaderCell: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    fontWeight: Typography.semibold,
+  },
+  sessionDayColDay: {
+    flex: 0.5,
+  },
+  sessionDayColDate: {
+    flex: 2,
+  },
+  sessionDayColSlips: {
+    flex: 1,
+    textAlign: "right",
+  },
+  sessionDayTableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 44,
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+    marginHorizontal: -Spacing.lg,
+  },
+  sessionDayTableRowToday: {
+    backgroundColor: Colors.accentAlpha,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    paddingLeft: 13,
+  },
+  sessionDayCellDay: {
+    color: Colors.text.secondary,
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+  },
+  sessionDayCellDate: {
+    color: Colors.text.primary,
+    fontSize: Typography.sm,
+  },
+  sessionDayCellSlips: {
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    fontWeight: Typography.bold,
+    textAlign: "right",
+  },
   sessionDayRow: {
-    minHeight: 48,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.subtle,
     paddingVertical: Spacing.sm,
-  },
-  sessionDayRowToday: {
-    backgroundColor: Colors.accentAlpha,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accent,
-    paddingLeft: 13,
-    marginHorizontal: -Spacing.lg,
-    paddingHorizontal: Spacing.lg,
   },
   sessionDayRowLast: {
     borderBottomWidth: 0,
@@ -1195,7 +1431,8 @@ const styles = StyleSheet.create({
   },
   endSessionButton: {
     height: 44,
-    marginTop: 14,
+    marginTop: Spacing.lg,
+    marginHorizontal: Spacing.lg,
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: Colors.border.default,
@@ -1205,6 +1442,7 @@ const styles = StyleSheet.create({
   },
   endSessionButtonPressed: {
     borderColor: Colors.border.strong,
+    backgroundColor: Colors.bg.hover,
   },
   endSessionButtonText: {
     color: Colors.text.secondary,
@@ -1318,13 +1556,17 @@ const styles = StyleSheet.create({
     fontSize: Typography.base,
   },
   portalPrimaryButton: {
-    height: 50,
-    borderRadius: Radius.md,
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
     alignItems: "center",
     justifyContent: "center",
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.lg,
+    width: "auto",
+    alignSelf: "stretch",
+    marginLeft: Spacing.lg,
+    marginRight: Spacing.lg,
     ...Shadow.glow,
   },
   portalPrimaryButtonPressed: {
@@ -1332,28 +1574,30 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentDark,
   },
   portalPrimaryButtonText: {
-    color: Colors.text.primary,
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
+    color: "#FFFFFF",
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
   },
   portalSecondaryButton: {
-    height: 44,
+    height: 48,
     borderRadius: Radius.md,
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: Colors.border.accent,
+    borderColor: Colors.border.default,
     alignItems: "center",
     justifyContent: "center",
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.md,
     marginBottom: Spacing.xxxl,
-    minHeight: 44,
+    minHeight: 48,
+    alignSelf: "stretch",
   },
   portalSecondaryButtonPressed: {
-    opacity: 0.85,
+    backgroundColor: Colors.bg.hover,
+    borderColor: Colors.border.strong,
   },
   portalSecondaryButtonText: {
-    color: Colors.text.accent,
+    color: Colors.text.secondary,
     fontSize: Typography.base,
     fontWeight: Typography.semibold,
   },

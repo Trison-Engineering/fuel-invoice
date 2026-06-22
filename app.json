@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "petroslip-pro",
+    "name": "Petro Slip Pro",
     "slug": "petroslip-pro",
     "version": "2.0.0",
     "orientation": "portrait",
@@ -9,9 +9,9 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1a56db"
+      "image": "./assets/splash-blank.png",
+      "backgroundColor": "#FFFFFF",
+      "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": false,
@@ -52,6 +52,14 @@
     "plugins": [
       "expo-dev-client",
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-blank.png",
+          "imageWidth": 1
+        }
+      ],
       [
         "expo-image-picker",
         {

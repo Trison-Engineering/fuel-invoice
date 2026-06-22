@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useLayoutEffect, useEffect, useRef } from "react";
+import React, { useState, useCallback, useLayoutEffect, useEffect, useRef, useMemo } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   View,
@@ -39,10 +39,11 @@ import {
   productTypeToStorageKey,
 } from "../src/services/InvoiceHistoryService";
 import { EzPumpService, type EzPumpSale } from "../src/services/EzPumpService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
 
 const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 180;
-const FUEL_SELECT_DELAY_MS = 60;
 const DUPLICATE_COUNTDOWN_SECONDS = 10;
 const ADMIN_EMAIL = "admin@admin.com";
 const ADMIN_PASSWORD = "admin@123";
@@ -90,6 +91,10 @@ function formatCardDateTime(dateStr: string): string {
 function mapEzPumpProduct(product: string): string {
   if (product === "HiOctane") return "Hi-Octane";
   return product;
+}
+
+function normalizeProductForLiveFeedFilter(product: string): string {
+  return mapEzPumpProduct(product).toLowerCase().replace(/-/g, "");
 }
 
 function productToBadgeKey(product: string): string {
@@ -274,6 +279,8 @@ export default function HomeScreen() {
   const [ezPumpSales, setEzPumpSales] = useState<EzPumpSale[]>([]);
   const [ezPumpLoading, setEzPumpLoading] = useState(false);
   const [ezPumpError, setEzPumpError] = useState<string | null>(null);
+  const [liveFeedFilterEnabled, setLiveFeedFilterEnabled] = useState(false);
+  const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [vehicleFocused, setVehicleFocused] = useState(false);
   const [adminEmailFocused, setAdminEmailFocused] = useState(false);
@@ -281,12 +288,24 @@ export default function HomeScreen() {
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const stepOpacity = useRef(new Animated.Value(1)).current;
+  const step1ContinueAnim = useRef(new Animated.Value(0)).current;
   const duplicateSlideAnim = useRef(new Animated.Value(0)).current;
   const closingDuplicate = useRef(false);
 
   const hideToast = useCallback(() => {
     setToast((t) => ({ ...t, visible: false }));
   }, []);
+
+  const loadLiveFeedFilter = useCallback(async () => {
+    const enabled = await AsyncStorage.getItem(LIVE_FEED_FILTER_ENABLED);
+    const product = await AsyncStorage.getItem(LIVE_FEED_FILTER_PRODUCT);
+    setLiveFeedFilterEnabled(enabled === "true");
+    setLiveFeedFilterProduct(product || null);
+  }, []);
+
+  useEffect(() => {
+    loadLiveFeedFilter();
+  }, [loadLiveFeedFilter]);
 
   useEffect(() => {
     console.log(
@@ -328,8 +347,8 @@ export default function HomeScreen() {
     navigation.setOptions({
       headerTitle: () => (
         <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerBrand}>PetroSlip</Text>
-          <Text style={styles.headerProMax}>PRO MAX</Text>
+          <Text style={styles.headerBrand}>Petro Slip</Text>
+          <Text style={styles.headerProBadge}>PRO</Text>
         </View>
       ),
       headerStyle: {
@@ -421,6 +440,19 @@ export default function HomeScreen() {
     setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
     setLastPrintData(null);
   }, [form]);
+
+  useEffect(() => {
+    if (currentStep === 1 && selectedProduct) {
+      Animated.spring(step1ContinueAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      step1ContinueAnim.setValue(0);
+    }
+  }, [currentStep, selectedProduct, step1ContinueAnim]);
 
   useEffect(() => {
     if (!showDuplicate) {
@@ -525,9 +557,20 @@ export default function HomeScreen() {
     useCallback(() => {
       if (currentStep === 0) {
         setEzPumpPollEnabled(true);
+        loadLiveFeedFilter();
       }
-    }, [currentStep])
+    }, [currentStep, loadLiveFeedFilter])
   );
+
+  const displayedSales = useMemo(() => {
+    if (!liveFeedFilterEnabled || !liveFeedFilterProduct) {
+      return ezPumpSales;
+    }
+    const filterKey = liveFeedFilterProduct.toLowerCase().replace(/-/g, "");
+    return ezPumpSales.filter(
+      (sale) => normalizeProductForLiveFeedFilter(sale.product) === filterKey
+    );
+  }, [ezPumpSales, liveFeedFilterEnabled, liveFeedFilterProduct]);
 
   useEffect(() => {
     if (currentStep !== 0 || !ezPumpPollEnabled) return;
@@ -638,9 +681,8 @@ export default function HomeScreen() {
       setSelectedProduct(fuelId);
       form.setProductType(fuelId);
       form.updateFuelRate(form.station.getFuelPrice(fuelId));
-      setTimeout(() => goForward(2), FUEL_SELECT_DELAY_MS);
     },
-    [form, goForward]
+    [form]
   );
 
   if (!form.station.isHydrated) {
@@ -663,6 +705,10 @@ export default function HomeScreen() {
   const stepRate = form.fuelRate || "0";
   const stepVolume = form.volume || "0";
   const stepTotal = form.totalAmount ?? 0;
+  const step2CanContinue = (() => {
+    const volume = parseFloat(form.volume);
+    return form.volume.trim().length > 0 && !isNaN(volume) && volume > 0;
+  })();
 
   const renderStepContent = () => {
     switch (currentStep) {
@@ -671,7 +717,7 @@ export default function HomeScreen() {
           <>
             <Text style={styles.stepHeading}>What are you dispensing?</Text>
             <Text style={styles.stepSubheading}>Select a product to continue</Text>
-            <View style={styles.fuelList}>
+            <View style={styles.fuelListCard}>
               {FUEL_OPTIONS.map((option, index) => {
                 const isSelected = selectedProduct === option.id;
                 return (
@@ -707,10 +753,12 @@ export default function HomeScreen() {
                         </Text>
                       </View>
                       {isSelected ? (
-                        <View style={styles.fuelCheck}>
-                          <Ionicons name="checkmark" size={12} color={Colors.text.primary} />
+                        <View style={[styles.fuelCheck, { backgroundColor: option.color }]}>
+                          <Ionicons name="checkmark" size={12} color="#FFFFFF" />
                         </View>
-                      ) : null}
+                      ) : (
+                        <View style={styles.fuelCheckEmpty} />
+                      )}
                     </Pressable>
                     {index < FUEL_OPTIONS.length - 1 ? (
                       <View style={styles.fuelSeparator} />
@@ -758,18 +806,6 @@ export default function HomeScreen() {
               <View style={styles.volumeUnderline} />
               <Text style={styles.volumeRateText}>PKR {stepRate} / ltr</Text>
             </View>
-            <Pressable
-              onPress={() => goForward(3)}
-              disabled={!form.volume.trim()}
-              style={({ pressed }) => [
-                styles.continueButton,
-                { width: screenWidth - 40 },
-                !form.volume.trim() && styles.buttonDisabled,
-                pressed && form.volume.trim() && styles.continueButtonPressed,
-              ]}
-            >
-              <Text style={styles.continueButtonText}>Continue</Text>
-            </Pressable>
           </>
         );
 
@@ -817,29 +853,6 @@ export default function HomeScreen() {
               onBlur={() => setVehicleFocused(false)}
             />
             <Text style={styles.vehicleHint}>Optional — tap Print to skip</Text>
-
-            <Pressable
-              onPress={handlePrint}
-              disabled={isPrinting || printer.isReconnecting}
-              style={({ pressed }) => [
-                styles.printReceiptButton,
-                { width: screenWidth - 40 },
-                (isPrinting || printer.isReconnecting) && styles.printReceiptButtonLoading,
-                pressed && !isPrinting && styles.continueButtonPressed,
-              ]}
-            >
-              {isPrinting || printer.isReconnecting ? (
-                <View style={styles.loadingButtonRow}>
-                  <ActivityIndicator size="small" color={Colors.text.primary} />
-                  <Text style={styles.printReceiptButtonText}>Printing...</Text>
-                </View>
-              ) : (
-                <>
-                  <Ionicons name="print-outline" size={18} color={Colors.text.primary} />
-                  <Text style={styles.printReceiptButtonText}>Print Receipt</Text>
-                </>
-              )}
-            </Pressable>
           </>
         );
 
@@ -871,11 +884,20 @@ export default function HomeScreen() {
           pressed && styles.printNewReceiptButtonPressed,
         ]}
       >
-        <View style={styles.printNewReceiptLeft}>
-          <Ionicons name="print-outline" size={20} color={Colors.text.primary} />
-          <Text style={styles.printNewReceiptText}>Print New Receipt</Text>
+        <View style={styles.printNewReceiptContent}>
+          <View style={styles.printNewReceiptLeft}>
+            <Ionicons name="print-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.printNewReceiptText} numberOfLines={1}>
+              Print New Receipt
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color="rgba(255,255,255,0.6)"
+            style={styles.printNewReceiptChevron}
+          />
         </View>
-        <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
       </Pressable>
 
       <View style={styles.sectionHeader}>
@@ -926,6 +948,19 @@ export default function HomeScreen() {
         />
       ) : null}
 
+      {!ezPumpError &&
+      !ezPumpLoading &&
+      liveFeedFilterEnabled &&
+      liveFeedFilterProduct &&
+      ezPumpSales.length > 0 &&
+      displayedSales.length === 0 ? (
+        <EmptyState
+          icon={<Ionicons name="filter-outline" size={32} color={Colors.text.tertiary} />}
+          title={`No ${liveFeedFilterProduct} sales yet`}
+          subtitle={`Showing ${liveFeedFilterProduct} only · change in Settings`}
+        />
+      ) : null}
+
       {ezPumpLoading && ezPumpSales.length === 0 ? (
         <>
           <CardSkeleton />
@@ -934,7 +969,7 @@ export default function HomeScreen() {
         </>
       ) : null}
 
-      {ezPumpSales.map((sale) => {
+      {displayedSales.map((sale) => {
         const displayProduct = mapEzPumpProduct(sale.product);
         const badgeKey = productToBadgeKey(displayProduct);
         const productColor = getProductColor(displayProduct);
@@ -1023,7 +1058,12 @@ export default function HomeScreen() {
             <ScrollView
               contentContainerStyle={[
                 styles.stepScrollContent,
-                { paddingBottom: Math.max(insets.bottom, 48) },
+                {
+                  paddingBottom:
+                    currentStep === 1 || currentStep === 2 || currentStep === 3
+                      ? 120 + Math.max(insets.bottom, 32)
+                      : Math.max(insets.bottom, 48),
+                },
               ]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -1039,7 +1079,10 @@ export default function HomeScreen() {
               >
                 <Pressable
                   onPress={() => goBack(currentStep - 1)}
-                  style={styles.backButton}
+                  style={({ pressed }) => [
+                    styles.backButton,
+                    pressed && styles.backButtonPressed,
+                  ]}
                   hitSlop={8}
                 >
                   <Text style={styles.backButtonText}>← Back</Text>
@@ -1052,6 +1095,85 @@ export default function HomeScreen() {
                 {renderStepContent()}
               </Animated.View>
             </ScrollView>
+
+            {currentStep === 1 && selectedProduct ? (
+              <Animated.View
+                style={[
+                  styles.stepBottomBar,
+                  { bottom: Math.max(insets.bottom, 32) },
+                  {
+                    opacity: step1ContinueAnim,
+                    transform: [
+                      {
+                        translateY: step1ContinueAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [20, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Pressable
+                  onPress={() => goForward(2)}
+                  style={({ pressed }) => [
+                    styles.stepBottomButton,
+                    pressed && styles.stepBottomButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.stepBottomButtonText}>Continue</Text>
+                </Pressable>
+              </Animated.View>
+            ) : null}
+
+            {currentStep === 2 ? (
+              <View style={[styles.stepBottomBar, { bottom: Math.max(insets.bottom, 32) }]}>
+                <Pressable
+                  onPress={() => goForward(3)}
+                  disabled={!step2CanContinue}
+                  style={({ pressed }) => [
+                    styles.stepBottomButton,
+                    !step2CanContinue && styles.stepBottomButtonDisabled,
+                    pressed && step2CanContinue && styles.stepBottomButtonPressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.stepBottomButtonText,
+                      !step2CanContinue && styles.stepBottomButtonTextDisabled,
+                    ]}
+                  >
+                    Continue
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {currentStep === 3 ? (
+              <View style={[styles.stepBottomBar, { bottom: Math.max(insets.bottom, 32) }]}>
+                <Pressable
+                  onPress={handlePrint}
+                  disabled={isPrinting || printer.isReconnecting}
+                  style={({ pressed }) => [
+                    styles.stepBottomPrintButton,
+                    (isPrinting || printer.isReconnecting) && styles.stepBottomPrintButtonLoading,
+                    pressed && !isPrinting && !printer.isReconnecting && styles.stepBottomButtonPressed,
+                  ]}
+                >
+                  {isPrinting || printer.isReconnecting ? (
+                    <View style={styles.loadingButtonRow}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={styles.stepBottomButtonText}>Printing...</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.loadingButtonRow}>
+                      <Ionicons name="print-outline" size={18} color="#FFFFFF" />
+                      <Text style={styles.stepBottomButtonText}>Print Receipt</Text>
+                    </View>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
           </KeyboardAvoidingView>
         </View>
       )}
@@ -1105,7 +1227,13 @@ export default function HomeScreen() {
               </Text>
             </Pressable>
 
-            <Pressable onPress={handleDismissDuplicate} style={styles.duplicateSkipButton}>
+            <Pressable
+              onPress={handleDismissDuplicate}
+              style={({ pressed }) => [
+                styles.duplicateSkipButton,
+                pressed && styles.duplicateSkipButtonPressed,
+              ]}
+            >
               <Text style={styles.duplicateSkipText}>Skip</Text>
             </Pressable>
           </Animated.View>
@@ -1157,13 +1285,13 @@ export default function HomeScreen() {
               disabled={adminSigningIn}
               style={({ pressed }) => [
                 styles.loginButton,
-                adminSigningIn && styles.buttonLoading,
+                adminSigningIn && styles.loginButtonLoading,
                 pressed && !adminSigningIn && styles.loginButtonPressed,
               ]}
             >
               {adminSigningIn ? (
                 <View style={styles.loadingButtonRow}>
-                  <ActivityIndicator size="small" color={Colors.text.primary} />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                   <Text style={styles.loginButtonText}>Signing in...</Text>
                 </View>
               ) : (
@@ -1176,7 +1304,10 @@ export default function HomeScreen() {
                 setAdminEmail("");
                 setAdminPassword("");
               }}
-              style={styles.cancelButton}
+              style={({ pressed }) => [
+                styles.cancelButton,
+                pressed && styles.cancelButtonPressed,
+              ]}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
@@ -1225,7 +1356,7 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
     color: Colors.text.primary,
   },
-  headerProMax: {
+  headerProBadge: {
     fontSize: Typography.xs,
     fontWeight: Typography.bold,
     color: Colors.text.accent,
@@ -1270,27 +1401,37 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: Radius.lg,
     marginTop: Spacing.lg,
-    marginHorizontal: Spacing.xl,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.xl,
+    marginHorizontal: Spacing.lg,
+    alignSelf: "stretch",
     ...Shadow.glow,
   },
   printNewReceiptButtonPressed: {
     transform: [{ scale: 0.97 }],
     backgroundColor: Colors.accentDark,
   },
+  printNewReceiptContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.xl,
+    height: "100%",
+  },
   printNewReceiptLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
     flex: 1,
+    marginRight: Spacing.sm,
+  },
+  printNewReceiptChevron: {
+    flexShrink: 0,
   },
   printNewReceiptText: {
-    color: Colors.text.primary,
+    color: "#FFFFFF",
     fontSize: Typography.md,
     fontWeight: Typography.bold,
+    flexShrink: 1,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -1521,12 +1662,22 @@ const styles = StyleSheet.create({
   backButton: {
     alignSelf: "flex-start",
     minHeight: 44,
+    height: 44,
     justifyContent: "center",
     marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    backgroundColor: "transparent",
+  },
+  backButtonPressed: {
+    backgroundColor: Colors.bg.hover,
   },
   backButtonText: {
     fontSize: Typography.base,
-    color: Colors.text.tertiary,
+    color: Colors.text.secondary,
+    fontWeight: Typography.medium,
   },
   stepIndicator: {
     fontSize: Typography.xs,
@@ -1551,10 +1702,21 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: Spacing.xs,
   },
-  fuelList: {
+  fuelListCard: {
     marginTop: Spacing.xxl,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.xxl,
+    backgroundColor: Colors.bg.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    overflow: "hidden",
+  },
+  fuelList: {
+    paddingBottom: 100,
   },
   fuelRow: {
+    minHeight: 64,
     height: 64,
     paddingHorizontal: Spacing.xl,
     flexDirection: "row",
@@ -1564,12 +1726,13 @@ const styles = StyleSheet.create({
   fuelRowLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.sm,
+    flex: 1,
   },
   fuelDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
+    marginRight: Spacing.md,
   },
   fuelName: {
     fontSize: Typography.md,
@@ -1584,9 +1747,61 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  fuelCheckEmpty: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border.default,
+  },
   fuelSeparator: {
     height: 1,
     backgroundColor: Colors.border.subtle,
+    marginLeft: 42,
+  },
+  stepBottomBar: {
+    position: "absolute",
+    left: Spacing.xl,
+    right: Spacing.xl,
+    zIndex: 10,
+  },
+  stepBottomButton: {
+    width: "100%",
+    height: 56,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Shadow.glow,
+  },
+  stepBottomButtonDisabled: {
+    backgroundColor: Colors.bg.hover,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  stepBottomButtonPressed: {
+    transform: [{ scale: 0.97 }],
+    backgroundColor: Colors.accentDark,
+  },
+  stepBottomButtonText: {
+    color: "#FFFFFF",
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+  },
+  stepBottomButtonTextDisabled: {
+    color: Colors.text.tertiary,
+  },
+  stepBottomPrintButton: {
+    width: "100%",
+    height: 60,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Shadow.glow,
+  },
+  stepBottomPrintButtonLoading: {
+    backgroundColor: Colors.accentDark,
   },
   stepProductPillWrap: {
     alignItems: "center",
@@ -1834,13 +2049,23 @@ const styles = StyleSheet.create({
     fontWeight: Typography.semibold,
   },
   duplicateSkipButton: {
+    width: "100%",
     marginTop: Spacing.sm,
     minHeight: 44,
+    height: 44,
     justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+  },
+  duplicateSkipButtonPressed: {
+    backgroundColor: Colors.bg.hover,
   },
   duplicateSkipText: {
-    color: Colors.text.tertiary,
-    fontSize: Typography.sm,
+    color: Colors.text.secondary,
+    fontSize: Typography.base,
     textAlign: "center",
   },
   modalOverlay: {
@@ -1894,33 +2119,46 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: Colors.accent,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     height: 50,
     alignItems: "center",
-    marginTop: Spacing.xl,
+    marginTop: 20,
     minHeight: 50,
     justifyContent: "center",
     width: "100%",
+    ...Shadow.glow,
+  },
+  loginButtonLoading: {
+    backgroundColor: Colors.accentDark,
   },
   loginButtonPressed: {
     transform: [{ scale: 0.97 }],
     backgroundColor: Colors.accentDark,
   },
   loginButtonText: {
-    color: Colors.text.primary,
+    color: "#FFFFFF",
     fontSize: Typography.base,
-    fontWeight: Typography.semibold,
+    fontWeight: Typography.bold,
   },
   cancelButton: {
-    paddingVertical: Spacing.md,
+    height: 44,
     alignItems: "center",
-    marginTop: Spacing.sm,
-    minHeight: 44,
     justifyContent: "center",
+    marginTop: 10,
+    minHeight: 44,
+    width: "100%",
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+  },
+  cancelButtonPressed: {
+    backgroundColor: Colors.bg.hover,
   },
   cancelButtonText: {
-    color: Colors.text.tertiary,
+    color: Colors.text.secondary,
     fontSize: Typography.base,
     fontWeight: Typography.medium,
+    textAlign: "center",
   },
 });

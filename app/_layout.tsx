@@ -1,14 +1,18 @@
 import "../global.css";
-import { useEffect } from "react";
-import { Platform } from "react-native";
+import { useEffect, useState, useCallback } from "react";
+import { Platform, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrinterProvider } from "../contexts/PrinterContext";
 import { useStationStore } from "../stores/stationStore";
-import { colors } from "../constants/theme";
+import { Colors } from "../constants/theme";
 import { logPrinterNativeModules } from "../src/services/printerNativeModule";
 import { getInvoices } from "../src/services/InvoiceHistoryService";
+import { PoweredBySplash } from "../components/PoweredBySplash";
+
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 function AppBootstrap({ children }: { children: React.ReactNode }) {
   const hydrate = useStationStore((s) => s.hydrate);
@@ -39,25 +43,25 @@ function RootNavigator() {
 
   return (
     <>
-      <StatusBar style="dark" backgroundColor={colors.white} translucent={false} />
+      <StatusBar style="light" backgroundColor={Colors.bg.primary} translucent={false} />
       <Stack
         screenOptions={{
           headerStyle: {
-            backgroundColor: colors.white,
+            backgroundColor: Colors.bg.primary,
             ...(Platform.OS === "android" && {
               paddingTop: insets.top,
               height: 56 + insets.top,
             }),
           },
-          headerTintColor: colors.primary,
-          headerTitleStyle: { fontWeight: "600", color: colors.black },
-          contentStyle: { backgroundColor: colors.background },
+          headerTintColor: Colors.text.accent,
+          headerTitleStyle: { fontWeight: "600", color: Colors.text.primary },
+          contentStyle: { backgroundColor: Colors.bg.primary },
           headerShadowVisible: false,
         }}
       >
-        <Stack.Screen name="index" options={{ title: "Fuel Receipt" }} />
-        <Stack.Screen name="printer-setup" options={{ title: "Printer" }} />
-        <Stack.Screen name="settings" options={{ title: "Settings" }} />
+        <Stack.Screen name="index" options={{ title: "Petro Slip Pro" }} />
+        <Stack.Screen name="printer-setup" options={{ title: "Printer Setup", headerShown: false }} />
+        <Stack.Screen name="settings" options={{ title: "Settings", headerShown: false }} />
         <Stack.Screen name="admin" options={{ headerShown: false }} />
       </Stack>
     </>
@@ -65,18 +69,35 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  const isHydrated = useStationStore((s) => s.isHydrated);
+  const [typingDone, setTypingDone] = useState(false);
+  const [appReady, setAppReady] = useState(false);
+
+  const handleTypingComplete = useCallback(() => {
+    setTypingDone(true);
+  }, []);
+
   useEffect(() => {
     if (Platform.OS === "android") {
       logPrinterNativeModules();
     }
+    SplashScreen.hideAsync().catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!typingDone || !isHydrated) return;
+    setAppReady(true);
+  }, [typingDone, isHydrated]);
 
   return (
     <SafeAreaProvider>
       <PrinterProvider>
-        <AppBootstrap>
-          <RootNavigator />
-        </AppBootstrap>
+        <View style={{ flex: 1, backgroundColor: Colors.bg.primary }}>
+          <AppBootstrap>
+            {appReady ? <RootNavigator /> : null}
+          </AppBootstrap>
+          {!appReady ? <PoweredBySplash onTypingComplete={handleTypingComplete} /> : null}
+        </View>
       </PrinterProvider>
     </SafeAreaProvider>
   );
