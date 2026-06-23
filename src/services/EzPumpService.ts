@@ -4,7 +4,7 @@ import { EZPUMP_EMAIL, EZPUMP_PASSWORD } from "../../utils/storage";
 const BASE_URL = "http://192.168.0.100";
 
 const FETCH_TIMEOUT_MS = 8000;
-const RATES_CACHE_TTL = 5 * 60 * 1000;
+const RATES_CACHE_TTL = 10 * 60 * 1000;
 
 export interface EzPumpRates {
   petrol: number | null;

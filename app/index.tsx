@@ -11,6 +11,7 @@ import {
   Animated,
   Easing,
   useWindowDimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -68,6 +69,17 @@ function getProductColor(product: string): string {
     "Car Service": Colors.product.carService,
   };
   return map[product] ?? Colors.text.secondary;
+}
+
+function getProductRgb(product: string): string {
+  const p = product?.toLowerCase() || "";
+  if (p.includes("petrol")) return "34,197,94";
+  if (p.includes("diesel")) return "59,130,246";
+  if (p.includes("hioctane") || p.includes("hi-octane") || p.includes("octane")) {
+    return "168,85,247";
+  }
+  if (p.includes("lubricant")) return "245,158,11";
+  return "136,146,164";
 }
 
 function formatCardDateTime(dateStr: string): string {
@@ -260,7 +272,13 @@ export default function HomeScreen() {
   const { width: screenWidth } = useWindowDimensions();
 
   const [currentStep, setCurrentStep] = useState(0);
-  const [cardReprintingId, setCardReprintingId] = useState<string | null>(null);
+  const [selectedSale, setSelectedSale] = useState<EzPumpSale | null>(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [sheetVehicle, setSheetVehicle] = useState("");
+  const [sheetPrinting, setSheetPrinting] = useState(false);
+  const [sheetVehicleFocused, setSheetVehicleFocused] = useState(false);
+  const sheetTranslateY = useRef(new Animated.Value(600)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
   const [selectedProduct, setSelectedProduct] = useState<FuelId | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printSuccess, setPrintSuccess] = useState(false);
@@ -623,50 +641,105 @@ export default function HomeScreen() {
     setDuplicateCountdown(0);
   }, []);
 
-  const handleCardReprint = useCallback(
-    async (sale: EzPumpSale) => {
-      setCardReprintingId(sale.id);
-      try {
-        try {
-          await printer.ensureConnected();
-        } catch {
-          // Native printReceipt retries bind — continue even if JS check failed
-        }
+  const openSheet = useCallback(
+    (sale: EzPumpSale) => {
+      setSelectedSale(sale);
+      setSheetVehicle("");
+      setSheetPrinting(false);
+      setSheetVisible(true);
 
-        const receiptData = ezPumpSaleToReceiptData(
-          sale,
-          form.station.stationName,
-          form.station.stationAddress,
-          {
-            stationPhone: form.station.stationPhone,
-            logoDataUrl: form.station.logoDataUrl,
-            logo2DataUrl: form.station.logo2DataUrl,
-            includeLogoInPrint: form.station.includeLogoInPrint,
-            useTwoLogos: form.station.useTwoLogos,
-          }
-        );
-
-        await printer.printReceipt(receiptData, false);
-        setPrintSuccess(true);
-
-        const slipCounts = await incrementSlipCount();
-        setSessionActive(true);
-        setSessionCount(slipCounts.todayCount);
-        setSessionTotal(slipCounts.totalSlips);
-
-        setLastPrintData(receiptData);
-        setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
-        setShowDuplicate(true);
-        setTimeout(() => setPrintSuccess(false), 800);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Print failed";
-        Alert.alert("Print failed", msg);
-      } finally {
-        setCardReprintingId(null);
-      }
+      Animated.parallel([
+        Animated.spring(sheetTranslateY, {
+          toValue: 0,
+          tension: 65,
+          friction: 11,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
     },
-    [form.station, printer]
+    [sheetTranslateY, backdropOpacity]
   );
+
+  const closeSheet = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(sheetTranslateY, {
+        toValue: 600,
+        duration: 280,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setSheetVisible(false);
+      setSelectedSale(null);
+      setSheetVehicle("");
+      setSheetPrinting(false);
+      sheetTranslateY.setValue(600);
+    });
+  }, [sheetTranslateY, backdropOpacity]);
+
+  const handleSheetPrint = useCallback(async () => {
+    if (!selectedSale || sheetPrinting) return;
+
+    Keyboard.dismiss();
+    setSheetPrinting(true);
+
+    const sale = selectedSale;
+    const vehicle = sheetVehicle.trim();
+
+    try {
+      try {
+        await printer.ensureConnected();
+      } catch {
+        // Native printReceipt retries bind — continue even if JS check failed
+      }
+
+      const receiptData = ezPumpSaleToReceiptData(
+        sale,
+        form.station.stationName,
+        form.station.stationAddress,
+        {
+          stationPhone: form.station.stationPhone,
+          logoDataUrl: form.station.logoDataUrl,
+          logo2DataUrl: form.station.logo2DataUrl,
+          includeLogoInPrint: form.station.includeLogoInPrint,
+          useTwoLogos: form.station.useTwoLogos,
+        }
+      );
+
+      if (vehicle) {
+        receiptData.vehicleNumber = vehicle;
+      }
+
+      closeSheet();
+
+      await printer.printReceipt(receiptData, false);
+      setPrintSuccess(true);
+
+      const slipCounts = await incrementSlipCount();
+      setSessionActive(true);
+      setSessionCount(slipCounts.todayCount);
+      setSessionTotal(slipCounts.totalSlips);
+
+      setLastPrintData(receiptData);
+      setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
+      setShowDuplicate(true);
+      setTimeout(() => setPrintSuccess(false), 800);
+    } catch (e) {
+      setSheetPrinting(false);
+      console.error("Sheet print error:", e);
+      Alert.alert("Print Failed", "Could not print receipt. Please try again.");
+    }
+  }, [selectedSale, sheetPrinting, sheetVehicle, form.station, printer, closeSheet]);
 
   const handlePrint = useCallback(
     async () => {
@@ -1011,7 +1084,14 @@ export default function HomeScreen() {
           effectiveRate !== null ? effectiveRate.toFixed(2) : "N/A";
 
         return (
-          <View key={sale.id} style={styles.receiptCardWrap}>
+          <Pressable
+            key={sale.id}
+            onPress={() => openSheet(sale)}
+            style={({ pressed }) => [
+              styles.receiptCardWrap,
+              pressed && styles.receiptCardPressed,
+            ]}
+          >
             <View style={[styles.receiptCardAccent, { backgroundColor: productColor }]} />
             <View style={styles.receiptCard}>
               <View style={styles.receiptRow1}>
@@ -1051,26 +1131,18 @@ export default function HomeScreen() {
               <View style={styles.receiptRow3}>
                 <Text style={styles.receiptDate}>{formatCardDateTime(sale.date)}</Text>
                 <Pressable
-                  onPress={() => handleCardReprint(sale)}
-                  disabled={cardReprintingId === sale.id}
+                  onPress={() => openSheet(sale)}
                   style={({ pressed }) => [
                     styles.cardPrintButton,
-                    cardReprintingId === sale.id && styles.printButtonDisabled,
                     pressed && styles.cardPrintButtonPressed,
                   ]}
                 >
-                  {cardReprintingId === sale.id ? (
-                    <ActivityIndicator size="small" color={Colors.text.accent} />
-                  ) : (
-                    <>
-                      <Ionicons name="print-outline" size={13} color={Colors.text.accent} />
-                      <Text style={styles.cardPrintButtonText}>Print</Text>
-                    </>
-                  )}
+                  <Ionicons name="print-outline" size={13} color={Colors.text.accent} />
+                  <Text style={styles.cardPrintButtonText}>Print</Text>
                 </Pressable>
               </View>
             </View>
-          </View>
+          </Pressable>
         );
       })}
     </ScrollView>
@@ -1378,6 +1450,164 @@ export default function HomeScreen() {
       />
       */}
 
+      {sheetVisible && selectedSale ? (
+        <>
+          <Animated.View
+            style={[styles.sheetBackdrop, { opacity: backdropOpacity }]}
+          >
+            <Pressable style={styles.sheetBackdropPressable} onPress={closeSheet} />
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.sheetContainer,
+              {
+                transform: [{ translateY: sheetTranslateY }],
+                paddingBottom: Math.max(insets.bottom, 32),
+              },
+            ]}
+          >
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              keyboardVerticalOffset={0}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+              >
+                <View style={styles.sheetHandleWrap}>
+                  <View style={styles.sheetHandle} />
+                </View>
+
+                <View style={styles.sheetHeader}>
+                  <Text style={styles.sheetTitle}>Print Receipt</Text>
+                  <Pressable
+                    onPress={closeSheet}
+                    style={({ pressed }) => [
+                      styles.sheetCloseButton,
+                      pressed && styles.sheetCloseButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.sheetCloseText}>✕</Text>
+                  </Pressable>
+                </View>
+
+                {(() => {
+                  const displayProduct = mapEzPumpProduct(selectedSale.product);
+                  const badgeKey = productToBadgeKey(displayProduct);
+                  const productColor = getProductColor(displayProduct);
+                  const productRgb = getProductRgb(displayProduct);
+                  const effectiveRate = getEffectiveRate(selectedSale);
+                  const amountValue = parseFloat(selectedSale.amount) || 0;
+                  const rateLabel =
+                    effectiveRate !== null ? `PKR ${effectiveRate}/ltr` : "N/A";
+
+                  return (
+                    <>
+                      <View style={styles.sheetSummaryCard}>
+                        <View style={styles.sheetSummaryTop}>
+                          <View
+                            style={[
+                              styles.sheetProductPill,
+                              {
+                                backgroundColor: `rgba(${productRgb}, 0.1)`,
+                                borderColor: `rgba(${productRgb}, 0.3)`,
+                              },
+                            ]}
+                          >
+                            <Text style={[styles.sheetProductPillText, { color: productColor }]}>
+                              ● {badgeKey}
+                            </Text>
+                          </View>
+                          <Text style={styles.sheetNozzleMeta}>
+                            N°{selectedSale.nozzleId || "—"} · #{selectedSale.id}
+                          </Text>
+                        </View>
+
+                        <Text style={styles.sheetAmount}>
+                          PKR {amountValue.toLocaleString()}
+                        </Text>
+
+                        <Text style={styles.sheetVolumeRate}>
+                          {selectedSale.qty} LTR
+                          {effectiveRate !== null ? ` · PKR ${effectiveRate}/ltr` : ""}
+                        </Text>
+
+                        <View style={styles.sheetDivider} />
+
+                        {[
+                          { label: "Volume", value: `${selectedSale.qty} LTR` },
+                          { label: "Rate", value: rateLabel },
+                          {
+                            label: "Total",
+                            value: `PKR ${amountValue.toLocaleString()}`,
+                          },
+                          { label: "Nozzle", value: `N°${selectedSale.nozzleId || "—"}` },
+                          { label: "Date", value: selectedSale.date },
+                        ].map((row) => (
+                          <View key={row.label} style={styles.sheetDetailRow}>
+                            <Text style={styles.sheetDetailLabel}>{row.label}</Text>
+                            <Text style={styles.sheetDetailValue}>{row.value}</Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      <View style={styles.sheetVehicleSection}>
+                        <Text style={styles.sheetVehicleLabel}>VEHICLE NUMBER</Text>
+                        <TextInput
+                          value={sheetVehicle}
+                          onChangeText={setSheetVehicle}
+                          placeholder="e.g. ABC-428"
+                          placeholderTextColor={Colors.text.tertiary}
+                          autoCapitalize="characters"
+                          returnKeyType="done"
+                          style={[
+                            styles.sheetVehicleInput,
+                            {
+                              borderColor: sheetVehicleFocused
+                                ? Colors.border.strong
+                                : Colors.border.default,
+                            },
+                          ]}
+                          onFocus={() => setSheetVehicleFocused(true)}
+                          onBlur={() => setSheetVehicleFocused(false)}
+                        />
+                        <Text style={styles.sheetVehicleHint}>
+                          Optional — tap Print to skip
+                        </Text>
+                      </View>
+
+                      <Pressable
+                        onPress={handleSheetPrint}
+                        disabled={sheetPrinting}
+                        style={({ pressed }) => [
+                          styles.sheetPrintButton,
+                          sheetPrinting && styles.sheetPrintButtonLoading,
+                          pressed && !sheetPrinting && styles.sheetPrintButtonPressed,
+                        ]}
+                      >
+                        {sheetPrinting ? (
+                          <View style={styles.loadingButtonRow}>
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                            <Text style={styles.sheetPrintButtonText}>Printing...</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.loadingButtonRow}>
+                            <Ionicons name="print-outline" size={18} color="#FFFFFF" />
+                            <Text style={styles.sheetPrintButtonText}>Print Receipt</Text>
+                          </View>
+                        )}
+                      </Pressable>
+                    </>
+                  );
+                })()}
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </Animated.View>
+        </>
+      ) : null}
+
       <Toast
         visible={toast.visible}
         message={toast.message}
@@ -1571,6 +1801,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: Colors.border.default,
+  },
+  receiptCardPressed: {
+    opacity: 0.92,
   },
   receiptCardAccent: {
     width: 3,
@@ -2196,5 +2429,199 @@ const styles = StyleSheet.create({
     fontSize: Typography.sm,
     fontWeight: Typography.medium,
     textAlign: "center",
+  },
+  sheetBackdrop: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    zIndex: 100,
+  },
+  sheetBackdropPressable: {
+    flex: 1,
+  },
+  sheetContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 101,
+    backgroundColor: Colors.bg.elevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Colors.border.default,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 20,
+    maxHeight: "92%",
+  },
+  sheetHandleWrap: {
+    alignItems: "center",
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border.strong,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  sheetTitle: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+    letterSpacing: -0.3,
+  },
+  sheetCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.bg.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetCloseButtonPressed: {
+    backgroundColor: Colors.bg.hover,
+  },
+  sheetCloseText: {
+    fontSize: Typography.base,
+    color: Colors.text.secondary,
+    fontWeight: Typography.semibold,
+  },
+  sheetSummaryCard: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    backgroundColor: Colors.bg.card,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    padding: 14,
+  },
+  sheetSummaryTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  sheetProductPill: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  sheetProductPillText: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  sheetNozzleMeta: {
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
+  },
+  sheetAmount: {
+    fontSize: 28,
+    fontWeight: Typography.black,
+    color: Colors.text.primary,
+    letterSpacing: -0.5,
+    marginBottom: 2,
+  },
+  sheetVolumeRate: {
+    fontSize: Typography.sm,
+    color: Colors.text.secondary,
+    marginBottom: 10,
+  },
+  sheetDivider: {
+    height: 1,
+    backgroundColor: Colors.border.subtle,
+    marginBottom: 10,
+  },
+  sheetDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    height: 32,
+  },
+  sheetDetailLabel: {
+    fontSize: Typography.sm,
+    color: Colors.text.tertiary,
+  },
+  sheetDetailValue: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    color: Colors.text.primary,
+  },
+  sheetVehicleSection: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+  },
+  sheetVehicleLabel: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+    color: Colors.text.tertiary,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: Spacing.sm,
+  },
+  sheetVehicleInput: {
+    backgroundColor: Colors.bg.input,
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+    height: 52,
+    paddingHorizontal: Spacing.lg,
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.text.primary,
+    letterSpacing: 1,
+  },
+  sheetVehicleHint: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    textAlign: "center",
+    marginTop: 6,
+  },
+  sheetPrintButton: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.sm,
+    height: 60,
+    minHeight: 44,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    ...Shadow.glow,
+  },
+  sheetPrintButtonPressed: {
+    backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.97 }],
+  },
+  sheetPrintButtonLoading: {
+    backgroundColor: Colors.accentDark,
+    opacity: 0.85,
+    shadowOpacity: 0.2,
+  },
+  sheetPrintButtonText: {
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+    color: "#FFFFFF",
   },
 });
