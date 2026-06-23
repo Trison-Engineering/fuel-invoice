@@ -26,7 +26,7 @@ import {
   type SlipSession,
   type CurrentSlipSession,
 } from "../src/services/SlipCounterService";
-import { EzPumpService } from "../src/services/EzPumpService";
+import { EzPumpService, type EzPumpRates } from "../src/services/EzPumpService";
 import {
   getOriginalInvoices,
   saveInvoice,
@@ -255,6 +255,8 @@ export default function AdminScreen() {
   const [portalConfigured, setPortalConfigured] = useState(false);
   const [portalSaving, setPortalSaving] = useState(false);
   const [portalTesting, setPortalTesting] = useState(false);
+  const [ezPumpRates, setEzPumpRates] = useState<EzPumpRates | null>(null);
+  const [ratesRefreshing, setRatesRefreshing] = useState(false);
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -293,6 +295,47 @@ export default function AdminScreen() {
       getPriceHistory().then(setPriceHistory);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "price") {
+      getPriceHistory().then(setPriceHistory);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "portal") return;
+
+    const cached = EzPumpService.getRatesFromCache();
+    if (cached) {
+      setEzPumpRates(cached);
+    }
+
+    EzPumpService.fetchRates()
+      .then(setEzPumpRates)
+      .catch(() => {});
+  }, [activeTab]);
+
+  const handleRefreshRates = useCallback(async () => {
+    EzPumpService.clearRatesCache();
+    setRatesRefreshing(true);
+    try {
+      const rates = await EzPumpService.fetchRates();
+      setEzPumpRates(rates);
+    } catch {
+      // silent — keep last known rates if any
+    } finally {
+      setRatesRefreshing(false);
+    }
+  }, []);
+
+  const formatRatesFetchedAt = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const period = hours >= 12 ? "PM" : "AM";
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes} ${period}`;
+  };
 
   const filteredInvoices = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -738,6 +781,61 @@ export default function AdminScreen() {
             <Text style={styles.portalMaskedEmail}>{maskEmail(savedPortalEmail)}</Text>
           ) : null}
         </View>
+      </View>
+
+      <SectionLabel>CURRENT RATES FROM EZPUMP</SectionLabel>
+      <View style={styles.portalRatesCard}>
+        {(
+          [
+            { key: "petrol", label: "Petrol", color: Colors.product.petrol },
+            { key: "hiOctane", label: "Hi-Octane", color: Colors.product.hiOctane },
+            { key: "diesel", label: "Diesel", color: Colors.product.diesel },
+          ] as const
+        ).map((item, index, arr) => {
+          const rate = ezPumpRates?.[item.key] ?? null;
+          return (
+            <View
+              key={item.key}
+              style={[
+                styles.portalRateRow,
+                index < arr.length - 1 && styles.portalRateRowBorder,
+              ]}
+            >
+              <View style={styles.portalRateLeft}>
+                <View style={[styles.portalRateDot, { backgroundColor: item.color }]} />
+                <Text style={styles.portalRateLabel}>{item.label}</Text>
+              </View>
+              <Text
+                style={[
+                  styles.portalRateValue,
+                  rate === null && styles.portalRateValueUnavailable,
+                ]}
+              >
+                {rate !== null ? `PKR ${rate.toFixed(2)}` : "Unavailable"}
+              </Text>
+            </View>
+          );
+        })}
+        {ezPumpRates?.fetchedAt ? (
+          <Text style={styles.portalRatesFetchedAt}>
+            Last fetched: {formatRatesFetchedAt(ezPumpRates.fetchedAt)}
+          </Text>
+        ) : null}
+        <Pressable
+          onPress={handleRefreshRates}
+          disabled={ratesRefreshing}
+          style={({ pressed }) => [
+            styles.portalRatesRefreshButton,
+            pressed && styles.portalRatesRefreshButtonPressed,
+            ratesRefreshing && styles.portalRatesRefreshButtonDisabled,
+          ]}
+        >
+          {ratesRefreshing ? (
+            <ActivityIndicator size="small" color={Colors.text.secondary} />
+          ) : (
+            <Text style={styles.portalRatesRefreshText}>↻ Refresh Rates</Text>
+          )}
+        </Pressable>
       </View>
 
       <SectionLabel>CREDENTIALS</SectionLabel>
@@ -1512,6 +1610,84 @@ const styles = StyleSheet.create({
   portalMaskedEmail: {
     color: Colors.text.secondary,
     fontSize: Typography.sm,
+  },
+  portalRatesCard: {
+    backgroundColor: Colors.bg.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+    overflow: "hidden",
+    paddingBottom: Spacing.md,
+  },
+  portalRateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  portalRateRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  portalRateLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  portalRateDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  portalRateLabel: {
+    fontSize: Typography.base,
+    color: Colors.text.primary,
+    fontWeight: Typography.medium,
+  },
+  portalRateValue: {
+    fontSize: Typography.base,
+    color: Colors.text.primary,
+    fontWeight: Typography.bold,
+  },
+  portalRateValueUnavailable: {
+    color: Colors.text.tertiary,
+    fontWeight: Typography.medium,
+  },
+  portalRatesFetchedAt: {
+    fontSize: Typography.xs,
+    color: Colors.text.tertiary,
+    textAlign: "right",
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.xs,
+  },
+  portalRatesRefreshButton: {
+    alignSelf: "flex-end",
+    height: 36,
+    minHeight: 36,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginRight: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  portalRatesRefreshButtonPressed: {
+    backgroundColor: Colors.bg.hover,
+    borderColor: Colors.border.strong,
+  },
+  portalRatesRefreshButtonDisabled: {
+    opacity: 0.7,
+  },
+  portalRatesRefreshText: {
+    fontSize: Typography.sm,
+    color: Colors.text.secondary,
+    fontWeight: Typography.medium,
   },
   credentialsGroup: {
     backgroundColor: Colors.bg.card,

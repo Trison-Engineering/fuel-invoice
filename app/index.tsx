@@ -38,7 +38,7 @@ import {
   formatSlipDateTime,
   productTypeToStorageKey,
 } from "../src/services/InvoiceHistoryService";
-import { EzPumpService, type EzPumpSale } from "../src/services/EzPumpService";
+import { EzPumpService, type EzPumpSale, getEffectiveRate } from "../src/services/EzPumpService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
 
@@ -130,7 +130,10 @@ function ezPumpSaleToReceiptData(
 
   const amount = parseFloat(sale.amount) || 0;
   const qty = parseFloat(sale.qty) || 0;
-  const rate = qty > 0 ? parseFloat((amount / qty).toFixed(2)) : null;
+  const effective = getEffectiveRate(sale);
+  const rate =
+    effective ??
+    (qty > 0 ? parseFloat((amount / qty).toFixed(2)) : null);
 
   return {
     stationName,
@@ -286,6 +289,7 @@ export default function HomeScreen() {
   const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [vehicleFocused, setVehicleFocused] = useState(false);
+  const [stepOfficialRate, setStepOfficialRate] = useState<number | null>(null);
   const [adminEmailFocused, setAdminEmailFocused] = useState(false);
   const [adminPasswordFocused, setAdminPasswordFocused] = useState(false);
 
@@ -309,6 +313,37 @@ export default function HomeScreen() {
   useEffect(() => {
     loadLiveFeedFilter();
   }, [loadLiveFeedFilter]);
+
+  useEffect(() => {
+    if (currentStep !== 2 || !selectedProduct) {
+      setStepOfficialRate(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const rates = await EzPumpService.fetchRates();
+        if (cancelled) return;
+
+        const official = EzPumpService.getOfficialRateForProduct(rates, selectedProduct);
+        setStepOfficialRate(official);
+
+        if (official !== null) {
+          form.updateFuelRate(String(official));
+        }
+      } catch {
+        if (!cancelled) {
+          setStepOfficialRate(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStep, selectedProduct, form]);
 
   useEffect(() => {
     console.log(
@@ -705,7 +740,8 @@ export default function HomeScreen() {
   }
 
   const selectedFuelColor = selectedProduct ? getProductColor(selectedProduct) : Colors.accent;
-  const stepRate = form.fuelRate || "0";
+  const stepRate =
+    stepOfficialRate !== null ? String(stepOfficialRate) : form.fuelRate || "0";
   const stepVolume = form.volume || "0";
   const stepTotal = form.totalAmount ?? 0;
   const step2CanContinue = (() => {
@@ -970,9 +1006,9 @@ export default function HomeScreen() {
         const displayProduct = mapEzPumpProduct(sale.product);
         const badgeKey = productToBadgeKey(displayProduct);
         const productColor = getProductColor(displayProduct);
-        const amount = parseFloat(sale.amount) || 0;
-        const qty = parseFloat(sale.qty) || 0;
-        const rate = qty > 0 ? (amount / qty).toFixed(2) : "0.00";
+        const effectiveRate = getEffectiveRate(sale);
+        const rateDisplay =
+          effectiveRate !== null ? effectiveRate.toFixed(2) : "N/A";
 
         return (
           <View key={sale.id} style={styles.receiptCardWrap}>
@@ -1002,7 +1038,7 @@ export default function HomeScreen() {
                 <View style={styles.receiptAmountBlock}>
                   <Text style={styles.receiptAmount}>PKR {sale.amount}</Text>
                   <Text style={styles.receiptVolumeRate}>
-                    {sale.qty} LTR · PKR {rate}/ltr
+                    {sale.qty} LTR · PKR {rateDisplay}/ltr
                   </Text>
                 </View>
                 {sale.vehicle.trim() ? (
