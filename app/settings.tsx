@@ -24,7 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStationStore } from "../stores/stationStore";
-import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
+import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { isValidDecimal } from "../utils/validation";
 import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
 import { recordPriceChange } from "../src/services/PriceHistoryService";
@@ -237,11 +237,12 @@ function SetupSectionCard({
 }
 
 function LoadingButtonContent({ label, variant = "primary" }: { label: string; variant?: "primary" | "accent" }) {
-  const textColor = variant === "accent" ? Colors.text.accent : Colors.text.primary;
+  const spinnerColor = variant === "accent" ? Colors.text.accent : "#FFFFFF";
+  const textStyle = variant === "accent" ? styles.ezPumpSaveText : styles.saveContinueButtonText;
   return (
     <View style={styles.loadingButtonRow}>
-      <ActivityIndicator size="small" color={textColor} />
-      <Text style={variant === "accent" ? styles.ezPumpSaveText : styles.primaryButtonText}>{label}</Text>
+      <ActivityIndicator size="small" color={spinnerColor} />
+      <Text style={textStyle}>{label}</Text>
     </View>
   );
 }
@@ -727,7 +728,7 @@ export default function SettingsScreen() {
           {isInitialSetup ? (
             <SetupProgressHeader currentStep={setupStep} />
           ) : (
-            <Pressable onPress={() => router.back()} style={styles.backLink} hitSlop={8}>
+            <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]} hitSlop={8}>
               <Text style={styles.backLinkText}>← Back</Text>
             </Pressable>
           )}
@@ -862,10 +863,14 @@ export default function SettingsScreen() {
                 <Pressable
                   onPress={handleSaveEzPumpCredentials}
                   disabled={savingEzPump}
-                  style={styles.ezPumpSaveRow}
+                  style={({ pressed }) => [
+                    styles.ezPumpSaveButton,
+                    savingEzPump && styles.buttonLoading,
+                    pressed && !savingEzPump && styles.ezPumpSaveButtonPressed,
+                  ]}
                 >
                   {savingEzPump ? (
-                    <LoadingButtonContent label="Updating..." variant="accent" />
+                    <LoadingButtonContent label="Updating..." />
                   ) : (
                     <Text style={styles.ezPumpSaveText}>Save & Connect</Text>
                   )}
@@ -888,6 +893,7 @@ export default function SettingsScreen() {
             disabled={saving}
             style={({ pressed }) => [
               styles.saveContinueButton,
+              isInitialSetup ? styles.saveContinueButtonSetup : styles.saveStationProfileButton,
               saving && styles.buttonLoading,
               pressed && !saving && styles.saveContinueButtonPressed,
             ]}
@@ -895,7 +901,12 @@ export default function SettingsScreen() {
             {saving ? (
               <LoadingButtonContent label="Saving..." />
             ) : (
-              <Text style={styles.saveContinueButtonText}>
+              <Text
+                style={[
+                  styles.saveContinueButtonText,
+                  !isInitialSetup && styles.saveStationProfileButtonText,
+                ]}
+              >
                 {isInitialSetup ? "Save & Continue" : "Save Station Profile"}
               </Text>
             )}
@@ -1097,23 +1108,37 @@ const styles = StyleSheet.create({
     color: Colors.text.accent,
   },
   saveContinueButton: {
+    marginHorizontal: Spacing.lg,
     height: 56,
-    borderRadius: Radius.lg,
+    minHeight: 44,
     backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
     alignItems: "center",
     justifyContent: "center",
-    marginHorizontal: Spacing.lg,
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  saveContinueButtonSetup: {
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.xxxl,
+  },
+  saveStationProfileButton: {
     marginTop: Spacing.xxl,
-    ...Shadow.glow,
   },
   saveContinueButtonPressed: {
-    transform: [{ scale: 0.97 }],
     backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.97 }],
   },
   saveContinueButtonText: {
     color: "#FFFFFF",
     fontSize: Typography.md,
     fontWeight: Typography.bold,
+  },
+  saveStationProfileButtonText: {
+    fontSize: Typography.base,
   },
   setupSectionCard: {
     backgroundColor: Colors.bg.card,
@@ -1161,30 +1186,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingButtonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
+    ...Buttons.loadingRow,
   },
   buttonLoading: {
-    backgroundColor: Colors.accentDark,
-    opacity: 0.7,
+    ...Buttons.primaryLoading,
   },
   backLink: {
-    marginHorizontal: Spacing.xl,
-    minHeight: 44,
-    height: 44,
-    justifyContent: "center",
+    ...Buttons.secondary,
+    width: undefined,
     alignSelf: "flex-start",
+    height: 44,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    borderRadius: Radius.md,
-    backgroundColor: "transparent",
+  },
+  backLinkPressed: {
+    ...Buttons.secondaryPressed,
   },
   backLinkText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.base,
-    fontWeight: Typography.medium,
+    ...Buttons.secondaryText,
   },
   pageHeader: {
     paddingHorizontal: Spacing.xl,
@@ -1414,59 +1434,62 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
     fontSize: Typography.sm,
   },
-  ezPumpSaveRow: {
-    backgroundColor: Colors.accentAlpha,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.default,
+  ezPumpSaveButton: {
     height: 52,
+    minHeight: 44,
+    marginTop: Spacing.lg,
+    marginHorizontal: 0,
+    backgroundColor: Colors.accent,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 52,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.subtle,
+    borderBottomLeftRadius: Radius.md,
+    borderBottomRightRadius: Radius.md,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  ezPumpSaveButtonPressed: {
+    backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.97 }],
   },
   ezPumpSaveText: {
-    color: Colors.text.accent,
+    color: "#FFFFFF",
     fontSize: Typography.base,
     fontWeight: Typography.semibold,
   },
   primaryButton: {
-    height: 56,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
+    ...Buttons.primary,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.lg,
-    ...Shadow.glow,
+    marginBottom: Spacing.md,
   },
   primaryButtonPressed: {
-    transform: [{ scale: 0.97 }],
-    backgroundColor: Colors.accentDark,
+    ...Buttons.primaryPressed,
   },
   primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: Typography.md,
-    fontWeight: Typography.bold,
+    ...Buttons.primaryText,
   },
   dangerButton: {
-    height: 48,
-    borderRadius: Radius.md,
-    backgroundColor: "rgba(239,68,68,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.35)",
-    alignItems: "center",
-    justifyContent: "center",
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.md,
-    minHeight: 48,
+    marginBottom: Spacing.xxxl,
+    height: 50,
+    minHeight: 44,
+    backgroundColor: "rgba(239,68,68,0.08)",
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   dangerButtonPressed: {
-    backgroundColor: "rgba(239,68,68,0.18)",
-    borderColor: Colors.text.danger,
+    backgroundColor: "rgba(239,68,68,0.15)",
   },
   dangerButtonText: {
     color: Colors.text.danger,
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
+    fontSize: Typography.sm,
+    fontWeight: Typography.medium,
   },
   buttonDisabled: {
     opacity: 0.7,

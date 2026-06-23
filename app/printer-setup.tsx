@@ -13,7 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { PAPER_WIDTH_MM, RECEIPT_LINE_WIDTH } from "../constants/printerPaper";
-import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
+import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 
 function DismissButton({ onPress }: { onPress: () => void }) {
   return (
@@ -21,7 +21,7 @@ function DismissButton({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       hitSlop={12}
       accessibilityLabel="Dismiss"
-      style={styles.dismissButton}
+      style={({ pressed }) => [styles.dismissButton, pressed && styles.dismissButtonPressed]}
     >
       <Ionicons name="close" size={20} color={Colors.text.tertiary} />
     </Pressable>
@@ -195,13 +195,13 @@ export default function PrinterSetupScreen() {
         disabled={isBusy}
         style={({ pressed }) => [
           styles.connectButton,
-          isBusy && styles.buttonDisabled,
+          isBusy && styles.connectButtonLoading,
           pressed && !isBusy && styles.connectButtonPressed,
         ]}
       >
         {isPrinting || printer.isTestingPrint ? (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={Colors.text.primary} />
+            <ActivityIndicator size="small" color="#FFFFFF" />
             <Text style={styles.connectButtonText}>Printing...</Text>
           </View>
         ) : (
@@ -386,68 +386,47 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   connectButton: {
+    ...Buttons.primary,
     height: 52,
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.md,
-    alignItems: "center",
-    justifyContent: "center",
     marginBottom: Spacing.md,
-    ...Shadow.glow,
   },
   connectButtonPressed: {
-    backgroundColor: Colors.accentDark,
-    transform: [{ scale: 0.97 }],
+    ...Buttons.primaryPressed,
   },
   connectButtonText: {
-    color: Colors.text.primary,
+    ...Buttons.primaryText,
     fontSize: Typography.base,
-    fontWeight: Typography.semibold,
   },
   loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
+    ...Buttons.loadingRow,
   },
   secondaryButton: {
-    minHeight: 44,
-    backgroundColor: Colors.bg.card,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    alignItems: "center",
-    justifyContent: "center",
+    ...Buttons.secondary,
     marginBottom: Spacing.md,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
   },
   secondaryButtonPressed: {
-    borderColor: Colors.border.strong,
-    backgroundColor: Colors.bg.elevated,
+    ...Buttons.secondaryPressed,
   },
   secondaryButtonText: {
-    color: Colors.text.secondary,
-    fontWeight: Typography.semibold,
+    ...Buttons.secondaryText,
     fontSize: Typography.sm,
     textAlign: "center",
   },
   outlineButton: {
-    height: 44,
-    backgroundColor: "transparent",
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border.accent,
-    alignItems: "center",
-    justifyContent: "center",
+    ...Buttons.accentOutlineGhost,
     marginBottom: Spacing.lg,
   },
   outlineButtonPressed: {
-    borderColor: Colors.border.strong,
-    backgroundColor: Colors.accentAlpha,
+    ...Buttons.secondaryPressed,
   },
   outlineButtonText: {
-    color: Colors.text.accent,
-    fontWeight: Typography.semibold,
+    ...Buttons.accentOutlineGhostText,
     fontSize: Typography.sm,
+  },
+  connectButtonLoading: {
+    ...Buttons.primaryLoading,
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -469,10 +448,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dismissButton: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
+    ...Buttons.icon,
+  },
+  dismissButtonPressed: {
+    ...Buttons.iconPressed,
   },
 });

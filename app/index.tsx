@@ -25,7 +25,7 @@ import { usePrinterContext } from "../contexts/PrinterContext";
 // import { PrinterStatus } from "../components/PrinterStatus";
 import { Toast } from "../components/Toast";
 // import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
-import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
+import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { ReceiptData } from "../utils/generateReceipt";
 import {
   getCurrentSession,
@@ -212,7 +212,10 @@ function EmptyState({
       <Text style={styles.emptyStateTitle}>{title}</Text>
       <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
       {actionLabel && onAction ? (
-        <Pressable onPress={onAction} style={styles.emptyStateAction}>
+        <Pressable
+          onPress={onAction}
+          style={({ pressed }) => [styles.emptyStateAction, pressed && styles.emptyStateActionPressed]}
+        >
           <Text style={styles.emptyStateActionText}>{actionLabel}</Text>
         </Pressable>
       ) : null}
@@ -720,50 +723,44 @@ export default function HomeScreen() {
             <View style={styles.fuelListCard}>
               {FUEL_OPTIONS.map((option, index) => {
                 const isSelected = selectedProduct === option.id;
+                const isLast = index === FUEL_OPTIONS.length - 1;
                 return (
-                  <View key={option.id}>
-                    <Pressable
-                      onPress={() => handleSelectFuel(option.id)}
-                      style={({ pressed }) => [
-                        styles.fuelRow,
-                        isSelected && { backgroundColor: `${option.color}0F` },
-                        pressed && !isSelected && { backgroundColor: Colors.bg.elevated },
+                  <Pressable
+                    key={option.id}
+                    onPress={() => handleSelectFuel(option.id)}
+                    style={({ pressed }) => [
+                      styles.fuelRow,
+                      !isLast && styles.fuelRowBorder,
+                      {
+                        backgroundColor: pressed
+                          ? Colors.bg.elevated
+                          : isSelected
+                            ? `${option.color}0F`
+                            : "transparent",
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[styles.fuelDot, { backgroundColor: option.color }]}
+                    />
+                    <Text
+                      style={[
+                        styles.fuelName,
+                        isSelected && { color: option.color },
                       ]}
                     >
-                      <View style={styles.fuelRowLeft}>
-                        <View
-                          style={[
-                            styles.fuelDot,
-                            { backgroundColor: option.color },
-                            isSelected && {
-                              shadowColor: option.color,
-                              shadowOpacity: 0.4,
-                              shadowRadius: 6,
-                              shadowOffset: { width: 0, height: 0 },
-                            },
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.fuelName,
-                            isSelected && { color: option.color },
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
+                      {option.label}
+                    </Text>
+                    {isSelected ? (
+                      <View
+                        style={[styles.fuelCheck, { backgroundColor: option.color }]}
+                      >
+                        <View style={styles.fuelCheckInner} />
                       </View>
-                      {isSelected ? (
-                        <View style={[styles.fuelCheck, { backgroundColor: option.color }]}>
-                          <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-                        </View>
-                      ) : (
-                        <View style={styles.fuelCheckEmpty} />
-                      )}
-                    </Pressable>
-                    {index < FUEL_OPTIONS.length - 1 ? (
-                      <View style={styles.fuelSeparator} />
-                    ) : null}
-                  </View>
+                    ) : (
+                      <View style={styles.fuelCheckEmpty} />
+                    )}
+                  </Pressable>
                 );
               })}
             </View>
@@ -893,8 +890,8 @@ export default function HomeScreen() {
           </View>
           <Ionicons
             name="chevron-forward"
-            size={16}
-            color="rgba(255,255,255,0.6)"
+            size={18}
+            color="rgba(255,255,255,0.5)"
             style={styles.printNewReceiptChevron}
           />
         </View>
@@ -1096,34 +1093,45 @@ export default function HomeScreen() {
               </Animated.View>
             </ScrollView>
 
-            {currentStep === 1 && selectedProduct ? (
-              <Animated.View
-                style={[
-                  styles.stepBottomBar,
-                  { bottom: Math.max(insets.bottom, 32) },
-                  {
-                    opacity: step1ContinueAnim,
-                    transform: [
-                      {
-                        translateY: step1ContinueAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [20, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <Pressable
-                  onPress={() => goForward(2)}
-                  style={({ pressed }) => [
-                    styles.stepBottomButton,
-                    pressed && styles.stepBottomButtonPressed,
-                  ]}
+            {currentStep === 1 ? (
+              <View style={[styles.stepBottomBar, { bottom: Math.max(insets.bottom, 32) }]}>
+                <Animated.View
+                  style={
+                    selectedProduct
+                      ? {
+                          opacity: step1ContinueAnim,
+                          transform: [
+                            {
+                              translateY: step1ContinueAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [20, 0],
+                              }),
+                            },
+                          ],
+                        }
+                      : undefined
+                  }
                 >
-                  <Text style={styles.stepBottomButtonText}>Continue</Text>
-                </Pressable>
-              </Animated.View>
+                  <Pressable
+                    onPress={() => goForward(2)}
+                    disabled={!selectedProduct}
+                    style={({ pressed }) => [
+                      styles.stepBottomButton,
+                      !selectedProduct && styles.stepBottomButtonDisabled,
+                      pressed && selectedProduct && styles.stepBottomButtonPressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.stepBottomButtonText,
+                        !selectedProduct && styles.stepBottomButtonTextDisabled,
+                      ]}
+                    >
+                      Continue
+                    </Text>
+                  </Pressable>
+                </Animated.View>
+              </View>
             ) : null}
 
             {currentStep === 2 ? (
@@ -1201,7 +1209,10 @@ export default function HomeScreen() {
           >
             <Pressable
               onPress={handleDismissDuplicate}
-              style={styles.duplicateCloseButton}
+              style={({ pressed }) => [
+                styles.duplicateCloseButton,
+                pressed && styles.duplicateCloseButtonPressed,
+              ]}
               hitSlop={8}
             >
               <Text style={styles.duplicateCloseText}>✕</Text>
@@ -1220,7 +1231,11 @@ export default function HomeScreen() {
             <Pressable
               onPress={handleDuplicatePrint}
               disabled={isPrintingDuplicate}
-              style={[styles.duplicateButton, isPrintingDuplicate && styles.buttonDisabled]}
+              style={({ pressed }) => [
+                styles.duplicateButton,
+                isPrintingDuplicate && styles.duplicateButtonLoading,
+                pressed && !isPrintingDuplicate && styles.duplicateButtonPressed,
+              ]}
             >
               <Text style={styles.duplicateButtonText}>
                 {isPrintingDuplicate ? "Printing duplicate..." : "Print Duplicate?"}
@@ -1292,7 +1307,7 @@ export default function HomeScreen() {
               {adminSigningIn ? (
                 <View style={styles.loadingButtonRow}>
                   <ActivityIndicator size="small" color="#FFFFFF" />
-                  <Text style={styles.loginButtonText}>Signing in...</Text>
+                  <Text style={styles.loginButtonLoadingText}>Signing in...</Text>
                 </View>
               ) : (
                 <Text style={styles.loginButtonText}>Login</Text>
@@ -1382,13 +1397,10 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   headerIconBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
+    ...Buttons.icon,
   },
   headerIconPressed: {
-    transform: [{ scale: 0.92 }],
+    ...Buttons.iconPressed,
   },
   dashboardScroll: {
     flex: 1,
@@ -1397,17 +1409,14 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxxl,
   },
   printNewReceiptButton: {
-    backgroundColor: Colors.accent,
+    ...Buttons.primary,
     height: 60,
-    borderRadius: Radius.lg,
     marginTop: Spacing.lg,
     marginHorizontal: Spacing.lg,
     alignSelf: "stretch",
-    ...Shadow.glow,
   },
   printNewReceiptButtonPressed: {
-    transform: [{ scale: 0.97 }],
-    backgroundColor: Colors.accentDark,
+    ...Buttons.primaryPressed,
   },
   printNewReceiptContent: {
     flex: 1,
@@ -1420,7 +1429,7 @@ const styles = StyleSheet.create({
   printNewReceiptLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.sm,
+    gap: 10,
     flex: 1,
     marginRight: Spacing.sm,
   },
@@ -1428,9 +1437,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   printNewReceiptText: {
-    color: "#FFFFFF",
-    fontSize: Typography.md,
-    fontWeight: Typography.bold,
+    ...Buttons.primaryText,
     flexShrink: 1,
   },
   sectionHeader: {
@@ -1486,28 +1493,20 @@ const styles = StyleSheet.create({
   },
   emptyStateAction: {
     marginTop: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.border.accent,
-    backgroundColor: "transparent",
-    borderRadius: Radius.sm,
-    paddingVertical: 10,
+    ...Buttons.accentOutlineGhost,
     paddingHorizontal: Spacing.xxl,
-    minHeight: 44,
-    justifyContent: "center",
+  },
+  emptyStateActionPressed: {
+    ...Buttons.secondaryPressed,
   },
   emptyStateActionText: {
-    color: Colors.text.accent,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+    ...Buttons.accentOutlineGhostText,
   },
   loadingButtonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
+    ...Buttons.loadingRow,
   },
   buttonLoading: {
-    backgroundColor: Colors.accentDark,
-    opacity: 0.7,
+    ...Buttons.primaryLoading,
   },
   skeletonCard: {
     backgroundColor: Colors.bg.elevated,
@@ -1614,26 +1613,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   cardPrintButton: {
+    ...Buttons.reprint,
     flexDirection: "row",
-    alignItems: "center",
     gap: Spacing.xs,
-    backgroundColor: "rgba(59,130,246,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.3)",
-    borderRadius: Radius.sm,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    minHeight: 44,
-    justifyContent: "center",
   },
   cardPrintButtonPressed: {
-    backgroundColor: "rgba(59,130,246,0.2)",
-    transform: [{ scale: 0.95 }],
+    ...Buttons.reprintPressed,
   },
   cardPrintButtonText: {
-    color: Colors.text.accent,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+    ...Buttons.reprintText,
   },
   printButtonDisabled: {
     opacity: 0.7,
@@ -1660,24 +1648,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   backButton: {
+    ...Buttons.secondary,
+    width: undefined,
     alignSelf: "flex-start",
-    minHeight: 44,
     height: 44,
-    justifyContent: "center",
-    marginTop: Spacing.sm,
+    minHeight: 44,
     paddingHorizontal: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    borderRadius: Radius.md,
-    backgroundColor: "transparent",
+    marginTop: Spacing.sm,
   },
   backButtonPressed: {
-    backgroundColor: Colors.bg.hover,
+    ...Buttons.secondaryPressed,
   },
   backButtonText: {
-    fontSize: Typography.base,
-    color: Colors.text.secondary,
-    fontWeight: Typography.medium,
+    ...Buttons.secondaryText,
   },
   stepIndicator: {
     fontSize: Typography.xs,
@@ -1704,60 +1687,57 @@ const styles = StyleSheet.create({
   },
   fuelListCard: {
     marginTop: Spacing.xxl,
-    marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.xxl,
+    marginHorizontal: Spacing.xl,
+    marginBottom: 100,
     backgroundColor: Colors.bg.card,
     borderWidth: 1,
     borderColor: Colors.border.default,
     borderRadius: Radius.md,
     overflow: "hidden",
   },
-  fuelList: {
-    paddingBottom: 100,
-  },
   fuelRow: {
-    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
     height: 64,
     paddingHorizontal: Spacing.xl,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
-  fuelRowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
+  fuelRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
   },
   fuelDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    marginRight: Spacing.md,
+    marginRight: 14,
   },
   fuelName: {
+    flex: 1,
     fontSize: Typography.md,
     fontWeight: Typography.semibold,
     color: Colors.text.primary,
+    letterSpacing: -0.3,
   },
   fuelCheck: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.accent,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
+  fuelCheckInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#FFFFFF",
+  },
   fuelCheckEmpty: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1.5,
     borderColor: Colors.border.default,
-  },
-  fuelSeparator: {
-    height: 1,
-    backgroundColor: Colors.border.subtle,
-    marginLeft: 42,
+    backgroundColor: "transparent",
   },
   stepBottomBar: {
     position: "absolute",
@@ -1766,42 +1746,27 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   stepBottomButton: {
-    width: "100%",
-    height: 56,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    ...Shadow.glow,
+    ...Buttons.primary,
   },
   stepBottomButtonDisabled: {
-    backgroundColor: Colors.bg.hover,
-    shadowOpacity: 0,
-    elevation: 0,
+    ...Buttons.primaryDisabled,
   },
   stepBottomButtonPressed: {
-    transform: [{ scale: 0.97 }],
-    backgroundColor: Colors.accentDark,
+    ...Buttons.primaryPressed,
   },
   stepBottomButtonText: {
-    color: "#FFFFFF",
-    fontSize: Typography.md,
-    fontWeight: Typography.bold,
+    ...Buttons.primaryText,
   },
   stepBottomButtonTextDisabled: {
-    color: Colors.text.tertiary,
+    ...Buttons.primaryTextDisabled,
   },
   stepBottomPrintButton: {
-    width: "100%",
+    ...Buttons.primary,
     height: 60,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    ...Shadow.glow,
+    gap: 10,
   },
   stepBottomPrintButtonLoading: {
-    backgroundColor: Colors.accentDark,
+    ...Buttons.primaryLoading,
   },
   stepProductPillWrap: {
     alignItems: "center",
@@ -1977,71 +1942,95 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   duplicateOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.78)",
     alignItems: "center",
-    paddingHorizontal: Spacing.xxl,
+    justifyContent: "center",
+    zIndex: 999,
   },
   duplicateCard: {
+    position: "relative",
     width: "100%",
     backgroundColor: Colors.bg.elevated,
+    borderRadius: Radius.xl,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    borderRadius: Radius.xl,
-    paddingVertical: 28,
+    marginHorizontal: Spacing.xxl,
+    paddingTop: 44,
+    paddingBottom: Spacing.xxl,
     paddingHorizontal: Spacing.xxl,
     alignItems: "center",
-    ...Shadow.elevated,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 20,
   },
   duplicateCloseButton: {
     position: "absolute",
-    top: Spacing.lg,
-    right: Spacing.lg,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    top: 12,
+    right: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: Colors.bg.hover,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 1,
+    zIndex: 10,
+  },
+  duplicateCloseButtonPressed: {
+    backgroundColor: Colors.bg.elevated,
+    transform: [{ scale: 0.92 }],
   },
   duplicateCloseText: {
     color: Colors.text.secondary,
-    fontSize: Typography.md,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
     lineHeight: 20,
   },
   duplicateSuccessIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "rgba(34,197,94,0.15)",
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 14,
   },
   duplicateSuccessTitle: {
-    fontSize: Typography.xl,
+    fontSize: 22,
     fontWeight: Typography.bold,
     color: Colors.text.primary,
-    marginTop: Spacing.md,
+    marginBottom: 6,
     textAlign: "center",
   },
   duplicateCountdownText: {
     fontSize: Typography.sm,
     color: Colors.text.secondary,
     textAlign: "center",
-    marginTop: Spacing.sm,
+    marginBottom: 20,
   },
   duplicateButton: {
     width: "100%",
-    height: 50,
-    borderRadius: Radius.md,
-    marginTop: 18,
+    height: 52,
     backgroundColor: Colors.accentAlpha,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border.accent,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 10,
+    minHeight: 44,
+  },
+  duplicateButtonPressed: {
+    backgroundColor: "rgba(59,130,246,0.2)",
+  },
+  duplicateButtonLoading: {
+    opacity: 0.85,
   },
   duplicateButtonText: {
     color: Colors.text.accent,
@@ -2050,22 +2039,23 @@ const styles = StyleSheet.create({
   },
   duplicateSkipButton: {
     width: "100%",
-    marginTop: Spacing.sm,
+    height: 46,
     minHeight: 44,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
     backgroundColor: "transparent",
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    borderRadius: Radius.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
   duplicateSkipButtonPressed: {
     backgroundColor: Colors.bg.hover,
+    borderColor: Colors.border.strong,
   },
   duplicateSkipText: {
     color: Colors.text.secondary,
-    fontSize: Typography.base,
+    fontSize: Typography.sm,
+    fontWeight: Typography.medium,
     textAlign: "center",
   },
   modalOverlay: {
@@ -2118,46 +2108,56 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   loginButton: {
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.lg,
-    height: 50,
-    alignItems: "center",
     marginTop: 20,
-    minHeight: 50,
-    justifyContent: "center",
     width: "100%",
-    ...Shadow.glow,
+    height: 52,
+    minHeight: 44,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 5,
   },
   loginButtonLoading: {
     backgroundColor: Colors.accentDark,
+    opacity: 0.85,
   },
   loginButtonPressed: {
-    transform: [{ scale: 0.97 }],
     backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.97 }],
   },
   loginButtonText: {
     color: "#FFFFFF",
     fontSize: Typography.base,
     fontWeight: Typography.bold,
   },
+  loginButtonLoadingText: {
+    color: "#FFFFFF",
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+  },
   cancelButton: {
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
     marginTop: 10,
-    minHeight: 44,
     width: "100%",
+    height: 46,
+    minHeight: 44,
     backgroundColor: "transparent",
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    borderRadius: Radius.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cancelButtonPressed: {
     backgroundColor: Colors.bg.hover,
   },
   cancelButtonText: {
     color: Colors.text.secondary,
-    fontSize: Typography.base,
+    fontSize: Typography.sm,
     fontWeight: Typography.medium,
     textAlign: "center",
   },

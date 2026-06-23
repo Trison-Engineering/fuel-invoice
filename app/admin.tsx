@@ -37,7 +37,7 @@ import {
 import { usePrinterContext } from "../contexts/PrinterContext";
 import { formatCurrency, formatCurrencyValue, generateInvoiceNumber } from "../utils/formatters";
 import type { ReceiptData } from "../utils/generateReceipt";
-import { Colors, Typography, Radius, Spacing, Shadow } from "../constants/theme";
+import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { EZPUMP_EMAIL, EZPUMP_PASSWORD } from "../utils/storage";
 
 type Tab = "invoices" | "price" | "slips" | "portal";
@@ -603,32 +603,35 @@ export default function AdminScreen() {
 
   const renderSlipsTab = () => (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.slipTableSection}>
-        {sessionActive && currentSession ? (
-          <>
+      {sessionActive && currentSession ? (
+        <>
+          <View style={styles.slipSessionCard}>
             <Text style={styles.activeSessionLabel}>ACTIVE SESSION</Text>
-            <View style={styles.slipSummaryRow}>
-              <View>
-                <Text style={styles.activeSessionStarted}>
-                  Started {formatDateTime(currentSession.startedAt)}
-                </Text>
-                <Text style={styles.activeSessionTotalLabel}>total slips</Text>
-              </View>
-              <Text style={styles.activeSessionTotal}>{currentSession.totalSlips}</Text>
-            </View>
+            <Text style={styles.activeSessionStarted}>
+              Started {formatDateTime(currentSession.startedAt)}
+            </Text>
+            <Text style={styles.activeSessionTotal}>{currentSession.totalSlips}</Text>
+            <Text style={styles.activeSessionTotalLabel}>total slips</Text>
+          </View>
 
+          <View style={styles.slipDayTableCard}>
             <View style={styles.sessionDayTableHeader}>
               <Text style={[styles.sessionDayHeaderCell, styles.sessionDayColDay]}>DAY</Text>
               <Text style={[styles.sessionDayHeaderCell, styles.sessionDayColDate]}>DATE</Text>
               <Text style={[styles.sessionDayHeaderCell, styles.sessionDayColSlips]}>SLIPS</Text>
             </View>
 
-            {currentSession.days.map((day) => {
+            {currentSession.days.map((day, index) => {
               const isToday = day.date === todayDate;
+              const isLast = index === currentSession.days.length - 1;
               return (
                 <View
                   key={`${day.day}-${day.date}`}
-                  style={[styles.sessionDayTableRow, isToday && styles.sessionDayTableRowToday]}
+                  style={[
+                    styles.sessionDayTableRow,
+                    !isLast && styles.sessionDayTableRowBorder,
+                    isToday && styles.sessionDayTableRowToday,
+                  ]}
                 >
                   <Text style={[styles.sessionDayCellDay, styles.sessionDayColDay]}>
                     {day.day}
@@ -642,21 +645,23 @@ export default function AdminScreen() {
                 </View>
               );
             })}
+          </View>
 
-            <Pressable
-              onPress={handleEndSession}
-              style={({ pressed }) => [
-                styles.endSessionButton,
-                pressed && styles.endSessionButtonPressed,
-              ]}
-            >
-              <Text style={styles.endSessionButtonText}>End Session</Text>
-            </Pressable>
-          </>
-        ) : (
+          <Pressable
+            onPress={handleEndSession}
+            style={({ pressed }) => [
+              styles.endSessionButton,
+              pressed && styles.endSessionButtonPressed,
+            ]}
+          >
+            <Text style={styles.endSessionButtonText}>End Session</Text>
+          </Pressable>
+        </>
+      ) : (
+        <View style={styles.slipSessionCard}>
           <Text style={styles.emptySessionText}>No active session</Text>
-        )}
-      </View>
+        </View>
+      )}
 
       {sessionHistory.length === 0 ? (
         !sessionActive ? (
@@ -767,7 +772,7 @@ export default function AdminScreen() {
         disabled={portalSaving}
         style={({ pressed }) => [
           styles.portalPrimaryButton,
-          portalSaving && styles.buttonDisabled,
+          portalSaving && styles.portalPrimaryButtonLoading,
           pressed && !portalSaving && styles.portalPrimaryButtonPressed,
         ]}
       >
@@ -786,7 +791,7 @@ export default function AdminScreen() {
         disabled={portalTesting}
         style={({ pressed }) => [
           styles.portalSecondaryButton,
-          portalTesting && styles.buttonDisabled,
+          portalTesting && styles.portalSecondaryButtonLoading,
           pressed && styles.portalSecondaryButtonPressed,
         ]}
       >
@@ -805,11 +810,11 @@ export default function AdminScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.replace("/")} style={styles.headerButton} hitSlop={8}>
+        <Pressable onPress={() => router.replace("/")} style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]} hitSlop={8}>
           <Text style={styles.headerButtonText}>← Home</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Admin Panel</Text>
-        <Pressable onPress={() => router.replace("/")} style={styles.headerButton} hitSlop={8}>
+        <Pressable onPress={() => router.replace("/")} style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]} hitSlop={8}>
           <Text style={styles.headerButtonText}>Logout</Text>
         </Pressable>
       </View>
@@ -855,7 +860,10 @@ export default function AdminScreen() {
           <View style={styles.reprintOverlayCard}>
             <Pressable
               onPress={() => setShowReprintOverlay(false)}
-              style={styles.reprintOverlayClose}
+              style={({ pressed }) => [
+                styles.reprintOverlayClose,
+                pressed && styles.reprintOverlayClosePressed,
+              ]}
               hitSlop={8}
             >
               <Text style={styles.reprintOverlayCloseText}>✕</Text>
@@ -912,21 +920,14 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   headerButton: {
-    paddingHorizontal: Spacing.md,
+    ...Buttons.secondaryCompact,
     minWidth: 72,
-    minHeight: 44,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    borderRadius: Radius.md,
-    backgroundColor: "transparent",
+  },
+  headerButtonPressed: {
+    ...Buttons.secondaryPressed,
   },
   headerButtonText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+    ...Buttons.secondaryCompactText,
   },
   tabsScroll: {
     backgroundColor: Colors.bg.secondary,
@@ -1124,23 +1125,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   reprintButton: {
-    backgroundColor: "rgba(59,130,246,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.3)",
-    borderRadius: Radius.sm,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    minHeight: 44,
-    justifyContent: "center",
+    ...Buttons.reprint,
   },
   reprintButtonPressed: {
-    backgroundColor: "rgba(59,130,246,0.2)",
-    transform: [{ scale: 0.95 }],
+    ...Buttons.reprintPressed,
   },
   reprintButtonText: {
-    color: Colors.text.accent,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+    ...Buttons.reprintText,
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -1237,25 +1228,24 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.sm,
   },
-  slipTableSection: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.sm,
+  slipSessionCard: {
+    backgroundColor: Colors.bg.card,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    borderRadius: Radius.md,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    padding: Spacing.lg,
     overflow: "hidden",
-    backgroundColor: Colors.bg.card,
-    paddingBottom: Spacing.lg,
   },
-  slipSummaryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
+  slipDayTableCard: {
+    backgroundColor: Colors.bg.card,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    overflow: "hidden",
   },
   slipHistoryTable: {
     marginHorizontal: Spacing.lg,
@@ -1317,28 +1307,26 @@ const styles = StyleSheet.create({
     color: Colors.text.accent,
     fontSize: Typography.xs,
     fontWeight: Typography.bold,
-    letterSpacing: Typography.widest,
+    letterSpacing: 2,
     textTransform: "uppercase",
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
+    marginBottom: 2,
   },
   activeSessionStarted: {
     color: Colors.text.secondary,
     fontSize: Typography.sm,
-    marginTop: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   activeSessionTotal: {
     color: Colors.text.primary,
-    fontSize: Typography.xxxl,
-    fontWeight: Typography.bold,
-    letterSpacing: Typography.tight,
-    marginTop: Spacing.md,
+    fontSize: 48,
+    fontWeight: Typography.black,
+    letterSpacing: -2,
+    lineHeight: 52,
   },
   activeSessionTotalLabel: {
     color: Colors.text.tertiary,
     fontSize: Typography.xs,
-    letterSpacing: Typography.wide,
-    textTransform: "lowercase",
+    marginBottom: 0,
   },
   sessionDivider: {
     height: 1,
@@ -1348,12 +1336,11 @@ const styles = StyleSheet.create({
   sessionDayTableHeader: {
     flexDirection: "row",
     alignItems: "center",
-    height: 30,
+    height: 36,
     paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.bg.primary,
+    backgroundColor: Colors.bg.elevated,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
-    marginHorizontal: -Spacing.lg,
+    borderBottomColor: Colors.border.default,
   },
   sessionDayHeaderCell: {
     fontSize: Typography.xs,
@@ -1363,7 +1350,7 @@ const styles = StyleSheet.create({
     fontWeight: Typography.semibold,
   },
   sessionDayColDay: {
-    flex: 0.5,
+    flex: 0.6,
   },
   sessionDayColDate: {
     flex: 2,
@@ -1375,11 +1362,13 @@ const styles = StyleSheet.create({
   sessionDayTableRow: {
     flexDirection: "row",
     alignItems: "center",
-    height: 44,
+    height: 48,
     paddingHorizontal: Spacing.lg,
+    backgroundColor: "transparent",
+  },
+  sessionDayTableRowBorder: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.subtle,
-    marginHorizontal: -Spacing.lg,
   },
   sessionDayTableRowToday: {
     backgroundColor: Colors.accentAlpha,
@@ -1430,23 +1419,26 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   endSessionButton: {
-    height: 44,
-    marginTop: Spacing.lg,
     marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.lg,
+    height: 46,
+    minHeight: 44,
     backgroundColor: "transparent",
+    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    borderRadius: Radius.sm,
     alignItems: "center",
     justifyContent: "center",
   },
   endSessionButtonPressed: {
-    borderColor: Colors.border.strong,
     backgroundColor: Colors.bg.hover,
+    borderColor: Colors.border.strong,
   },
   endSessionButtonText: {
     color: Colors.text.secondary,
     fontSize: Typography.sm,
+    fontWeight: Typography.medium,
   },
   emptySessionText: {
     color: Colors.text.secondary,
@@ -1556,55 +1548,60 @@ const styles = StyleSheet.create({
     fontSize: Typography.base,
   },
   portalPrimaryButton: {
-    height: 56,
-    borderRadius: Radius.lg,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    height: 52,
+    minHeight: 44,
     backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    width: "auto",
-    alignSelf: "stretch",
-    marginLeft: Spacing.lg,
-    marginRight: Spacing.lg,
-    ...Shadow.glow,
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
   },
   portalPrimaryButtonPressed: {
-    transform: [{ scale: 0.97 }],
     backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.97 }],
+  },
+  portalPrimaryButtonLoading: {
+    backgroundColor: Colors.accentDark,
+    opacity: 0.85,
   },
   portalPrimaryButtonText: {
     color: "#FFFFFF",
-    fontSize: Typography.md,
-    fontWeight: Typography.bold,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
   },
   portalSecondaryButton: {
+    marginHorizontal: Spacing.lg,
+    marginTop: 10,
+    marginBottom: Spacing.lg,
     height: 48,
-    borderRadius: Radius.md,
+    minHeight: 44,
     backgroundColor: "transparent",
+    borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border.default,
+    borderColor: Colors.border.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xxxl,
-    minHeight: 48,
-    alignSelf: "stretch",
   },
   portalSecondaryButtonPressed: {
     backgroundColor: Colors.bg.hover,
     borderColor: Colors.border.strong,
   },
+  portalSecondaryButtonLoading: {
+    opacity: 0.7,
+  },
   portalSecondaryButtonText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.base,
+    color: Colors.text.accent,
+    fontSize: Typography.sm,
     fontWeight: Typography.semibold,
   },
   loadingButtonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
+    ...Buttons.loadingRow,
   },
   reprintOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1629,13 +1626,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: Spacing.lg,
     right: Spacing.lg,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bg.hover,
-    alignItems: "center",
-    justifyContent: "center",
+    ...Buttons.icon,
     zIndex: 1,
+  },
+  reprintOverlayClosePressed: {
+    ...Buttons.iconPressed,
   },
   reprintOverlayCloseText: {
     color: Colors.text.secondary,
@@ -1666,24 +1661,15 @@ const styles = StyleSheet.create({
     letterSpacing: Typography.wider,
   },
   reprintOverlayDoneButton: {
-    width: "100%",
+    ...Buttons.accentOutline,
     height: 50,
-    borderRadius: Radius.md,
     marginTop: 18,
-    backgroundColor: Colors.accentAlpha,
-    borderWidth: 1,
-    borderColor: Colors.border.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
   },
   reprintOverlayDoneButtonPressed: {
-    opacity: 0.85,
+    ...Buttons.accentOutlinePressed,
   },
   reprintOverlayDoneText: {
-    color: Colors.text.accent,
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
+    ...Buttons.accentOutlineText,
   },
   toastWrap: {
     position: "absolute",
