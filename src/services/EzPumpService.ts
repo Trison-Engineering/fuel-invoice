@@ -5,6 +5,13 @@ const BASE_URL = "http://192.168.0.100";
 
 const FETCH_TIMEOUT_MS = 8000;
 
+export interface EzPumpRates {
+  petrol: number | null;
+  hiOctane: number | null;
+  diesel: number | null;
+  fetchedAt: number;
+}
+
 export interface EzPumpSale {
   id: string;
   product: string;
@@ -15,9 +22,13 @@ export interface EzPumpSale {
   payment: string;
   customer: string;
   vehicle: string;
+  officialRate: number | null;
+  calculatedRate: number | null;
 }
 
 let sessionCookies = "";
+let cachedRates: EzPumpRates | null = null;
+const RATES_CACHE_TTL = 10 * 60 * 1000;
 
 async function getCredentials(): Promise<{ email: string; password: string }> {
   const email = await AsyncStorage.getItem(EZPUMP_EMAIL);
@@ -163,7 +174,7 @@ async function login(csrfToken: string): Promise<void> {
   }
 }
 
-function parseSaleRow(chunk: string): EzPumpSale | null {
+function parseSaleRow(chunk: string): Omit<EzPumpSale, "officialRate" | "calculatedRate"> | null {
   const idMatch =
     chunk.match(/name="id"\s+value="(\d+)"/) ??
     chunk.match(/name="id"\s+value='(\d+)'/);
@@ -190,7 +201,142 @@ function isLoginPage(html: string, saleCount: number): boolean {
   return saleCount === 0 && /login/i.test(html) && html.includes("Login");
 }
 
-async function fetchDataframe(): Promise<EzPumpSale[]> {
+function parseRatesFromHtml(html: string): Omit<EzPumpRates, "fetchedAt"> {
+  function extractPrice(productName: string): number | null {
+    const pattern = new RegExp(
+      `<strong>${productName}<\\/strong>[\\s\\S]{0,300}<b>Rs\\.\\s*([\\d,]+\\.?\\d*)<\\/b>`,
+      "i"
+    );
+    const match = html.match(pattern);
+    if (match && match[1]) {
+      return parseFloat(match[1].replace(/,/g, ""));
+    }
+    return null;
+  }
+
+  return {
+    petrol: extractPrice("Petrol"),
+    hiOctane: extractPrice("HiOctane"),
+    diesel: extractPrice("Diesel"),
+  };
+}
+
+export function getOfficialRateForProduct(
+  product: string,
+  rates: EzPumpRates
+): number | null {
+  const p = product?.toLowerCase() || "";
+  if (p.includes("petrol")) return rates.petrol;
+  if (
+    p.includes("hioctane") ||
+    p.includes("hi-octane") ||
+    p.includes("hi octane")
+  ) {
+    return rates.hiOctane;
+  }
+  if (p.includes("diesel")) return rates.diesel;
+  return null;
+}
+
+export function getEffectiveRate(sale: EzPumpSale): number | null {
+  return sale.officialRate ?? sale.calculatedRate;
+}
+
+export function clearRatesCache(): void {
+  cachedRates = null;
+}
+
+export function getRatesFromCache(): EzPumpRates | null {
+  return cachedRates;
+}
+
+export async function fetchRates(retryAfterLogin = true): Promise<EzPumpRates> {
+  if (
+    cachedRates &&
+    Date.now() - cachedRates.fetchedAt < RATES_CACHE_TTL
+  ) {
+    return cachedRates;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${BASE_URL}/Rates`, {
+      method: "GET",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        Referer: `${BASE_URL}/`,
+        Cookie: sessionCookies,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+    updateSessionCookies(response);
+
+    if (!response.ok) {
+      throw new Error("RATES_FETCH_FAILED");
+    }
+
+    const html = await response.text();
+
+    if (html.includes("/login") && html.includes("form")) {
+      if (retryAfterLogin) {
+        const token = await getLoginToken();
+        await login(token);
+        return fetchRates(false);
+      }
+      throw new Error("SESSION_EXPIRED");
+    }
+
+    const rates = parseRatesFromHtml(html);
+    cachedRates = { ...rates, fetchedAt: Date.now() };
+    return cachedRates;
+  } catch (error: unknown) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("NETWORK_UNAVAILABLE");
+    }
+    throw error;
+  }
+}
+
+function enrichSalesWithRates(
+  sales: Omit<EzPumpSale, "officialRate" | "calculatedRate">[],
+  rates: EzPumpRates
+): EzPumpSale[] {
+  return sales.map((sale) => {
+    let officialRate: number | null = null;
+
+    const product = sale.product?.toLowerCase() || "";
+
+    if (product.includes("petrol")) {
+      officialRate = rates.petrol;
+    } else if (
+      product.includes("hioctane") ||
+      product.includes("hi-octane") ||
+      product.includes("hi octane")
+    ) {
+      officialRate = rates.hiOctane;
+    } else if (product.includes("diesel")) {
+      officialRate = rates.diesel;
+    }
+
+    return {
+      ...sale,
+      officialRate,
+      calculatedRate:
+        sale.qty && parseFloat(sale.qty) > 0
+          ? parseFloat(
+              (parseFloat(sale.amount) / parseFloat(sale.qty)).toFixed(2)
+            )
+          : null,
+    };
+  });
+}
+
+async function fetchDataframe(): Promise<Omit<EzPumpSale, "officialRate" | "calculatedRate">[]> {
   const response = await fetchWithTimeout(`${BASE_URL}/dataframe`, {
     headers: {
       Cookie: sessionCookies,
@@ -201,7 +347,7 @@ async function fetchDataframe(): Promise<EzPumpSale[]> {
   updateSessionCookies(response);
   const html = await response.text();
   const chunks = html.split('class="card new_sale_id mb-3 saleRow');
-  const sales: EzPumpSale[] = [];
+  const sales: Omit<EzPumpSale, "officialRate" | "calculatedRate">[] = [];
 
   for (let i = 1; i < chunks.length; i++) {
     const sale = parseSaleRow(chunks[i]);
@@ -215,7 +361,9 @@ async function fetchDataframe(): Promise<EzPumpSale[]> {
   return sales;
 }
 
-async function authenticateAndFetch(): Promise<EzPumpSale[]> {
+async function authenticateAndFetch(): Promise<
+  Omit<EzPumpSale, "officialRate" | "calculatedRate">[]
+> {
   const token = await getLoginToken();
   await login(token);
   return fetchDataframe();
@@ -224,8 +372,10 @@ async function authenticateAndFetch(): Promise<EzPumpSale[]> {
 async function getRecentSales(): Promise<EzPumpSale[]> {
   await getCredentials();
 
+  let sales: Omit<EzPumpSale, "officialRate" | "calculatedRate">[];
+
   try {
-    return await fetchDataframe();
+    sales = await fetchDataframe();
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
 
@@ -239,7 +389,7 @@ async function getRecentSales(): Promise<EzPumpSale[]> {
 
     if (message === "SESSION_EXPIRED" || message === "AUTH_FAILED") {
       try {
-        return await authenticateAndFetch();
+        sales = await authenticateAndFetch();
       } catch (retryErr) {
         const retryMessage = retryErr instanceof Error ? retryErr.message : "";
         if (
@@ -250,12 +400,30 @@ async function getRecentSales(): Promise<EzPumpSale[]> {
         }
         throw new Error("AUTH_FAILED");
       }
+    } else {
+      throw new Error("NETWORK_UNAVAILABLE");
     }
-
-    throw new Error("NETWORK_UNAVAILABLE");
   }
+
+  let rates: EzPumpRates = {
+    petrol: null,
+    hiOctane: null,
+    diesel: null,
+    fetchedAt: 0,
+  };
+
+  try {
+    rates = await fetchRates();
+  } catch (err) {
+    console.warn("fetchRates failed:", err);
+  }
+
+  return enrichSalesWithRates(sales, rates);
 }
 
 export const EzPumpService = {
   getRecentSales,
+  fetchRates,
+  clearRatesCache,
+  getRatesFromCache,
 };

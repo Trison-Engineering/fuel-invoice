@@ -17,6 +17,7 @@ import {
   Modal,
   ScrollView,
   RefreshControl,
+  Keyboard,
 } from "react-native";
 import { useRouter, useNavigation, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,7 +39,13 @@ import {
   formatSlipDateTime,
   productTypeToStorageKey,
 } from "../src/services/InvoiceHistoryService";
-import { EzPumpService, type EzPumpSale } from "../src/services/EzPumpService";
+import {
+  EzPumpService,
+  fetchRates,
+  getEffectiveRate,
+  getOfficialRateForProduct,
+  type EzPumpSale,
+} from "../src/services/EzPumpService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
 
@@ -56,6 +63,12 @@ const FUEL_OPTIONS = [
 
 type FuelId = (typeof FUEL_OPTIONS)[number]["id"];
 
+const PRODUCTS = [
+  { name: "Petrol" as const, label: "PETROL", color: "#22C55E", rgb: "34,197,94" },
+  { name: "Diesel" as const, label: "DIESEL", color: "#3B82F6", rgb: "59,130,246" },
+  { name: "Hi-Octane" as const, label: "HI-OCTANE", color: "#A855F7", rgb: "168,85,247" },
+];
+
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function getProductColor(product: string): string {
@@ -68,6 +81,21 @@ function getProductColor(product: string): string {
     "Car Service": Colors.product.carService,
   };
   return map[product] ?? Colors.text.secondary;
+}
+
+function getProductRgb(product: string): string {
+  const p = product?.toLowerCase() || "";
+  if (p.includes("petrol")) return "34,197,94";
+  if (p.includes("diesel")) return "59,130,246";
+  if (
+    p.includes("hioctane") ||
+    p.includes("hi-octane") ||
+    p.includes("octane")
+  ) {
+    return "168,85,247";
+  }
+  if (p.includes("lubricant")) return "245,158,11";
+  return "136,146,164";
 }
 
 function formatCardDateTime(dateStr: string): string {
@@ -130,7 +158,10 @@ function ezPumpSaleToReceiptData(
 
   const amount = parseFloat(sale.amount) || 0;
   const qty = parseFloat(sale.qty) || 0;
-  const rate = qty > 0 ? parseFloat((amount / qty).toFixed(2)) : null;
+  const effectiveRate = getEffectiveRate(sale);
+  const rate =
+    effectiveRate ??
+    (qty > 0 ? parseFloat((amount / qty).toFixed(2)) : null);
 
   return {
     stationName,
@@ -288,12 +319,19 @@ export default function HomeScreen() {
   const [vehicleFocused, setVehicleFocused] = useState(false);
   const [adminEmailFocused, setAdminEmailFocused] = useState(false);
   const [adminPasswordFocused, setAdminPasswordFocused] = useState(false);
+  const [officialRate, setOfficialRate] = useState<number | null>(null);
+  const [selectedSale, setSelectedSale] = useState<EzPumpSale | null>(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [sheetVehicle, setSheetVehicle] = useState("");
+  const [sheetPrinting, setSheetPrinting] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const stepOpacity = useRef(new Animated.Value(1)).current;
   const step1ContinueAnim = useRef(new Animated.Value(0)).current;
   const duplicateSlideAnim = useRef(new Animated.Value(0)).current;
   const closingDuplicate = useRef(false);
+  const sheetTranslateY = useRef(new Animated.Value(600)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   const hideToast = useCallback(() => {
     setToast((t) => ({ ...t, visible: false }));
@@ -436,6 +474,7 @@ export default function HomeScreen() {
   const resetSteps = useCallback(() => {
     setCurrentStep(0);
     setSelectedProduct(null);
+    setOfficialRate(null);
     form.updateFuelRate("");
     form.updateVolume("");
     form.updateVehicleNumber("");
@@ -443,6 +482,36 @@ export default function HomeScreen() {
     setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
     setLastPrintData(null);
   }, [form]);
+
+  useEffect(() => {
+    if (currentStep !== 2 || !selectedProduct) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const rates = await fetchRates();
+        if (cancelled) return;
+        const rate = getOfficialRateForProduct(selectedProduct, rates);
+        if (rate !== null) {
+          setOfficialRate(rate);
+          form.updateFuelRate(String(rate));
+        } else {
+          setOfficialRate(null);
+          form.updateFuelRate(form.station.getFuelPrice(selectedProduct));
+        }
+      } catch (err) {
+        console.warn("fetchRates failed:", err);
+        if (cancelled) return;
+        setOfficialRate(null);
+        form.updateFuelRate(form.station.getFuelPrice(selectedProduct));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStep, selectedProduct, form]);
 
   useEffect(() => {
     if (currentStep === 1 && selectedProduct) {
@@ -588,6 +657,72 @@ export default function HomeScreen() {
     setDuplicateCountdown(0);
   }, []);
 
+  function openSheet(sale: EzPumpSale) {
+    setSelectedSale(sale);
+    setSheetVehicle("");
+    setSheetPrinting(false);
+    setSheetVisible(true);
+
+    Animated.parallel([
+      Animated.spring(sheetTranslateY, {
+        toValue: 0,
+        tension: 65,
+        friction: 11,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }
+
+  function closeSheet() {
+    Keyboard.dismiss();
+    Animated.parallel([
+      Animated.timing(sheetTranslateY, {
+        toValue: 600,
+        duration: 280,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setSheetVisible(false);
+      setSelectedSale(null);
+      setSheetVehicle("");
+      sheetTranslateY.setValue(600);
+    });
+  }
+
+  async function handleSheetPrint() {
+    if (!selectedSale || sheetPrinting) return;
+
+    Keyboard.dismiss();
+    setSheetPrinting(true);
+
+    try {
+      const saleToPrint: EzPumpSale = {
+        ...selectedSale,
+        vehicle: sheetVehicle.trim() || selectedSale.vehicle,
+      };
+
+      closeSheet();
+      await handleCardReprint(saleToPrint);
+    } catch (error) {
+      setSheetPrinting(false);
+      console.error("Sheet print error:", error);
+      Alert.alert("Print Failed", "Could not print receipt. Please try again.");
+    } finally {
+      setSheetPrinting(false);
+    }
+  }
+
   const handleCardReprint = useCallback(
     async (sale: EzPumpSale) => {
       setCardReprintingId(sale.id);
@@ -705,7 +840,12 @@ export default function HomeScreen() {
   }
 
   const selectedFuelColor = selectedProduct ? getProductColor(selectedProduct) : Colors.accent;
-  const stepRate = form.fuelRate || "0";
+  const stepRate =
+    officialRate !== null
+      ? String(officialRate)
+      : selectedProduct
+        ? form.station.getFuelPrice(selectedProduct)
+        : form.fuelRate || "0";
   const stepVolume = form.volume || "0";
   const stepTotal = form.totalAmount ?? 0;
   const step2CanContinue = (() => {
@@ -720,46 +860,86 @@ export default function HomeScreen() {
           <>
             <Text style={styles.stepHeading}>What are you dispensing?</Text>
             <Text style={styles.stepSubheading}>Select a product to continue</Text>
-            <View style={styles.fuelListCard}>
-              {FUEL_OPTIONS.map((option, index) => {
-                const isSelected = selectedProduct === option.id;
-                const isLast = index === FUEL_OPTIONS.length - 1;
+            <View
+              style={{
+                marginHorizontal: 20,
+                marginTop: 24,
+                marginBottom: 100,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.08)",
+                backgroundColor: "#141B2D",
+                overflow: "hidden",
+              }}
+            >
+              {PRODUCTS.map((product, index) => {
+                const isSelected = selectedProduct === product.name;
+                const isLast = index === PRODUCTS.length - 1;
                 return (
                   <Pressable
-                    key={option.id}
-                    onPress={() => handleSelectFuel(option.id)}
-                    style={({ pressed }) => [
-                      styles.fuelRow,
-                      !isLast && styles.fuelRowBorder,
-                      {
-                        backgroundColor: pressed
-                          ? Colors.bg.elevated
-                          : isSelected
-                            ? `${option.color}0F`
-                            : "transparent",
-                      },
-                    ]}
+                    key={product.name}
+                    onPress={() => handleSelectFuel(product.name)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      height: 64,
+                      paddingHorizontal: 20,
+                      backgroundColor: isSelected
+                        ? `rgba(${product.rgb}, 0.08)`
+                        : pressed
+                          ? "rgba(255,255,255,0.03)"
+                          : "transparent",
+                      borderBottomWidth: isLast ? 0 : 1,
+                      borderBottomColor: "rgba(255,255,255,0.05)",
+                    })}
                   >
                     <View
-                      style={[styles.fuelDot, { backgroundColor: option.color }]}
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: product.color,
+                        marginRight: 14,
+                        shadowColor: product.color,
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: isSelected ? 0.6 : 0,
+                        shadowRadius: 6,
+                      }}
                     />
                     <Text
-                      style={[
-                        styles.fuelName,
-                        isSelected && { color: option.color },
-                      ]}
+                      style={{
+                        flex: 1,
+                        fontSize: 17,
+                        fontWeight: "600",
+                        color: isSelected ? product.color : "#FFFFFF",
+                        letterSpacing: -0.3,
+                      }}
                     >
-                      {option.label}
+                      {product.label}
                     </Text>
-                    {isSelected ? (
-                      <View
-                        style={[styles.fuelCheck, { backgroundColor: option.color }]}
-                      >
-                        <View style={styles.fuelCheckInner} />
-                      </View>
-                    ) : (
-                      <View style={styles.fuelCheckEmpty} />
-                    )}
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        borderWidth: isSelected ? 0 : 1.5,
+                        borderColor: "rgba(255,255,255,0.2)",
+                        backgroundColor: isSelected ? product.color : "transparent",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {isSelected ? (
+                        <View
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: 5,
+                            backgroundColor: "#FFFFFF",
+                          }}
+                        />
+                      ) : null}
+                    </View>
                   </Pressable>
                 );
               })}
@@ -970,12 +1150,14 @@ export default function HomeScreen() {
         const displayProduct = mapEzPumpProduct(sale.product);
         const badgeKey = productToBadgeKey(displayProduct);
         const productColor = getProductColor(displayProduct);
-        const amount = parseFloat(sale.amount) || 0;
-        const qty = parseFloat(sale.qty) || 0;
-        const rate = qty > 0 ? (amount / qty).toFixed(2) : "0.00";
+        const effectiveRate = getEffectiveRate(sale);
+        const rateLabel =
+          effectiveRate !== null
+            ? `PKR ${effectiveRate.toFixed(2)}/ltr`
+            : "Rate N/A";
 
         return (
-          <View key={sale.id} style={styles.receiptCardWrap}>
+          <Pressable key={sale.id} style={styles.receiptCardWrap} onPress={() => openSheet(sale)}>
             <View style={[styles.receiptCardAccent, { backgroundColor: productColor }]} />
             <View style={styles.receiptCard}>
               <View style={styles.receiptRow1}>
@@ -1002,7 +1184,7 @@ export default function HomeScreen() {
                 <View style={styles.receiptAmountBlock}>
                   <Text style={styles.receiptAmount}>PKR {sale.amount}</Text>
                   <Text style={styles.receiptVolumeRate}>
-                    {sale.qty} LTR · PKR {rate}/ltr
+                    {sale.qty} LTR · {rateLabel}
                   </Text>
                 </View>
                 {sale.vehicle.trim() ? (
@@ -1015,7 +1197,7 @@ export default function HomeScreen() {
               <View style={styles.receiptRow3}>
                 <Text style={styles.receiptDate}>{formatCardDateTime(sale.date)}</Text>
                 <Pressable
-                  onPress={() => handleCardReprint(sale)}
+                  onPress={() => openSheet(sale)}
                   disabled={cardReprintingId === sale.id}
                   style={({ pressed }) => [
                     styles.cardPrintButton,
@@ -1034,7 +1216,7 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
             </View>
-          </View>
+          </Pressable>
         );
       })}
     </ScrollView>
@@ -1094,93 +1276,124 @@ export default function HomeScreen() {
             </ScrollView>
 
             {currentStep === 1 ? (
-              <View style={[styles.stepBottomBar, { bottom: Math.max(insets.bottom, 32) }]}>
-                <Animated.View
-                  style={
-                    selectedProduct
-                      ? {
-                          opacity: step1ContinueAnim,
-                          transform: [
-                            {
-                              translateY: step1ContinueAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [20, 0],
-                              }),
-                            },
-                          ],
-                        }
-                      : undefined
-                  }
+              <Pressable
+                onPress={() => goForward(2)}
+                disabled={!selectedProduct}
+                style={({ pressed }) => ({
+                  position: "absolute",
+                  bottom: Math.max(insets.bottom, 32),
+                  left: 20,
+                  right: 20,
+                  height: 56,
+                  backgroundColor: selectedProduct
+                    ? pressed
+                      ? "#1D4ED8"
+                      : "#3B82F6"
+                    : "#243048",
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: selectedProduct ? "#3B82F6" : "transparent",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: selectedProduct ? 0.4 : 0,
+                  shadowRadius: 12,
+                  elevation: selectedProduct ? 8 : 0,
+                  transform: [{ scale: pressed && selectedProduct ? 0.97 : 1 }],
+                })}
+              >
+                <Text
+                  style={{
+                    fontSize: 17,
+                    fontWeight: "700",
+                    color: selectedProduct ? "#FFFFFF" : "#4E5A6E",
+                    letterSpacing: 0.3,
+                  }}
                 >
-                  <Pressable
-                    onPress={() => goForward(2)}
-                    disabled={!selectedProduct}
-                    style={({ pressed }) => [
-                      styles.stepBottomButton,
-                      !selectedProduct && styles.stepBottomButtonDisabled,
-                      pressed && selectedProduct && styles.stepBottomButtonPressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.stepBottomButtonText,
-                        !selectedProduct && styles.stepBottomButtonTextDisabled,
-                      ]}
-                    >
-                      Continue
-                    </Text>
-                  </Pressable>
-                </Animated.View>
-              </View>
+                  Continue
+                </Text>
+              </Pressable>
             ) : null}
 
             {currentStep === 2 ? (
-              <View style={[styles.stepBottomBar, { bottom: Math.max(insets.bottom, 32) }]}>
-                <Pressable
-                  onPress={() => goForward(3)}
-                  disabled={!step2CanContinue}
-                  style={({ pressed }) => [
-                    styles.stepBottomButton,
-                    !step2CanContinue && styles.stepBottomButtonDisabled,
-                    pressed && step2CanContinue && styles.stepBottomButtonPressed,
-                  ]}
+              <Pressable
+                onPress={() => goForward(3)}
+                disabled={!step2CanContinue}
+                style={({ pressed }) => ({
+                  position: "absolute",
+                  bottom: Math.max(insets.bottom, 32),
+                  left: 20,
+                  right: 20,
+                  height: 56,
+                  backgroundColor: step2CanContinue
+                    ? pressed
+                      ? "#1D4ED8"
+                      : "#3B82F6"
+                    : "#243048",
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: step2CanContinue ? "#3B82F6" : "transparent",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: step2CanContinue ? 0.4 : 0,
+                  shadowRadius: 12,
+                  elevation: step2CanContinue ? 8 : 0,
+                  transform: [{ scale: pressed && step2CanContinue ? 0.97 : 1 }],
+                })}
+              >
+                <Text
+                  style={{
+                    fontSize: 17,
+                    fontWeight: "700",
+                    color: step2CanContinue ? "#FFFFFF" : "#4E5A6E",
+                    letterSpacing: 0.3,
+                  }}
                 >
-                  <Text
-                    style={[
-                      styles.stepBottomButtonText,
-                      !step2CanContinue && styles.stepBottomButtonTextDisabled,
-                    ]}
-                  >
-                    Continue
-                  </Text>
-                </Pressable>
-              </View>
+                  Continue
+                </Text>
+              </Pressable>
             ) : null}
 
             {currentStep === 3 ? (
-              <View style={[styles.stepBottomBar, { bottom: Math.max(insets.bottom, 32) }]}>
-                <Pressable
-                  onPress={handlePrint}
-                  disabled={isPrinting || printer.isReconnecting}
-                  style={({ pressed }) => [
-                    styles.stepBottomPrintButton,
-                    (isPrinting || printer.isReconnecting) && styles.stepBottomPrintButtonLoading,
-                    pressed && !isPrinting && !printer.isReconnecting && styles.stepBottomButtonPressed,
-                  ]}
-                >
-                  {isPrinting || printer.isReconnecting ? (
-                    <View style={styles.loadingButtonRow}>
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                      <Text style={styles.stepBottomButtonText}>Printing...</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.loadingButtonRow}>
-                      <Ionicons name="print-outline" size={18} color="#FFFFFF" />
-                      <Text style={styles.stepBottomButtonText}>Print Receipt</Text>
-                    </View>
-                  )}
-                </Pressable>
-              </View>
+              <Pressable
+                onPress={handlePrint}
+                disabled={isPrinting || printer.isReconnecting}
+                style={({ pressed }) => ({
+                  position: "absolute",
+                  bottom: Math.max(insets.bottom, 32),
+                  left: 20,
+                  right: 20,
+                  height: 60,
+                  backgroundColor:
+                    isPrinting || printer.isReconnecting || pressed
+                      ? "#1D4ED8"
+                      : "#3B82F6",
+                  borderRadius: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  shadowColor: "#3B82F6",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: isPrinting || printer.isReconnecting ? 0.2 : 0.4,
+                  shadowRadius: 12,
+                  elevation: 8,
+                  opacity: isPrinting || printer.isReconnecting ? 0.8 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                })}
+              >
+                {isPrinting || printer.isReconnecting ? (
+                  <>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: "#FFFFFF" }}>
+                      Printing...
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={{ fontSize: 17, fontWeight: "700", color: "#FFFFFF" }}>
+                    🖨  Print Receipt
+                  </Text>
+                )}
+              </Pressable>
             ) : null}
           </KeyboardAvoidingView>
         </View>
@@ -1209,13 +1422,31 @@ export default function HomeScreen() {
           >
             <Pressable
               onPress={handleDismissDuplicate}
-              style={({ pressed }) => [
-                styles.duplicateCloseButton,
-                pressed && styles.duplicateCloseButtonPressed,
-              ]}
-              hitSlop={8}
+              style={({ pressed }) => ({
+                position: "absolute",
+                top: 14,
+                right: 14,
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: pressed
+                  ? "rgba(255,255,255,0.1)"
+                  : "rgba(255,255,255,0.06)",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 10,
+              })}
             >
-              <Text style={styles.duplicateCloseText}>✕</Text>
+              <Text
+                style={{
+                  fontSize: 16,
+                  color: "#8892A4",
+                  fontWeight: "600",
+                  lineHeight: 20,
+                }}
+              >
+                ✕
+              </Text>
             </Pressable>
 
             <View style={styles.duplicateSuccessIcon}>
@@ -1231,25 +1462,57 @@ export default function HomeScreen() {
             <Pressable
               onPress={handleDuplicatePrint}
               disabled={isPrintingDuplicate}
-              style={({ pressed }) => [
-                styles.duplicateButton,
-                isPrintingDuplicate && styles.duplicateButtonLoading,
-                pressed && !isPrintingDuplicate && styles.duplicateButtonPressed,
-              ]}
+              style={({ pressed }) => ({
+                width: "100%",
+                height: 52,
+                backgroundColor: pressed
+                  ? "rgba(59,130,246,0.2)"
+                  : "rgba(59,130,246,0.1)",
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: "rgba(59,130,246,0.4)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: 16,
+                marginBottom: 10,
+                opacity: isPrintingDuplicate ? 0.85 : 1,
+              })}
             >
-              <Text style={styles.duplicateButtonText}>
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: "600",
+                  color: "#3B82F6",
+                }}
+              >
                 {isPrintingDuplicate ? "Printing duplicate..." : "Print Duplicate?"}
               </Text>
             </Pressable>
 
             <Pressable
               onPress={handleDismissDuplicate}
-              style={({ pressed }) => [
-                styles.duplicateSkipButton,
-                pressed && styles.duplicateSkipButtonPressed,
-              ]}
+              style={({ pressed }) => ({
+                width: "100%",
+                height: 46,
+                backgroundColor: pressed
+                  ? "rgba(255,255,255,0.05)"
+                  : "transparent",
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: "rgba(255,255,255,0.1)",
+                alignItems: "center",
+                justifyContent: "center",
+              })}
             >
-              <Text style={styles.duplicateSkipText}>Skip</Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "500",
+                  color: "#8892A4",
+                }}
+              >
+                Skip
+              </Text>
             </Pressable>
           </Animated.View>
         </View>
@@ -1298,19 +1561,29 @@ export default function HomeScreen() {
             <Pressable
               onPress={handleAdminLogin}
               disabled={adminSigningIn}
-              style={({ pressed }) => [
-                styles.loginButton,
-                adminSigningIn && styles.loginButtonLoading,
-                pressed && !adminSigningIn && styles.loginButtonPressed,
-              ]}
+              style={({ pressed }) => ({
+                width: "100%",
+                height: 52,
+                backgroundColor: adminSigningIn || pressed ? "#1D4ED8" : "#3B82F6",
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: 20,
+                shadowColor: "#3B82F6",
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+                elevation: 5,
+                opacity: adminSigningIn ? 0.85 : 1,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              })}
             >
               {adminSigningIn ? (
-                <View style={styles.loadingButtonRow}>
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                  <Text style={styles.loginButtonLoadingText}>Signing in...</Text>
-                </View>
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.loginButtonText}>Login</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>
+                  Login
+                </Text>
               )}
             </Pressable>
             <Pressable
@@ -1319,12 +1592,22 @@ export default function HomeScreen() {
                 setAdminEmail("");
                 setAdminPassword("");
               }}
-              style={({ pressed }) => [
-                styles.cancelButton,
-                pressed && styles.cancelButtonPressed,
-              ]}
+              style={({ pressed }) => ({
+                width: "100%",
+                height: 46,
+                backgroundColor: pressed ? "rgba(255,255,255,0.05)" : "transparent",
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: "rgba(255,255,255,0.12)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: 10,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              })}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={{ fontSize: 15, fontWeight: "500", color: "#8892A4" }}>
+                Cancel
+              </Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -1348,6 +1631,358 @@ export default function HomeScreen() {
         type={toast.type}
         onHide={hideToast}
       />
+
+      {sheetVisible && selectedSale ? (
+        <>
+          <Animated.View
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              backgroundColor: "rgba(0,0,0,0.75)",
+              opacity: backdropOpacity,
+              zIndex: 100,
+            }}
+          >
+            <Pressable style={{ flex: 1 }} onPress={closeSheet} />
+          </Animated.View>
+
+          <Animated.View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              transform: [{ translateY: sheetTranslateY }],
+              zIndex: 101,
+              backgroundColor: Colors.bg.elevated,
+              borderTopLeftRadius: Radius.xl,
+              borderTopRightRadius: Radius.xl,
+              borderTopWidth: 1,
+              borderLeftWidth: 1,
+              borderRightWidth: 1,
+              borderColor: Colors.border.default,
+              paddingBottom: Spacing.xxxl,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: -8 },
+              shadowOpacity: 0.4,
+              shadowRadius: 24,
+              elevation: 20,
+            }}
+          >
+            <View
+              style={{
+                alignItems: "center",
+                paddingTop: Spacing.md,
+                paddingBottom: Spacing.sm,
+              }}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 4,
+                  borderRadius: Radius.xs,
+                  backgroundColor: Colors.border.strong,
+                }}
+              />
+            </View>
+
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              keyboardVerticalOffset={0}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: Spacing.xl,
+                    paddingBottom: Spacing.lg,
+                    borderBottomWidth: 1,
+                    borderBottomColor: Colors.border.subtle,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: Typography.lg,
+                      fontWeight: Typography.bold,
+                      color: Colors.text.primary,
+                      letterSpacing: Typography.tight,
+                    }}
+                  >
+                    Print Receipt
+                  </Text>
+
+                  <Pressable
+                    onPress={closeSheet}
+                    style={({ pressed }) => ({
+                      width: 32,
+                      height: 32,
+                      borderRadius: Radius.full,
+                      backgroundColor: pressed ? Colors.bg.hover : Colors.bg.hover,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    })}
+                  >
+                    <Text
+                      style={{
+                        fontSize: Typography.md,
+                        color: Colors.text.secondary,
+                        fontWeight: Typography.semibold,
+                      }}
+                    >
+                      ✕
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <View
+                  style={{
+                    marginHorizontal: Spacing.lg,
+                    marginTop: Spacing.lg,
+                    backgroundColor: Colors.bg.card,
+                    borderRadius: Radius.md,
+                    borderWidth: 1,
+                    borderColor: Colors.border.default,
+                    padding: 14,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: Spacing.md,
+                    }}
+                  >
+                    <View
+                      style={{
+                        backgroundColor: `rgba(${getProductRgb(selectedSale.product)}, 0.1)`,
+                        borderWidth: 1,
+                        borderColor: `rgba(${getProductRgb(selectedSale.product)}, 0.25)`,
+                        borderRadius: Radius.full,
+                        paddingHorizontal: Spacing.md,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: Typography.xs,
+                          fontWeight: Typography.bold,
+                          color: getProductColor(mapEzPumpProduct(selectedSale.product)),
+                          letterSpacing: Typography.wider,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        ● {productToBadgeKey(mapEzPumpProduct(selectedSale.product))}
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={{
+                        fontSize: Typography.sm,
+                        color: Colors.text.tertiary,
+                      }}
+                    >
+                      N°{selectedSale.nozzleId || "—"} · #{selectedSale.id}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={{
+                      fontSize: Typography.xxl,
+                      fontWeight: Typography.bold,
+                      color: Colors.text.primary,
+                      letterSpacing: Typography.tight,
+                      marginBottom: Spacing.xs,
+                    }}
+                  >
+                    PKR {parseFloat(selectedSale.amount).toLocaleString()}
+                  </Text>
+
+                  <Text
+                    style={{
+                      fontSize: Typography.sm,
+                      color: Colors.text.secondary,
+                      marginBottom: Spacing.md,
+                    }}
+                  >
+                    {selectedSale.qty} LTR
+                    {getEffectiveRate(selectedSale)
+                      ? ` · PKR ${getEffectiveRate(selectedSale)}/ltr`
+                      : ""}
+                  </Text>
+
+                  <View
+                    style={{
+                      height: 1,
+                      backgroundColor: Colors.border.subtle,
+                      marginBottom: Spacing.md,
+                    }}
+                  />
+
+                  {[
+                    {
+                      label: "Volume",
+                      value: `${selectedSale.qty} LTR`,
+                    },
+                    {
+                      label: "Rate",
+                      value: getEffectiveRate(selectedSale)
+                        ? `PKR ${getEffectiveRate(selectedSale)}/ltr`
+                        : "N/A",
+                    },
+                    {
+                      label: "Total",
+                      value: `PKR ${parseFloat(selectedSale.amount).toLocaleString()}`,
+                    },
+                    {
+                      label: "Nozzle",
+                      value: `N°${selectedSale.nozzleId || "—"}`,
+                    },
+                    {
+                      label: "Date",
+                      value: selectedSale.date,
+                    },
+                  ].map((row, i) => (
+                    <View
+                      key={i}
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        height: 32,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: Typography.sm,
+                          color: Colors.text.tertiary,
+                        }}
+                      >
+                        {row.label}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: Typography.sm,
+                          fontWeight: Typography.semibold,
+                          color: Colors.text.primary,
+                        }}
+                      >
+                        {row.value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View
+                  style={{
+                    marginHorizontal: Spacing.lg,
+                    marginTop: Spacing.lg,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: Typography.xs,
+                      fontWeight: Typography.semibold,
+                      color: Colors.text.tertiary,
+                      letterSpacing: Typography.widest,
+                      textTransform: "uppercase",
+                      marginBottom: Spacing.sm,
+                    }}
+                  >
+                    VEHICLE NUMBER
+                  </Text>
+
+                  <TextInput
+                    value={sheetVehicle}
+                    onChangeText={(text) => setSheetVehicle(text.toUpperCase())}
+                    placeholder="e.g. ABC-428"
+                    placeholderTextColor={Colors.text.tertiary}
+                    autoCapitalize="characters"
+                    returnKeyType="done"
+                    onSubmitEditing={handleSheetPrint}
+                    style={{
+                      backgroundColor: Colors.bg.input,
+                      borderWidth: 1,
+                      borderColor: Colors.border.default,
+                      borderRadius: Radius.sm,
+                      height: 52,
+                      paddingHorizontal: Spacing.lg,
+                      fontSize: Typography.lg,
+                      fontWeight: Typography.bold,
+                      color: Colors.text.primary,
+                      letterSpacing: 1,
+                    }}
+                  />
+
+                  <Text
+                    style={{
+                      fontSize: Typography.xs,
+                      color: Colors.text.tertiary,
+                      textAlign: "center",
+                      marginTop: Spacing.sm,
+                    }}
+                  >
+                    Optional — tap Print to skip
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={handleSheetPrint}
+                  disabled={sheetPrinting}
+                  style={({ pressed }) => ({
+                    marginHorizontal: Spacing.lg,
+                    marginTop: Spacing.xl,
+                    height: 60,
+                    backgroundColor:
+                      sheetPrinting || pressed ? Colors.accentDark : Colors.accent,
+                    borderRadius: Radius.lg,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: Spacing.sm,
+                    ...Shadow.glow,
+                    opacity: sheetPrinting ? 0.85 : 1,
+                    transform: [{ scale: pressed && !sheetPrinting ? 0.97 : 1 }],
+                  })}
+                >
+                  {sheetPrinting ? (
+                    <>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text
+                        style={{
+                          fontSize: Typography.md,
+                          fontWeight: Typography.bold,
+                          color: "#FFFFFF",
+                        }}
+                      >
+                        Printing...
+                      </Text>
+                    </>
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: Typography.md,
+                        fontWeight: Typography.bold,
+                        color: "#FFFFFF",
+                      }}
+                    >
+                      🖨 Print Receipt
+                    </Text>
+                  )}
+                </Pressable>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </Animated.View>
+        </>
+      ) : null}
     </View>
   );
 }

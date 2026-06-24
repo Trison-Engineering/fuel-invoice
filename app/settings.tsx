@@ -863,16 +863,30 @@ export default function SettingsScreen() {
                 <Pressable
                   onPress={handleSaveEzPumpCredentials}
                   disabled={savingEzPump}
-                  style={({ pressed }) => [
-                    styles.ezPumpSaveButton,
-                    savingEzPump && styles.buttonLoading,
-                    pressed && !savingEzPump && styles.ezPumpSaveButtonPressed,
-                  ]}
+                  style={({ pressed }) => ({
+                    marginHorizontal: 16,
+                    marginTop: 4,
+                    marginBottom: 8,
+                    height: 52,
+                    backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
+                    borderRadius: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    shadowColor: "#3B82F6",
+                    shadowOffset: { width: 0, height: 3 },
+                    shadowOpacity: 0.35,
+                    shadowRadius: 8,
+                    elevation: 5,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                    opacity: savingEzPump ? 0.85 : 1,
+                  })}
                 >
                   {savingEzPump ? (
-                    <LoadingButtonContent label="Updating..." />
+                    <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.ezPumpSaveText}>Save & Connect</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#FFFFFF" }}>
+                      Save & Connect
+                    </Text>
                   )}
                 </Pressable>
               </SectionGroup>
@@ -888,38 +902,92 @@ export default function SettingsScreen() {
             />
           ) : null}
 
-          <Pressable
-            onPress={handleSave}
-            disabled={saving}
-            style={({ pressed }) => [
-              styles.saveContinueButton,
-              isInitialSetup ? styles.saveContinueButtonSetup : styles.saveStationProfileButton,
-              saving && styles.buttonLoading,
-              pressed && !saving && styles.saveContinueButtonPressed,
-            ]}
-          >
-            {saving ? (
-              <LoadingButtonContent label="Saving..." />
-            ) : (
-              <Text
-                style={[
-                  styles.saveContinueButtonText,
-                  !isInitialSetup && styles.saveStationProfileButtonText,
-                ]}
-              >
-                {isInitialSetup ? "Save & Continue" : "Save Station Profile"}
-              </Text>
-            )}
-          </Pressable>
-
-          {!isInitialSetup ? (
+          {isInitialSetup ? (
             <Pressable
-              onPress={handleClearAll}
-              style={({ pressed }) => [styles.dangerButton, pressed && styles.dangerButtonPressed]}
+              onPress={handleSave}
+              disabled={saving}
+              style={({ pressed }) => ({
+                marginHorizontal: 16,
+                marginTop: 16,
+                marginBottom: 32,
+                height: 56,
+                backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
+                borderRadius: 16,
+                alignItems: "center",
+                justifyContent: "center",
+                shadowColor: "#3B82F6",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 12,
+                elevation: 8,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+                opacity: saving ? 0.85 : 1,
+              })}
             >
-              <Text style={styles.dangerButtonText}>Clear All Data</Text>
+              {saving ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={{ fontSize: 17, fontWeight: "700", color: "#FFFFFF" }}>
+                  Save & Continue
+                </Text>
+              )}
             </Pressable>
-          ) : null}
+          ) : (
+            <>
+              <Pressable
+                onPress={handleSave}
+                disabled={saving}
+                style={({ pressed }) => ({
+                  marginHorizontal: 16,
+                  marginTop: 24,
+                  marginBottom: 0,
+                  height: 56,
+                  backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#3B82F6",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.4,
+                  shadowRadius: 12,
+                  elevation: 8,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                  opacity: saving ? 0.85 : 1,
+                })}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>
+                    Save Station Profile
+                  </Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                onPress={handleClearAll}
+                style={({ pressed }) => ({
+                  marginHorizontal: 16,
+                  marginTop: 12,
+                  marginBottom: 32,
+                  height: 48,
+                  backgroundColor: pressed
+                    ? "rgba(239,68,68,0.15)"
+                    : "rgba(239,68,68,0.08)",
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: "rgba(239,68,68,0.35)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                })}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "500", color: "#EF4444" }}>
+                  Clear All Data
+                </Text>
+              </Pressable>
+            </>
+          )}
 
           <Text style={styles.versionText}>
             Version {Constants.expoConfig?.version ?? "1.0.0"}

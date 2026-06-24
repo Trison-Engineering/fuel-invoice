@@ -26,7 +26,13 @@ import {
   type SlipSession,
   type CurrentSlipSession,
 } from "../src/services/SlipCounterService";
-import { EzPumpService } from "../src/services/EzPumpService";
+import {
+  EzPumpService,
+  fetchRates,
+  clearRatesCache,
+  getRatesFromCache,
+  type EzPumpRates,
+} from "../src/services/EzPumpService";
 import {
   getOriginalInvoices,
   saveInvoice,
@@ -62,6 +68,14 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const RATES_CACHE_TTL = 10 * 60 * 1000;
+
+const EZPUMP_RATE_PRODUCTS = [
+  { name: "Petrol", key: "petrol" as const, color: Colors.product.petrol },
+  { name: "Hi-Octane", key: "hiOctane" as const, color: Colors.product.hiOctane },
+  { name: "Diesel", key: "diesel" as const, color: Colors.product.diesel },
+];
 
 function getProductColor(product: string): string {
   const map: Record<string, string> = {
@@ -255,6 +269,9 @@ export default function AdminScreen() {
   const [portalConfigured, setPortalConfigured] = useState(false);
   const [portalSaving, setPortalSaving] = useState(false);
   const [portalTesting, setPortalTesting] = useState(false);
+  const [ezPumpRates, setEzPumpRates] = useState<EzPumpRates | null>(null);
+  const [ratesRefreshing, setRatesRefreshing] = useState(false);
+  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -293,6 +310,36 @@ export default function AdminScreen() {
       getPriceHistory().then(setPriceHistory);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "portal") return;
+
+    const cached = getRatesFromCache();
+    if (cached) {
+      setEzPumpRates(cached);
+    }
+
+    const stale =
+      !cached || Date.now() - cached.fetchedAt >= RATES_CACHE_TTL;
+    if (stale) {
+      fetchRates()
+        .then(setEzPumpRates)
+        .catch((err) => console.warn("fetchRates failed:", err));
+    }
+  }, [activeTab]);
+
+  const handleRefreshRates = useCallback(async () => {
+    setRatesRefreshing(true);
+    try {
+      clearRatesCache();
+      const rates = await fetchRates();
+      setEzPumpRates(rates);
+    } catch (err) {
+      console.warn("fetchRates failed:", err);
+    } finally {
+      setRatesRefreshing(false);
+    }
+  }, []);
 
   const filteredInvoices = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -385,14 +432,17 @@ export default function AdminScreen() {
 
   const handleTestPortalConnection = useCallback(async () => {
     setPortalTesting(true);
+    setTestResult(null);
     try {
       await EzPumpService.getRecentSales();
+      setTestResult("success");
       setToast({
         visible: true,
         message: "Connection successful",
         type: "success",
       });
     } catch {
+      setTestResult("error");
       setToast({
         visible: true,
         message: "Connection failed — check credentials",
@@ -649,12 +699,21 @@ export default function AdminScreen() {
 
           <Pressable
             onPress={handleEndSession}
-            style={({ pressed }) => [
-              styles.endSessionButton,
-              pressed && styles.endSessionButtonPressed,
-            ]}
+            style={({ pressed }) => ({
+              marginTop: 14,
+              height: 46,
+              backgroundColor: pressed ? "rgba(255,255,255,0.06)" : "transparent",
+              borderRadius: 10,
+              borderWidth: 1.5,
+              borderColor: pressed ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)",
+              alignItems: "center",
+              justifyContent: "center",
+              transform: [{ scale: pressed ? 0.97 : 1 }],
+            })}
           >
-            <Text style={styles.endSessionButtonText}>End Session</Text>
+            <Text style={{ fontSize: 13, fontWeight: "500", color: "#8892A4" }}>
+              End Session
+            </Text>
           </Pressable>
         </>
       ) : (
@@ -740,6 +799,69 @@ export default function AdminScreen() {
         </View>
       </View>
 
+      <SectionLabel>CURRENT RATES FROM EZPUMP</SectionLabel>
+      <View style={styles.credentialsGroup}>
+        {EZPUMP_RATE_PRODUCTS.map((product, index) => {
+          const rate = ezPumpRates?.[product.key] ?? null;
+          const isLast = index === EZPUMP_RATE_PRODUCTS.length - 1;
+          return (
+            <View
+              key={product.key}
+              style={[styles.credentialsRow, isLast && styles.credentialsRowLast]}
+            >
+              <View style={styles.rateRowInner}>
+                <View style={styles.rateRowLeft}>
+                  <View style={[styles.statusDot, { backgroundColor: product.color }]} />
+                  <Text style={styles.rateRowLabel}>{product.name}</Text>
+                </View>
+                {rate !== null ? (
+                  <Text style={styles.rateRowValue}>PKR {rate}</Text>
+                ) : (
+                  <Text style={styles.rateRowUnavailable}>Unavailable</Text>
+                )}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {ezPumpRates?.fetchedAt ? (
+        <Text style={styles.ratesLastFetched}>
+          Last fetched:{" "}
+          {new Date(ezPumpRates.fetchedAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </Text>
+      ) : null}
+
+      <Pressable
+        onPress={handleRefreshRates}
+        disabled={ratesRefreshing}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          paddingHorizontal: 14,
+          paddingVertical: 8,
+          marginHorizontal: 16,
+          marginTop: 8,
+          backgroundColor: pressed ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.1)",
+          alignSelf: "flex-start",
+          opacity: ratesRefreshing ? 0.7 : 1,
+        })}
+      >
+        {ratesRefreshing ? (
+          <ActivityIndicator size="small" color="#8892A4" />
+        ) : null}
+        <Text style={{ fontSize: 13, color: "#8892A4", fontWeight: "500" }}>
+          ↻ Refresh Rates
+        </Text>
+      </Pressable>
+
       <SectionLabel>CREDENTIALS</SectionLabel>
       <View style={styles.credentialsGroup}>
         <View style={styles.credentialsRow}>
@@ -770,38 +892,77 @@ export default function AdminScreen() {
       <Pressable
         onPress={handleUpdatePortalCredentials}
         disabled={portalSaving}
-        style={({ pressed }) => [
-          styles.portalPrimaryButton,
-          portalSaving && styles.portalPrimaryButtonLoading,
-          pressed && !portalSaving && styles.portalPrimaryButtonPressed,
-        ]}
+        style={({ pressed }) => ({
+          marginHorizontal: 16,
+          marginTop: 20,
+          height: 52,
+          backgroundColor: portalSaving || pressed ? "#1D4ED8" : "#3B82F6",
+          borderRadius: 12,
+          alignItems: "center",
+          justifyContent: "center",
+          shadowColor: "#3B82F6",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.35,
+          shadowRadius: 8,
+          elevation: 5,
+          opacity: portalSaving ? 0.85 : 1,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
+        })}
       >
         {portalSaving ? (
-          <View style={styles.loadingButtonRow}>
-            <ActivityIndicator size="small" color="#FFFFFF" />
-            <Text style={styles.portalPrimaryButtonText}>Updating...</Text>
-          </View>
+          <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
-          <Text style={styles.portalPrimaryButtonText}>Update Credentials</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: "#FFFFFF" }}>
+            Update Credentials
+          </Text>
         )}
       </Pressable>
 
       <Pressable
         onPress={handleTestPortalConnection}
         disabled={portalTesting}
-        style={({ pressed }) => [
-          styles.portalSecondaryButton,
-          portalTesting && styles.portalSecondaryButtonLoading,
-          pressed && styles.portalSecondaryButtonPressed,
-        ]}
+        style={({ pressed }) => ({
+          marginHorizontal: 16,
+          marginTop: 10,
+          marginBottom: 16,
+          height: 48,
+          backgroundColor: portalTesting
+            ? "rgba(59,130,246,0.05)"
+            : pressed
+              ? "rgba(59,130,246,0.15)"
+              : "rgba(59,130,246,0.08)",
+          borderRadius: 12,
+          borderWidth: 1.5,
+          borderColor:
+            testResult === "success"
+              ? "rgba(34,197,94,0.5)"
+              : testResult === "error"
+                ? "rgba(239,68,68,0.5)"
+                : "rgba(59,130,246,0.4)",
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: portalTesting ? 0.7 : 1,
+        })}
       >
         {portalTesting ? (
-          <View style={styles.loadingButtonRow}>
-            <ActivityIndicator size="small" color={Colors.accent} />
-            <Text style={styles.portalSecondaryButtonText}>Testing...</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <ActivityIndicator size="small" color="#3B82F6" />
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#3B82F6" }}>
+              Testing...
+            </Text>
           </View>
+        ) : testResult === "success" ? (
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#22C55E" }}>
+            ✓ Connected
+          </Text>
+        ) : testResult === "error" ? (
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#EF4444" }}>
+            ✕ Failed
+          </Text>
         ) : (
-          <Text style={styles.portalSecondaryButtonText}>Test Connection</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#3B82F6" }}>
+            Test Connection
+          </Text>
         )}
       </Pressable>
     </ScrollView>
@@ -1512,6 +1673,36 @@ const styles = StyleSheet.create({
   portalMaskedEmail: {
     color: Colors.text.secondary,
     fontSize: Typography.sm,
+  },
+  rateRowInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  rateRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  rateRowLabel: {
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+  },
+  rateRowValue: {
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    fontWeight: Typography.bold,
+  },
+  rateRowUnavailable: {
+    color: Colors.text.tertiary,
+    fontSize: Typography.base,
+  },
+  ratesLastFetched: {
+    color: Colors.text.tertiary,
+    fontSize: Typography.xs,
+    textAlign: "right",
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
   },
   credentialsGroup: {
     backgroundColor: Colors.bg.card,
