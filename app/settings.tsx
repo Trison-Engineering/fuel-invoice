@@ -851,31 +851,21 @@ export default function SettingsScreen() {
                 </View>
                 <Pressable
                   onPress={handleSaveEzPumpCredentials}
-                  style={({ pressed }) => ({
-                    marginHorizontal: 16,
-                    marginTop: 8,
-                    marginBottom: 8,
-                    height: 52,
-                    backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
-                    borderRadius: 12,
-                    alignItems: "center" as const,
-                    justifyContent: "center" as const,
-                    shadowColor: "#3B82F6",
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.4,
-                    shadowRadius: 10,
-                    elevation: 6,
-                  })}
+                  disabled={savingEzPump}
+                  style={({ pressed }) => [
+                    styles.saveEzPumpButton,
+                    pressed && !savingEzPump && styles.saveEzPumpButtonPressed,
+                    savingEzPump && styles.saveEzPumpButtonLoading,
+                  ]}
                 >
-                  <Text
-                    style={{
-                      color: "#FFFFFF",
-                      fontSize: 16,
-                      fontWeight: "700" as const,
-                    }}
-                  >
-                    Save & Connect
-                  </Text>
+                  {savingEzPump ? (
+                    <View style={styles.loadingButtonRow}>
+                      <ActivityIndicator size="small" color={Colors.text.primary} />
+                      <Text style={styles.saveEzPumpButtonText}>Saving...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.saveEzPumpButtonText}>Save & Connect</Text>
+                  )}
                 </Pressable>
               </SectionGroup>
             </>
@@ -894,59 +884,31 @@ export default function SettingsScreen() {
             <>
               <Pressable
                 onPress={handleSave}
-                style={({ pressed }) => ({
-                  marginHorizontal: 16,
-                  marginTop: 20,
-                  marginBottom: 0,
-                  height: 56,
-                  backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
-                  borderRadius: 14,
-                  alignItems: "center" as const,
-                  justifyContent: "center" as const,
-                  shadowColor: "#3B82F6",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.4,
-                  shadowRadius: 12,
-                  elevation: 8,
-                })}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.saveProfileButton,
+                  pressed && !saving && styles.saveProfileButtonPressed,
+                  saving && styles.saveProfileButtonLoading,
+                ]}
               >
-                <Text
-                  style={{
-                    color: "#FFFFFF",
-                    fontSize: 16,
-                    fontWeight: "700" as const,
-                  }}
-                >
-                  Save Station Profile
-                </Text>
+                {saving ? (
+                  <View style={styles.loadingButtonRow}>
+                    <ActivityIndicator size="small" color={Colors.text.primary} />
+                    <Text style={styles.saveProfileButtonText}>Saving...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.saveProfileButtonText}>Save Station Profile</Text>
+                )}
               </Pressable>
 
               <Pressable
                 onPress={handleClearAll}
-                style={({ pressed }) => ({
-                  marginHorizontal: 16,
-                  marginTop: 12,
-                  marginBottom: 32,
-                  height: 50,
-                  backgroundColor: pressed
-                    ? "rgba(239,68,68,0.18)"
-                    : "rgba(239,68,68,0.09)",
-                  borderRadius: 12,
-                  borderWidth: 1.5,
-                  borderColor: "rgba(239,68,68,0.4)",
-                  alignItems: "center" as const,
-                  justifyContent: "center" as const,
-                })}
+                style={({ pressed }) => [
+                  styles.clearAllButton,
+                  pressed && styles.clearAllButtonPressed,
+                ]}
               >
-                <Text
-                  style={{
-                    color: "#EF4444",
-                    fontSize: 15,
-                    fontWeight: "600" as const,
-                  }}
-                >
-                  Clear All Data
-                </Text>
+                <Text style={styles.clearAllButtonText}>Clear All Data</Text>
               </Pressable>
             </>
           ) : null}
@@ -954,31 +916,21 @@ export default function SettingsScreen() {
           {isInitialSetup ? (
             <Pressable
               onPress={handleSave}
-              style={({ pressed }) => ({
-                marginHorizontal: 16,
-                marginTop: 20,
-                marginBottom: 40,
-                height: 56,
-                backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
-                borderRadius: 14,
-                alignItems: "center" as const,
-                justifyContent: "center" as const,
-                shadowColor: "#3B82F6",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.4,
-                shadowRadius: 12,
-                elevation: 8,
-              })}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.saveContinueButton,
+                pressed && !saving && styles.saveContinueButtonPressed,
+                saving && styles.saveContinueButtonLoading,
+              ]}
             >
-              <Text
-                style={{
-                  color: "#FFFFFF",
-                  fontSize: 17,
-                  fontWeight: "700" as const,
-                }}
-              >
-                Save & Continue
-              </Text>
+              {saving ? (
+                <View style={styles.loadingButtonRow}>
+                  <ActivityIndicator size="small" color={Colors.text.primary} />
+                  <Text style={styles.saveContinueButtonText}>Saving...</Text>
+                </View>
+              ) : (
+                <Text style={styles.saveContinueButtonText}>Save & Continue</Text>
+              )}
             </Pressable>
           ) : null}
 
@@ -1461,6 +1413,64 @@ const styles = StyleSheet.create({
   ezPumpInfoText: {
     color: Colors.text.secondary,
     fontSize: Typography.sm,
+  },
+  saveEzPumpButton: {
+    ...Buttons.primary,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    height: 52,
+  },
+  saveEzPumpButtonPressed: {
+    ...Buttons.primaryPressed,
+  },
+  saveEzPumpButtonLoading: {
+    ...Buttons.primaryLoading,
+  },
+  saveEzPumpButtonText: {
+    ...Buttons.primaryText,
+  },
+  saveProfileButton: {
+    ...Buttons.primary,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    marginBottom: 0,
+  },
+  saveProfileButtonPressed: {
+    ...Buttons.primaryPressed,
+  },
+  saveProfileButtonLoading: {
+    ...Buttons.primaryLoading,
+  },
+  saveProfileButtonText: {
+    ...Buttons.primaryText,
+  },
+  clearAllButton: {
+    ...Buttons.destructive,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xxxl,
+  },
+  clearAllButtonPressed: {
+    ...Buttons.destructivePressed,
+  },
+  clearAllButtonText: {
+    ...Buttons.destructiveText,
+  },
+  saveContinueButton: {
+    ...Buttons.primary,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.xxxl + Spacing.sm,
+  },
+  saveContinueButtonPressed: {
+    ...Buttons.primaryPressed,
+  },
+  saveContinueButtonLoading: {
+    ...Buttons.primaryLoading,
+  },
+  saveContinueButtonText: {
+    ...Buttons.primaryText,
   },
   primaryButton: {
     ...Buttons.primary,

@@ -695,32 +695,12 @@ export default function AdminScreen() {
 
           <Pressable
             onPress={handleEndSession}
-            style={({ pressed }) => ({
-              marginHorizontal: 16,
-              marginTop: 12,
-              marginBottom: 16,
-              height: 46,
-              backgroundColor: pressed
-                ? "rgba(255,255,255,0.07)"
-                : "transparent",
-              borderRadius: 10,
-              borderWidth: 1.5,
-              borderColor: pressed
-                ? "rgba(255,255,255,0.22)"
-                : "rgba(255,255,255,0.12)",
-              alignItems: "center" as const,
-              justifyContent: "center" as const,
-            })}
+            style={({ pressed }) => [
+              styles.endSessionButton,
+              pressed && styles.endSessionButtonPressed,
+            ]}
           >
-            <Text
-              style={{
-                color: "#8892A4",
-                fontSize: 13,
-                fontWeight: "500" as const,
-              }}
-            >
-              End Session
-            </Text>
+            <Text style={styles.endSessionButtonText}>End Session</Text>
           </Pressable>
         </>
       ) : (
@@ -844,34 +824,21 @@ export default function AdminScreen() {
 
       <Pressable
         onPress={handleRefreshRates}
-        style={({ pressed }) => ({
-          marginTop: 8,
-          marginBottom: 16,
-          marginLeft: 16,
-          paddingHorizontal: 16,
-          paddingVertical: 9,
-          height: 38,
-          backgroundColor: pressed
-            ? "rgba(255,255,255,0.09)"
-            : "rgba(255,255,255,0.05)",
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.12)",
-          flexDirection: "row" as const,
-          alignItems: "center" as const,
-          justifyContent: "center" as const,
-          alignSelf: "flex-start" as const,
-        })}
+        disabled={ratesRefreshing}
+        style={({ pressed }) => [
+          styles.refreshRatesButton,
+          pressed && !ratesRefreshing && styles.refreshRatesButtonPressed,
+          ratesRefreshing && styles.refreshRatesButtonLoading,
+        ]}
       >
-        <Text
-          style={{
-            color: "#8892A4",
-            fontSize: 13,
-            fontWeight: "500" as const,
-          }}
-        >
-          ↻  Refresh Rates
-        </Text>
+        {ratesRefreshing ? (
+          <View style={styles.loadingButtonRow}>
+            <ActivityIndicator size="small" color={Colors.text.secondary} />
+            <Text style={styles.refreshRatesButtonText}>Refreshing...</Text>
+          </View>
+        ) : (
+          <Text style={styles.refreshRatesButtonText}>↻  Refresh Rates</Text>
+        )}
       </Pressable>
 
       <SectionLabel>CREDENTIALS</SectionLabel>
@@ -903,59 +870,40 @@ export default function AdminScreen() {
 
       <Pressable
         onPress={handleUpdatePortalCredentials}
-        style={({ pressed }) => ({
-          marginHorizontal: 16,
-          marginTop: 20,
-          marginBottom: 0,
-          height: 52,
-          backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
-          borderRadius: 12,
-          alignItems: "center" as const,
-          justifyContent: "center" as const,
-          shadowColor: "#3B82F6",
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.35,
-          shadowRadius: 8,
-          elevation: 5,
-        })}
+        disabled={portalSaving}
+        style={({ pressed }) => [
+          styles.portalUpdateButton,
+          pressed && !portalSaving && styles.portalUpdateButtonPressed,
+          portalSaving && styles.portalUpdateButtonLoading,
+        ]}
       >
-        <Text
-          style={{
-            color: "#FFFFFF",
-            fontSize: 15,
-            fontWeight: "700" as const,
-          }}
-        >
-          Update Credentials
-        </Text>
+        {portalSaving ? (
+          <View style={styles.loadingButtonRow}>
+            <ActivityIndicator size="small" color={Colors.text.primary} />
+            <Text style={styles.portalUpdateButtonText}>Saving...</Text>
+          </View>
+        ) : (
+          <Text style={styles.portalUpdateButtonText}>Update Credentials</Text>
+        )}
       </Pressable>
 
       <Pressable
         onPress={handleTestPortalConnection}
-        style={({ pressed }) => ({
-          marginHorizontal: 16,
-          marginTop: 10,
-          marginBottom: 16,
-          height: 48,
-          backgroundColor: pressed
-            ? "rgba(59,130,246,0.18)"
-            : "rgba(59,130,246,0.09)",
-          borderRadius: 12,
-          borderWidth: 1.5,
-          borderColor: "rgba(59,130,246,0.45)",
-          alignItems: "center" as const,
-          justifyContent: "center" as const,
-        })}
+        disabled={portalTesting}
+        style={({ pressed }) => [
+          styles.portalTestButton,
+          pressed && !portalTesting && styles.portalTestButtonPressed,
+          portalTesting && styles.portalTestButtonLoading,
+        ]}
       >
-        <Text
-          style={{
-            color: "#3B82F6",
-            fontSize: 14,
-            fontWeight: "600" as const,
-          }}
-        >
-          Test Connection
-        </Text>
+        {portalTesting ? (
+          <View style={styles.loadingButtonRow}>
+            <ActivityIndicator size="small" color={Colors.text.accent} />
+            <Text style={styles.portalTestButtonText}>Testing...</Text>
+          </View>
+        ) : (
+          <Text style={styles.portalTestButtonText}>Test Connection</Text>
+        )}
       </Pressable>
     </ScrollView>
   );
@@ -1710,6 +1658,70 @@ const styles = StyleSheet.create({
   },
   loadingButtonRow: {
     ...Buttons.loadingRow,
+  },
+  refreshRatesButton: {
+    ...Buttons.secondaryCompact,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
+    marginLeft: Spacing.lg,
+    alignSelf: "flex-start",
+    height: 38,
+    paddingHorizontal: Spacing.lg,
+  },
+  refreshRatesButtonPressed: {
+    ...Buttons.secondaryPressed,
+  },
+  refreshRatesButtonLoading: {
+    opacity: 0.7,
+  },
+  refreshRatesButtonText: {
+    ...Buttons.secondaryCompactText,
+  },
+  portalUpdateButton: {
+    ...Buttons.primary,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    marginBottom: 0,
+    height: 52,
+  },
+  portalUpdateButtonPressed: {
+    ...Buttons.primaryPressed,
+  },
+  portalUpdateButtonLoading: {
+    ...Buttons.primaryLoading,
+  },
+  portalUpdateButtonText: {
+    ...Buttons.primaryText,
+  },
+  portalTestButton: {
+    ...Buttons.accentOutline,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
+    height: 48,
+  },
+  portalTestButtonPressed: {
+    ...Buttons.accentOutlinePressed,
+  },
+  portalTestButtonLoading: {
+    opacity: 0.7,
+  },
+  portalTestButtonText: {
+    ...Buttons.accentOutlineText,
+  },
+  endSessionButton: {
+    ...Buttons.secondary,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.lg,
+    height: 46,
+  },
+  endSessionButtonPressed: {
+    ...Buttons.secondaryPressed,
+  },
+  endSessionButtonText: {
+    ...Buttons.secondaryText,
+    fontSize: Typography.sm,
   },
   reprintOverlay: {
     ...StyleSheet.absoluteFillObject,
