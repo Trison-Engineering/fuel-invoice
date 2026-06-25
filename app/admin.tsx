@@ -271,7 +271,6 @@ export default function AdminScreen() {
   const [portalTesting, setPortalTesting] = useState(false);
   const [ezPumpRates, setEzPumpRates] = useState<EzPumpRates | null>(null);
   const [ratesRefreshing, setRatesRefreshing] = useState(false);
-  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -432,17 +431,14 @@ export default function AdminScreen() {
 
   const handleTestPortalConnection = useCallback(async () => {
     setPortalTesting(true);
-    setTestResult(null);
     try {
       await EzPumpService.getRecentSales();
-      setTestResult("success");
       setToast({
         visible: true,
         message: "Connection successful",
         type: "success",
       });
     } catch {
-      setTestResult("error");
       setToast({
         visible: true,
         message: "Connection failed — check credentials",
@@ -700,18 +696,29 @@ export default function AdminScreen() {
           <Pressable
             onPress={handleEndSession}
             style={({ pressed }) => ({
-              marginTop: 14,
+              marginHorizontal: 16,
+              marginTop: 12,
+              marginBottom: 16,
               height: 46,
-              backgroundColor: pressed ? "rgba(255,255,255,0.06)" : "transparent",
+              backgroundColor: pressed
+                ? "rgba(255,255,255,0.07)"
+                : "transparent",
               borderRadius: 10,
               borderWidth: 1.5,
-              borderColor: pressed ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)",
-              alignItems: "center",
-              justifyContent: "center",
-              transform: [{ scale: pressed ? 0.97 : 1 }],
+              borderColor: pressed
+                ? "rgba(255,255,255,0.22)"
+                : "rgba(255,255,255,0.12)",
+              alignItems: "center" as const,
+              justifyContent: "center" as const,
             })}
           >
-            <Text style={{ fontSize: 13, fontWeight: "500", color: "#8892A4" }}>
+            <Text
+              style={{
+                color: "#8892A4",
+                fontSize: 13,
+                fontWeight: "500" as const,
+              }}
+            >
               End Session
             </Text>
           </Pressable>
@@ -837,28 +844,33 @@ export default function AdminScreen() {
 
       <Pressable
         onPress={handleRefreshRates}
-        disabled={ratesRefreshing}
         style={({ pressed }) => ({
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          paddingHorizontal: 14,
-          paddingVertical: 8,
-          marginHorizontal: 16,
           marginTop: 8,
-          backgroundColor: pressed ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
+          marginBottom: 16,
+          marginLeft: 16,
+          paddingHorizontal: 16,
+          paddingVertical: 9,
+          height: 38,
+          backgroundColor: pressed
+            ? "rgba(255,255,255,0.09)"
+            : "rgba(255,255,255,0.05)",
           borderRadius: 8,
           borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.1)",
-          alignSelf: "flex-start",
-          opacity: ratesRefreshing ? 0.7 : 1,
+          borderColor: "rgba(255,255,255,0.12)",
+          flexDirection: "row" as const,
+          alignItems: "center" as const,
+          justifyContent: "center" as const,
+          alignSelf: "flex-start" as const,
         })}
       >
-        {ratesRefreshing ? (
-          <ActivityIndicator size="small" color="#8892A4" />
-        ) : null}
-        <Text style={{ fontSize: 13, color: "#8892A4", fontWeight: "500" }}>
-          ↻ Refresh Rates
+        <Text
+          style={{
+            color: "#8892A4",
+            fontSize: 13,
+            fontWeight: "500" as const,
+          }}
+        >
+          ↻  Refresh Rates
         </Text>
       </Pressable>
 
@@ -891,79 +903,59 @@ export default function AdminScreen() {
 
       <Pressable
         onPress={handleUpdatePortalCredentials}
-        disabled={portalSaving}
         style={({ pressed }) => ({
           marginHorizontal: 16,
           marginTop: 20,
+          marginBottom: 0,
           height: 52,
-          backgroundColor: portalSaving || pressed ? "#1D4ED8" : "#3B82F6",
+          backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
           borderRadius: 12,
-          alignItems: "center",
-          justifyContent: "center",
+          alignItems: "center" as const,
+          justifyContent: "center" as const,
           shadowColor: "#3B82F6",
           shadowOffset: { width: 0, height: 3 },
           shadowOpacity: 0.35,
           shadowRadius: 8,
           elevation: 5,
-          opacity: portalSaving ? 0.85 : 1,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
         })}
       >
-        {portalSaving ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Text style={{ fontSize: 15, fontWeight: "700", color: "#FFFFFF" }}>
-            Update Credentials
-          </Text>
-        )}
+        <Text
+          style={{
+            color: "#FFFFFF",
+            fontSize: 15,
+            fontWeight: "700" as const,
+          }}
+        >
+          Update Credentials
+        </Text>
       </Pressable>
 
       <Pressable
         onPress={handleTestPortalConnection}
-        disabled={portalTesting}
         style={({ pressed }) => ({
           marginHorizontal: 16,
           marginTop: 10,
           marginBottom: 16,
           height: 48,
-          backgroundColor: portalTesting
-            ? "rgba(59,130,246,0.05)"
-            : pressed
-              ? "rgba(59,130,246,0.15)"
-              : "rgba(59,130,246,0.08)",
+          backgroundColor: pressed
+            ? "rgba(59,130,246,0.18)"
+            : "rgba(59,130,246,0.09)",
           borderRadius: 12,
           borderWidth: 1.5,
-          borderColor:
-            testResult === "success"
-              ? "rgba(34,197,94,0.5)"
-              : testResult === "error"
-                ? "rgba(239,68,68,0.5)"
-                : "rgba(59,130,246,0.4)",
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: portalTesting ? 0.7 : 1,
+          borderColor: "rgba(59,130,246,0.45)",
+          alignItems: "center" as const,
+          justifyContent: "center" as const,
         })}
       >
-        {portalTesting ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <ActivityIndicator size="small" color="#3B82F6" />
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#3B82F6" }}>
-              Testing...
-            </Text>
-          </View>
-        ) : testResult === "success" ? (
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#22C55E" }}>
-            ✓ Connected
-          </Text>
-        ) : testResult === "error" ? (
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#EF4444" }}>
-            ✕ Failed
-          </Text>
-        ) : (
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#3B82F6" }}>
-            Test Connection
-          </Text>
-        )}
+        <Text
+          style={{
+            color: "#3B82F6",
+            fontSize: 14,
+            fontWeight: "600" as const,
+          }}
+        >
+          Test Connection
+        </Text>
       </Pressable>
     </ScrollView>
   );
@@ -1579,28 +1571,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.base,
     fontWeight: Typography.bold,
   },
-  endSessionButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-    height: 46,
-    minHeight: 44,
-    backgroundColor: "transparent",
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  endSessionButtonPressed: {
-    backgroundColor: Colors.bg.hover,
-    borderColor: Colors.border.strong,
-  },
-  endSessionButtonText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.sm,
-    fontWeight: Typography.medium,
-  },
   emptySessionText: {
     color: Colors.text.secondary,
     fontSize: Typography.base,
@@ -1737,59 +1707,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     color: Colors.text.primary,
     fontSize: Typography.base,
-  },
-  portalPrimaryButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.xl,
-    height: 52,
-    minHeight: 44,
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  portalPrimaryButtonPressed: {
-    backgroundColor: Colors.accentDark,
-    transform: [{ scale: 0.97 }],
-  },
-  portalPrimaryButtonLoading: {
-    backgroundColor: Colors.accentDark,
-    opacity: 0.85,
-  },
-  portalPrimaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
-  },
-  portalSecondaryButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: 10,
-    marginBottom: Spacing.lg,
-    height: 48,
-    minHeight: 44,
-    backgroundColor: "transparent",
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  portalSecondaryButtonPressed: {
-    backgroundColor: Colors.bg.hover,
-    borderColor: Colors.border.strong,
-  },
-  portalSecondaryButtonLoading: {
-    opacity: 0.7,
-  },
-  portalSecondaryButtonText: {
-    color: Colors.text.accent,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
   },
   loadingButtonRow: {
     ...Buttons.loadingRow,

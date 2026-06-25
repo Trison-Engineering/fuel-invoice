@@ -63,11 +63,13 @@ const FUEL_OPTIONS = [
 
 type FuelId = (typeof FUEL_OPTIONS)[number]["id"];
 
+const AVAILABLE_PRODUCTS = ["Petrol", "Diesel", "Hi-Octane"] as const;
+
 const PRODUCTS = [
-  { name: "Petrol" as const, label: "PETROL", color: "#22C55E", rgb: "34,197,94" },
-  { name: "Diesel" as const, label: "DIESEL", color: "#3B82F6", rgb: "59,130,246" },
-  { name: "Hi-Octane" as const, label: "HI-OCTANE", color: "#A855F7", rgb: "168,85,247" },
-];
+  { name: "Petrol", label: "PETROL", color: Colors.product.petrol },
+  { name: "Diesel", label: "DIESEL", color: Colors.product.diesel },
+  { name: "Hi-Octane", label: "HI-OCTANE", color: Colors.product.hiOctane },
+] as const;
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -860,18 +862,7 @@ export default function HomeScreen() {
           <>
             <Text style={styles.stepHeading}>What are you dispensing?</Text>
             <Text style={styles.stepSubheading}>Select a product to continue</Text>
-            <View
-              style={{
-                marginHorizontal: 20,
-                marginTop: 24,
-                marginBottom: 100,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.08)",
-                backgroundColor: "#141B2D",
-                overflow: "hidden",
-              }}
-            >
+            <View style={styles.fuelListCard}>
               {PRODUCTS.map((product, index) => {
                 const isSelected = selectedProduct === product.name;
                 const isLast = index === PRODUCTS.length - 1;
@@ -883,14 +874,14 @@ export default function HomeScreen() {
                       flexDirection: "row",
                       alignItems: "center",
                       height: 64,
-                      paddingHorizontal: 20,
+                      paddingHorizontal: Spacing.xl,
                       backgroundColor: isSelected
-                        ? `rgba(${product.rgb}, 0.08)`
+                        ? `${product.color}18`
                         : pressed
-                          ? "rgba(255,255,255,0.03)"
+                          ? Colors.bg.elevated
                           : "transparent",
                       borderBottomWidth: isLast ? 0 : 1,
-                      borderBottomColor: "rgba(255,255,255,0.05)",
+                      borderBottomColor: Colors.border.subtle,
                     })}
                   >
                     <View
@@ -899,20 +890,17 @@ export default function HomeScreen() {
                         height: 10,
                         borderRadius: 5,
                         backgroundColor: product.color,
-                        marginRight: 14,
-                        shadowColor: product.color,
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowOpacity: isSelected ? 0.6 : 0,
-                        shadowRadius: 6,
+                        marginRight: Spacing.md,
+                        flexShrink: 0,
                       }}
                     />
                     <Text
                       style={{
                         flex: 1,
-                        fontSize: 17,
-                        fontWeight: "600",
-                        color: isSelected ? product.color : "#FFFFFF",
-                        letterSpacing: -0.3,
+                        fontSize: Typography.md,
+                        fontWeight: Typography.semibold,
+                        color: isSelected ? product.color : Colors.text.primary,
+                        letterSpacing: Typography.wide,
                       }}
                     >
                       {product.label}
@@ -922,20 +910,21 @@ export default function HomeScreen() {
                         width: 22,
                         height: 22,
                         borderRadius: 11,
-                        borderWidth: isSelected ? 0 : 1.5,
-                        borderColor: "rgba(255,255,255,0.2)",
                         backgroundColor: isSelected ? product.color : "transparent",
+                        borderWidth: isSelected ? 0 : 1.5,
+                        borderColor: Colors.border.default,
                         alignItems: "center",
                         justifyContent: "center",
+                        flexShrink: 0,
                       }}
                     >
                       {isSelected ? (
                         <View
                           style={{
-                            width: 10,
-                            height: 10,
+                            width: 9,
+                            height: 9,
                             borderRadius: 5,
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: Colors.text.primary,
                           }}
                         />
                       ) : null}
@@ -1279,35 +1268,18 @@ export default function HomeScreen() {
               <Pressable
                 onPress={() => goForward(2)}
                 disabled={!selectedProduct}
-                style={({ pressed }) => ({
-                  position: "absolute",
-                  bottom: Math.max(insets.bottom, 32),
-                  left: 20,
-                  right: 20,
-                  height: 56,
-                  backgroundColor: selectedProduct
-                    ? pressed
-                      ? "#1D4ED8"
-                      : "#3B82F6"
-                    : "#243048",
-                  borderRadius: 16,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  shadowColor: selectedProduct ? "#3B82F6" : "transparent",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: selectedProduct ? 0.4 : 0,
-                  shadowRadius: 12,
-                  elevation: selectedProduct ? 8 : 0,
-                  transform: [{ scale: pressed && selectedProduct ? 0.97 : 1 }],
-                })}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  styles.absoluteBottomBtn,
+                  pressed && !!selectedProduct && styles.primaryBtnPressed,
+                  !selectedProduct && styles.primaryBtnDisabled,
+                ]}
               >
                 <Text
-                  style={{
-                    fontSize: 17,
-                    fontWeight: "700",
-                    color: selectedProduct ? "#FFFFFF" : "#4E5A6E",
-                    letterSpacing: 0.3,
-                  }}
+                  style={[
+                    styles.primaryBtnText,
+                    !selectedProduct && styles.primaryBtnTextDisabled,
+                  ]}
                 >
                   Continue
                 </Text>
@@ -1318,35 +1290,18 @@ export default function HomeScreen() {
               <Pressable
                 onPress={() => goForward(3)}
                 disabled={!step2CanContinue}
-                style={({ pressed }) => ({
-                  position: "absolute",
-                  bottom: Math.max(insets.bottom, 32),
-                  left: 20,
-                  right: 20,
-                  height: 56,
-                  backgroundColor: step2CanContinue
-                    ? pressed
-                      ? "#1D4ED8"
-                      : "#3B82F6"
-                    : "#243048",
-                  borderRadius: 16,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  shadowColor: step2CanContinue ? "#3B82F6" : "transparent",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: step2CanContinue ? 0.4 : 0,
-                  shadowRadius: 12,
-                  elevation: step2CanContinue ? 8 : 0,
-                  transform: [{ scale: pressed && step2CanContinue ? 0.97 : 1 }],
-                })}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  styles.absoluteBottomBtn,
+                  pressed && step2CanContinue && styles.primaryBtnPressed,
+                  !step2CanContinue && styles.primaryBtnDisabled,
+                ]}
               >
                 <Text
-                  style={{
-                    fontSize: 17,
-                    fontWeight: "700",
-                    color: step2CanContinue ? "#FFFFFF" : "#4E5A6E",
-                    letterSpacing: 0.3,
-                  }}
+                  style={[
+                    styles.primaryBtnText,
+                    !step2CanContinue && styles.primaryBtnTextDisabled,
+                  ]}
                 >
                   Continue
                 </Text>
@@ -1357,41 +1312,21 @@ export default function HomeScreen() {
               <Pressable
                 onPress={handlePrint}
                 disabled={isPrinting || printer.isReconnecting}
-                style={({ pressed }) => ({
-                  position: "absolute",
-                  bottom: Math.max(insets.bottom, 32),
-                  left: 20,
-                  right: 20,
-                  height: 60,
-                  backgroundColor:
-                    isPrinting || printer.isReconnecting || pressed
-                      ? "#1D4ED8"
-                      : "#3B82F6",
-                  borderRadius: 16,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 10,
-                  shadowColor: "#3B82F6",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: isPrinting || printer.isReconnecting ? 0.2 : 0.4,
-                  shadowRadius: 12,
-                  elevation: 8,
-                  opacity: isPrinting || printer.isReconnecting ? 0.8 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                })}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  styles.absoluteBottomBtn,
+                  { height: 60 },
+                  pressed && !isPrinting && !printer.isReconnecting && styles.primaryBtnPressed,
+                  (isPrinting || printer.isReconnecting) && styles.primaryBtnDisabled,
+                ]}
               >
                 {isPrinting || printer.isReconnecting ? (
-                  <>
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                    <Text style={{ fontSize: 17, fontWeight: "700", color: "#FFFFFF" }}>
-                      Printing...
-                    </Text>
-                  </>
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color={Colors.text.primary} />
+                    <Text style={styles.primaryBtnText}>Printing...</Text>
+                  </View>
                 ) : (
-                  <Text style={{ fontSize: 17, fontWeight: "700", color: "#FFFFFF" }}>
-                    🖨  Print Receipt
-                  </Text>
+                  <Text style={styles.primaryBtnText}>🖨  Print Receipt</Text>
                 )}
               </Pressable>
             ) : null}
@@ -1422,27 +1357,22 @@ export default function HomeScreen() {
           >
             <Pressable
               onPress={handleDismissDuplicate}
-              style={({ pressed }) => ({
-                position: "absolute",
-                top: 14,
-                right: 14,
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                backgroundColor: pressed
-                  ? "rgba(255,255,255,0.1)"
-                  : "rgba(255,255,255,0.06)",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 10,
-              })}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                {
+                  position: "absolute",
+                  top: 14,
+                  right: 14,
+                  zIndex: 10,
+                },
+                pressed && styles.iconBtnPressed,
+              ]}
             >
               <Text
                 style={{
-                  fontSize: 16,
-                  color: "#8892A4",
-                  fontWeight: "600",
-                  lineHeight: 20,
+                  fontSize: Typography.md,
+                  color: Colors.text.secondary,
+                  fontWeight: Typography.semibold,
                 }}
               >
                 ✕
@@ -1461,58 +1391,24 @@ export default function HomeScreen() {
 
             <Pressable
               onPress={handleDuplicatePrint}
-              disabled={isPrintingDuplicate}
-              style={({ pressed }) => ({
-                width: "100%",
-                height: 52,
-                backgroundColor: pressed
-                  ? "rgba(59,130,246,0.2)"
-                  : "rgba(59,130,246,0.1)",
-                borderRadius: 12,
-                borderWidth: 1.5,
-                borderColor: "rgba(59,130,246,0.4)",
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: 16,
-                marginBottom: 10,
-                opacity: isPrintingDuplicate ? 0.85 : 1,
-              })}
+              style={({ pressed }) => [
+                styles.accentOutlineBtn,
+                { width: "100%", height: 52, marginTop: 16, marginBottom: 10 },
+                pressed && styles.accentOutlineBtnPressed,
+              ]}
             >
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: "600",
-                  color: "#3B82F6",
-                }}
-              >
-                {isPrintingDuplicate ? "Printing duplicate..." : "Print Duplicate?"}
-              </Text>
+              <Text style={styles.accentOutlineBtnText}>Print Duplicate?</Text>
             </Pressable>
 
             <Pressable
               onPress={handleDismissDuplicate}
-              style={({ pressed }) => ({
-                width: "100%",
-                height: 46,
-                backgroundColor: pressed
-                  ? "rgba(255,255,255,0.05)"
-                  : "transparent",
-                borderRadius: 12,
-                borderWidth: 1.5,
-                borderColor: "rgba(255,255,255,0.1)",
-                alignItems: "center",
-                justifyContent: "center",
-              })}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                { width: "100%" },
+                pressed && styles.secondaryBtnPressed,
+              ]}
             >
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: "500",
-                  color: "#8892A4",
-                }}
-              >
-                Skip
-              </Text>
+              <Text style={styles.secondaryBtnText}>Skip</Text>
             </Pressable>
           </Animated.View>
         </View>
@@ -1561,29 +1457,20 @@ export default function HomeScreen() {
             <Pressable
               onPress={handleAdminLogin}
               disabled={adminSigningIn}
-              style={({ pressed }) => ({
-                width: "100%",
-                height: 52,
-                backgroundColor: adminSigningIn || pressed ? "#1D4ED8" : "#3B82F6",
-                borderRadius: 12,
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: 20,
-                shadowColor: "#3B82F6",
-                shadowOffset: { width: 0, height: 3 },
-                shadowOpacity: 0.4,
-                shadowRadius: 8,
-                elevation: 5,
-                opacity: adminSigningIn ? 0.85 : 1,
-                transform: [{ scale: pressed ? 0.97 : 1 }],
-              })}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                styles.loginPrimaryBtn,
+                pressed && !adminSigningIn && styles.primaryBtnPressed,
+                adminSigningIn && styles.primaryBtnDisabled,
+              ]}
             >
               {adminSigningIn ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator size="small" color={Colors.text.primary} />
+                  <Text style={styles.primaryBtnText}>Signing in...</Text>
+                </View>
               ) : (
-                <Text style={{ fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>
-                  Login
-                </Text>
+                <Text style={styles.primaryBtnText}>Login</Text>
               )}
             </Pressable>
             <Pressable
@@ -1592,22 +1479,13 @@ export default function HomeScreen() {
                 setAdminEmail("");
                 setAdminPassword("");
               }}
-              style={({ pressed }) => ({
-                width: "100%",
-                height: 46,
-                backgroundColor: pressed ? "rgba(255,255,255,0.05)" : "transparent",
-                borderRadius: 12,
-                borderWidth: 1.5,
-                borderColor: "rgba(255,255,255,0.12)",
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: 10,
-                transform: [{ scale: pressed ? 0.97 : 1 }],
-              })}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                styles.loginSecondaryBtn,
+                pressed && styles.secondaryBtnPressed,
+              ]}
             >
-              <Text style={{ fontSize: 15, fontWeight: "500", color: "#8892A4" }}>
-                Cancel
-              </Text>
+              <Text style={styles.secondaryBtnText}>Cancel</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -1998,6 +1876,73 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: Colors.bg.primary,
   },
+  primaryBtn: {
+    ...Buttons.primary,
+  },
+  primaryBtnPressed: {
+    ...Buttons.primaryPressed,
+  },
+  primaryBtnDisabled: {
+    ...Buttons.primaryDisabled,
+  },
+  primaryBtnText: {
+    ...Buttons.primaryText,
+  },
+  primaryBtnTextDisabled: {
+    ...Buttons.primaryTextDisabled,
+  },
+  secondaryBtn: {
+    ...Buttons.secondary,
+  },
+  secondaryBtnPressed: {
+    ...Buttons.secondaryPressed,
+  },
+  secondaryBtnText: {
+    ...Buttons.secondaryText,
+  },
+  accentOutlineBtn: {
+    ...Buttons.accentOutline,
+  },
+  accentOutlineBtnPressed: {
+    ...Buttons.accentOutlinePressed,
+  },
+  accentOutlineBtnText: {
+    ...Buttons.accentOutlineText,
+  },
+  iconBtn: {
+    ...Buttons.icon,
+  },
+  iconBtnPressed: {
+    ...Buttons.iconPressed,
+  },
+  loadingRow: {
+    ...Buttons.loadingRow,
+  },
+  destructiveBtn: {
+    ...Buttons.destructive,
+  },
+  destructiveBtnPressed: {
+    ...Buttons.destructivePressed,
+  },
+  destructiveBtnText: {
+    ...Buttons.destructiveText,
+  },
+  absoluteBottomBtn: {
+    position: "absolute",
+    bottom: 32,
+    left: 20,
+    right: 20,
+  },
+  fuelListCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.xl,
+    marginBottom: 100,
+    backgroundColor: Colors.bg.card,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    overflow: "hidden",
+  },
   headerTitleWrap: {
     justifyContent: "center",
   },
@@ -2320,89 +2265,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: Spacing.xs,
   },
-  fuelListCard: {
-    marginTop: Spacing.xxl,
-    marginHorizontal: Spacing.xl,
-    marginBottom: 100,
-    backgroundColor: Colors.bg.card,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    borderRadius: Radius.md,
-    overflow: "hidden",
-  },
-  fuelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    height: 64,
-    paddingHorizontal: Spacing.xl,
-  },
-  fuelRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
-  },
-  fuelDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 14,
-  },
-  fuelName: {
-    flex: 1,
-    fontSize: Typography.md,
-    fontWeight: Typography.semibold,
-    color: Colors.text.primary,
-    letterSpacing: -0.3,
-  },
-  fuelCheck: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fuelCheckInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#FFFFFF",
-  },
-  fuelCheckEmpty: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderColor: Colors.border.default,
-    backgroundColor: "transparent",
-  },
-  stepBottomBar: {
-    position: "absolute",
-    left: Spacing.xl,
-    right: Spacing.xl,
-    zIndex: 10,
-  },
-  stepBottomButton: {
-    ...Buttons.primary,
-  },
-  stepBottomButtonDisabled: {
-    ...Buttons.primaryDisabled,
-  },
-  stepBottomButtonPressed: {
-    ...Buttons.primaryPressed,
-  },
-  stepBottomButtonText: {
-    ...Buttons.primaryText,
-  },
-  stepBottomButtonTextDisabled: {
-    ...Buttons.primaryTextDisabled,
-  },
-  stepBottomPrintButton: {
-    ...Buttons.primary,
-    height: 60,
-    gap: 10,
-  },
-  stepBottomPrintButtonLoading: {
-    ...Buttons.primaryLoading,
-  },
   stepProductPillWrap: {
     alignItems: "center",
     marginTop: Spacing.xxl,
@@ -2442,25 +2304,6 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
     marginTop: Spacing.md,
     textAlign: "center",
-  },
-  continueButton: {
-    alignSelf: "center",
-    height: 56,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.xxxl,
-    ...Shadow.glow,
-  },
-  continueButtonPressed: {
-    transform: [{ scale: 0.97 }],
-    backgroundColor: Colors.accentDark,
-  },
-  continueButtonText: {
-    color: Colors.text.primary,
-    fontSize: Typography.md,
-    fontWeight: Typography.bold,
   },
   summaryCard: {
     backgroundColor: Colors.bg.card,
@@ -2534,28 +2377,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: Spacing.sm,
   },
-  printReceiptButton: {
-    alignSelf: "center",
-    height: 60,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.accent,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    marginTop: Spacing.xxl,
-    marginBottom: Spacing.xxxl,
-    ...Shadow.glow,
-  },
-  printReceiptButtonLoading: {
-    backgroundColor: Colors.accentDark,
-    opacity: 0.7,
-  },
-  printReceiptButtonText: {
-    color: Colors.text.primary,
-    fontSize: Typography.md,
-    fontWeight: Typography.bold,
-  },
   buttonDisabled: {
     opacity: 0.4,
   },
@@ -2605,28 +2426,6 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 20,
   },
-  duplicateCloseButton: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: Colors.bg.hover,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
-  },
-  duplicateCloseButtonPressed: {
-    backgroundColor: Colors.bg.elevated,
-    transform: [{ scale: 0.92 }],
-  },
-  duplicateCloseText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
-    lineHeight: 20,
-  },
   duplicateSuccessIcon: {
     width: 52,
     height: 52,
@@ -2648,50 +2447,6 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
     textAlign: "center",
     marginBottom: 20,
-  },
-  duplicateButton: {
-    width: "100%",
-    height: 52,
-    backgroundColor: Colors.accentAlpha,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-    minHeight: 44,
-  },
-  duplicateButtonPressed: {
-    backgroundColor: "rgba(59,130,246,0.2)",
-  },
-  duplicateButtonLoading: {
-    opacity: 0.85,
-  },
-  duplicateButtonText: {
-    color: Colors.text.accent,
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
-  },
-  duplicateSkipButton: {
-    width: "100%",
-    height: 46,
-    minHeight: 44,
-    backgroundColor: "transparent",
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  duplicateSkipButtonPressed: {
-    backgroundColor: Colors.bg.hover,
-    borderColor: Colors.border.strong,
-  },
-  duplicateSkipText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.sm,
-    fontWeight: Typography.medium,
-    textAlign: "center",
   },
   modalOverlay: {
     flex: 1,
@@ -2742,58 +2497,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg.input,
     width: "100%",
   },
-  loginButton: {
-    marginTop: 20,
-    width: "100%",
+  loginPrimaryBtn: {
+    marginTop: Spacing.xl,
     height: 52,
-    minHeight: 44,
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 5,
   },
-  loginButtonLoading: {
-    backgroundColor: Colors.accentDark,
-    opacity: 0.85,
-  },
-  loginButtonPressed: {
-    backgroundColor: Colors.accentDark,
-    transform: [{ scale: 0.97 }],
-  },
-  loginButtonText: {
-    color: "#FFFFFF",
-    fontSize: Typography.base,
-    fontWeight: Typography.bold,
-  },
-  loginButtonLoadingText: {
-    color: "#FFFFFF",
-    fontSize: Typography.sm,
-    fontWeight: Typography.bold,
-  },
-  cancelButton: {
-    marginTop: 10,
-    width: "100%",
+  loginSecondaryBtn: {
+    marginTop: Spacing.sm,
     height: 46,
-    minHeight: 44,
-    backgroundColor: "transparent",
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelButtonPressed: {
-    backgroundColor: Colors.bg.hover,
-  },
-  cancelButtonText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.sm,
-    fontWeight: Typography.medium,
-    textAlign: "center",
   },
 });

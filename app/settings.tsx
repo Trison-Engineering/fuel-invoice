@@ -236,17 +236,6 @@ function SetupSectionCard({
   );
 }
 
-function LoadingButtonContent({ label, variant = "primary" }: { label: string; variant?: "primary" | "accent" }) {
-  const spinnerColor = variant === "accent" ? Colors.text.accent : "#FFFFFF";
-  const textStyle = variant === "accent" ? styles.ezPumpSaveText : styles.saveContinueButtonText;
-  return (
-    <View style={styles.loadingButtonRow}>
-      <ActivityIndicator size="small" color={spinnerColor} />
-      <Text style={textStyle}>{label}</Text>
-    </View>
-  );
-}
-
 function SettingsInputRow({
   label,
   fieldLabel,
@@ -862,32 +851,31 @@ export default function SettingsScreen() {
                 </View>
                 <Pressable
                   onPress={handleSaveEzPumpCredentials}
-                  disabled={savingEzPump}
                   style={({ pressed }) => ({
                     marginHorizontal: 16,
-                    marginTop: 4,
+                    marginTop: 8,
                     marginBottom: 8,
                     height: 52,
                     backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
                     borderRadius: 12,
-                    alignItems: "center",
-                    justifyContent: "center",
+                    alignItems: "center" as const,
+                    justifyContent: "center" as const,
                     shadowColor: "#3B82F6",
-                    shadowOffset: { width: 0, height: 3 },
-                    shadowOpacity: 0.35,
-                    shadowRadius: 8,
-                    elevation: 5,
-                    transform: [{ scale: pressed ? 0.97 : 1 }],
-                    opacity: savingEzPump ? 0.85 : 1,
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.4,
+                    shadowRadius: 10,
+                    elevation: 6,
                   })}
                 >
-                  {savingEzPump ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#FFFFFF" }}>
-                      Save & Connect
-                    </Text>
-                  )}
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: 16,
+                      fontWeight: "700" as const,
+                    }}
+                  >
+                    Save & Connect
+                  </Text>
                 </Pressable>
               </SectionGroup>
             </>
@@ -902,66 +890,35 @@ export default function SettingsScreen() {
             />
           ) : null}
 
-          {isInitialSetup ? (
-            <Pressable
-              onPress={handleSave}
-              disabled={saving}
-              style={({ pressed }) => ({
-                marginHorizontal: 16,
-                marginTop: 16,
-                marginBottom: 32,
-                height: 56,
-                backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
-                borderRadius: 16,
-                alignItems: "center",
-                justifyContent: "center",
-                shadowColor: "#3B82F6",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.4,
-                shadowRadius: 12,
-                elevation: 8,
-                transform: [{ scale: pressed ? 0.97 : 1 }],
-                opacity: saving ? 0.85 : 1,
-              })}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={{ fontSize: 17, fontWeight: "700", color: "#FFFFFF" }}>
-                  Save & Continue
-                </Text>
-              )}
-            </Pressable>
-          ) : (
+          {!isInitialSetup ? (
             <>
               <Pressable
                 onPress={handleSave}
-                disabled={saving}
                 style={({ pressed }) => ({
                   marginHorizontal: 16,
-                  marginTop: 24,
+                  marginTop: 20,
                   marginBottom: 0,
                   height: 56,
                   backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
-                  borderRadius: 16,
-                  alignItems: "center",
-                  justifyContent: "center",
+                  borderRadius: 14,
+                  alignItems: "center" as const,
+                  justifyContent: "center" as const,
                   shadowColor: "#3B82F6",
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.4,
                   shadowRadius: 12,
                   elevation: 8,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                  opacity: saving ? 0.85 : 1,
                 })}
               >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>
-                    Save Station Profile
-                  </Text>
-                )}
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontSize: 16,
+                    fontWeight: "700" as const,
+                  }}
+                >
+                  Save Station Profile
+                </Text>
               </Pressable>
 
               <Pressable
@@ -970,24 +927,60 @@ export default function SettingsScreen() {
                   marginHorizontal: 16,
                   marginTop: 12,
                   marginBottom: 32,
-                  height: 48,
+                  height: 50,
                   backgroundColor: pressed
-                    ? "rgba(239,68,68,0.15)"
-                    : "rgba(239,68,68,0.08)",
+                    ? "rgba(239,68,68,0.18)"
+                    : "rgba(239,68,68,0.09)",
                   borderRadius: 12,
                   borderWidth: 1.5,
-                  borderColor: "rgba(239,68,68,0.35)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                  borderColor: "rgba(239,68,68,0.4)",
+                  alignItems: "center" as const,
+                  justifyContent: "center" as const,
                 })}
               >
-                <Text style={{ fontSize: 15, fontWeight: "500", color: "#EF4444" }}>
+                <Text
+                  style={{
+                    color: "#EF4444",
+                    fontSize: 15,
+                    fontWeight: "600" as const,
+                  }}
+                >
                   Clear All Data
                 </Text>
               </Pressable>
             </>
-          )}
+          ) : null}
+
+          {isInitialSetup ? (
+            <Pressable
+              onPress={handleSave}
+              style={({ pressed }) => ({
+                marginHorizontal: 16,
+                marginTop: 20,
+                marginBottom: 40,
+                height: 56,
+                backgroundColor: pressed ? "#1D4ED8" : "#3B82F6",
+                borderRadius: 14,
+                alignItems: "center" as const,
+                justifyContent: "center" as const,
+                shadowColor: "#3B82F6",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 12,
+                elevation: 8,
+              })}
+            >
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 17,
+                  fontWeight: "700" as const,
+                }}
+              >
+                Save & Continue
+              </Text>
+            </Pressable>
+          ) : null}
 
           <Text style={styles.versionText}>
             Version {Constants.expoConfig?.version ?? "1.0.0"}
@@ -1174,39 +1167,6 @@ const styles = StyleSheet.create({
   fuelPriceStackedInput: {
     fontWeight: Typography.bold,
     color: Colors.text.accent,
-  },
-  saveContinueButton: {
-    marginHorizontal: Spacing.lg,
-    height: 56,
-    minHeight: 44,
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  saveContinueButtonSetup: {
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.xxxl,
-  },
-  saveStationProfileButton: {
-    marginTop: Spacing.xxl,
-  },
-  saveContinueButtonPressed: {
-    backgroundColor: Colors.accentDark,
-    transform: [{ scale: 0.97 }],
-  },
-  saveContinueButtonText: {
-    color: "#FFFFFF",
-    fontSize: Typography.md,
-    fontWeight: Typography.bold,
-  },
-  saveStationProfileButtonText: {
-    fontSize: Typography.base,
   },
   setupSectionCard: {
     backgroundColor: Colors.bg.card,
@@ -1502,30 +1462,6 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
     fontSize: Typography.sm,
   },
-  ezPumpSaveButton: {
-    height: 52,
-    minHeight: 44,
-    marginTop: Spacing.lg,
-    marginHorizontal: 0,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.subtle,
-    borderBottomLeftRadius: Radius.md,
-    borderBottomRightRadius: Radius.md,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  ezPumpSaveButtonPressed: {
-    backgroundColor: Colors.accentDark,
-    transform: [{ scale: 0.97 }],
-  },
-  ezPumpSaveText: {
-    color: "#FFFFFF",
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
-  },
   primaryButton: {
     ...Buttons.primary,
     marginHorizontal: Spacing.lg,
@@ -1537,27 +1473,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     ...Buttons.primaryText,
-  },
-  dangerButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xxxl,
-    height: 50,
-    minHeight: 44,
-    backgroundColor: "rgba(239,68,68,0.08)",
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.3)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dangerButtonPressed: {
-    backgroundColor: "rgba(239,68,68,0.15)",
-  },
-  dangerButtonText: {
-    color: Colors.text.danger,
-    fontSize: Typography.sm,
-    fontWeight: Typography.medium,
   },
   buttonDisabled: {
     opacity: 0.7,
