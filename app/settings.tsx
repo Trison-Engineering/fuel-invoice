@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { ActionButton } from "../components/ActionButton";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStationStore } from "../stores/stationStore";
@@ -849,24 +850,15 @@ export default function SettingsScreen() {
                     isLast
                   />
                 </View>
-                <Pressable
+                <ActionButton
+                  label="Save & Connect"
+                  icon="wifi-outline"
                   onPress={handleSaveEzPumpCredentials}
+                  loading={savingEzPump}
+                  loadingLabel="Saving..."
                   disabled={savingEzPump}
-                  style={({ pressed }) => [
-                    styles.saveEzPumpButton,
-                    pressed && !savingEzPump && styles.saveEzPumpButtonPressed,
-                    savingEzPump && styles.saveEzPumpButtonLoading,
-                  ]}
-                >
-                  {savingEzPump ? (
-                    <View style={styles.loadingButtonRow}>
-                      <ActivityIndicator size="small" color={Colors.text.primary} />
-                      <Text style={styles.saveEzPumpButtonText}>Saving...</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.saveEzPumpButtonText}>Save & Connect</Text>
-                  )}
-                </Pressable>
+                  style={styles.saveEzPumpButton}
+                />
               </SectionGroup>
             </>
           ) : null}
@@ -882,56 +874,36 @@ export default function SettingsScreen() {
 
           {!isInitialSetup ? (
             <>
-              <Pressable
+              <ActionButton
+                label="Save Station Profile"
+                icon="save-outline"
                 onPress={handleSave}
+                loading={saving}
+                loadingLabel="Saving..."
                 disabled={saving}
-                style={({ pressed }) => [
-                  styles.saveProfileButton,
-                  pressed && !saving && styles.saveProfileButtonPressed,
-                  saving && styles.saveProfileButtonLoading,
-                ]}
-              >
-                {saving ? (
-                  <View style={styles.loadingButtonRow}>
-                    <ActivityIndicator size="small" color={Colors.text.primary} />
-                    <Text style={styles.saveProfileButtonText}>Saving...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.saveProfileButtonText}>Save Station Profile</Text>
-                )}
-              </Pressable>
+                style={styles.saveProfileButton}
+              />
 
-              <Pressable
+              <ActionButton
+                label="Clear All Data"
+                icon="trash-outline"
+                variant="destructive"
                 onPress={handleClearAll}
-                style={({ pressed }) => [
-                  styles.clearAllButton,
-                  pressed && styles.clearAllButtonPressed,
-                ]}
-              >
-                <Text style={styles.clearAllButtonText}>Clear All Data</Text>
-              </Pressable>
+                style={styles.clearAllButton}
+              />
             </>
           ) : null}
 
           {isInitialSetup ? (
-            <Pressable
+            <ActionButton
+              label="Save & Continue"
+              icon="arrow-forward"
               onPress={handleSave}
+              loading={saving}
+              loadingLabel="Saving..."
               disabled={saving}
-              style={({ pressed }) => [
-                styles.saveContinueButton,
-                pressed && !saving && styles.saveContinueButtonPressed,
-                saving && styles.saveContinueButtonLoading,
-              ]}
-            >
-              {saving ? (
-                <View style={styles.loadingButtonRow}>
-                  <ActivityIndicator size="small" color={Colors.text.primary} />
-                  <Text style={styles.saveContinueButtonText}>Saving...</Text>
-                </View>
-              ) : (
-                <Text style={styles.saveContinueButtonText}>Save & Continue</Text>
-              )}
-            </Pressable>
+              style={styles.saveContinueButton}
+            />
           ) : null}
 
           <Text style={styles.versionText}>
@@ -998,6 +970,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 100,
+    flexGrow: 1,
+    width: "100%",
   },
   setupProgressWrap: {
     alignItems: "center",
@@ -1415,62 +1389,25 @@ const styles = StyleSheet.create({
     fontSize: Typography.sm,
   },
   saveEzPumpButton: {
-    ...Buttons.primary,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.sm,
     marginBottom: Spacing.sm,
     height: 52,
   },
-  saveEzPumpButtonPressed: {
-    ...Buttons.primaryPressed,
-  },
-  saveEzPumpButtonLoading: {
-    ...Buttons.primaryLoading,
-  },
-  saveEzPumpButtonText: {
-    ...Buttons.primaryText,
-  },
   saveProfileButton: {
-    ...Buttons.primary,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.xl,
     marginBottom: 0,
   },
-  saveProfileButtonPressed: {
-    ...Buttons.primaryPressed,
-  },
-  saveProfileButtonLoading: {
-    ...Buttons.primaryLoading,
-  },
-  saveProfileButtonText: {
-    ...Buttons.primaryText,
-  },
   clearAllButton: {
-    ...Buttons.destructive,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.md,
     marginBottom: Spacing.xxxl,
   },
-  clearAllButtonPressed: {
-    ...Buttons.destructivePressed,
-  },
-  clearAllButtonText: {
-    ...Buttons.destructiveText,
-  },
   saveContinueButton: {
-    ...Buttons.primary,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.xl,
     marginBottom: Spacing.xxxl + Spacing.sm,
-  },
-  saveContinueButtonPressed: {
-    ...Buttons.primaryPressed,
-  },
-  saveContinueButtonLoading: {
-    ...Buttons.primaryLoading,
-  },
-  saveContinueButtonText: {
-    ...Buttons.primaryText,
   },
   primaryButton: {
     ...Buttons.primary,

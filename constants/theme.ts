@@ -102,7 +102,7 @@ export const Shadow = {
 /** Global button variants — import and spread in screen StyleSheets */
 export const Buttons = {
   primary: {
-    width: "100%" as const,
+    alignSelf: "stretch" as const,
     height: 56,
     minHeight: 44,
     backgroundColor: Colors.accent,
@@ -135,7 +135,7 @@ export const Buttons = {
     color: Colors.text.tertiary,
   },
   secondary: {
-    width: "100%" as const,
+    alignSelf: "stretch" as const,
     height: 50,
     minHeight: 44,
     backgroundColor: "transparent",
@@ -171,7 +171,7 @@ export const Buttons = {
     fontWeight: Typography.medium,
   },
   destructive: {
-    width: "100%" as const,
+    alignSelf: "stretch" as const,
     height: 50,
     minHeight: 44,
     backgroundColor: "rgba(239,68,68,0.08)",
@@ -202,7 +202,7 @@ export const Buttons = {
     transform: [{ scale: 0.92 }],
   },
   accentOutline: {
-    width: "100%" as const,
+    alignSelf: "stretch" as const,
     backgroundColor: Colors.accentAlpha,
     borderWidth: 1,
     borderColor: Colors.border.accent,
@@ -221,7 +221,7 @@ export const Buttons = {
     fontWeight: Typography.semibold,
   },
   accentOutlineGhost: {
-    width: "100%" as const,
+    alignSelf: "stretch" as const,
     height: 48,
     minHeight: 44,
     backgroundColor: "transparent",

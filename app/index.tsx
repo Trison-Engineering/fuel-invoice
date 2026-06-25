@@ -25,6 +25,7 @@ import { useFormState } from "../hooks/useFormState";
 import { usePrinterContext } from "../contexts/PrinterContext";
 // import { PrinterStatus } from "../components/PrinterStatus";
 import { Toast } from "../components/Toast";
+import { ActionButton } from "../components/ActionButton";
 // import { ReceiptPreviewScreen } from "../src/screens/ReceiptPreviewScreen";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { ReceiptData } from "../utils/generateReceipt";
@@ -870,64 +871,33 @@ export default function HomeScreen() {
                   <Pressable
                     key={product.name}
                     onPress={() => handleSelectFuel(product.name)}
-                    style={({ pressed }) => ({
-                      flexDirection: "row",
-                      alignItems: "center",
-                      height: 64,
-                      paddingHorizontal: Spacing.xl,
-                      backgroundColor: isSelected
-                        ? `${product.color}18`
-                        : pressed
-                          ? Colors.bg.elevated
-                          : "transparent",
-                      borderBottomWidth: isLast ? 0 : 1,
-                      borderBottomColor: Colors.border.subtle,
-                    })}
+                    style={({ pressed }) => [
+                      styles.fuelListRow,
+                      !isLast && styles.fuelListRowBorder,
+                      isSelected && { backgroundColor: `${product.color}18` },
+                      !isSelected && pressed && styles.fuelListRowPressed,
+                    ]}
                   >
                     <View
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 5,
-                        backgroundColor: product.color,
-                        marginRight: Spacing.md,
-                        flexShrink: 0,
-                      }}
+                      style={[styles.fuelListDot, { backgroundColor: product.color }]}
                     />
                     <Text
-                      style={{
-                        flex: 1,
-                        fontSize: Typography.md,
-                        fontWeight: Typography.semibold,
-                        color: isSelected ? product.color : Colors.text.primary,
-                        letterSpacing: Typography.wide,
-                      }}
+                      style={[
+                        styles.fuelListLabel,
+                        { color: isSelected ? product.color : Colors.text.primary },
+                      ]}
                     >
                       {product.label}
                     </Text>
                     <View
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 11,
-                        backgroundColor: isSelected ? product.color : "transparent",
-                        borderWidth: isSelected ? 0 : 1.5,
-                        borderColor: Colors.border.default,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
+                      style={[
+                        styles.fuelListRadio,
+                        isSelected
+                          ? { backgroundColor: product.color, borderWidth: 0 }
+                          : styles.fuelListRadioEmpty,
+                      ]}
                     >
-                      {isSelected ? (
-                        <View
-                          style={{
-                            width: 9,
-                            height: 9,
-                            borderRadius: 5,
-                            backgroundColor: Colors.text.primary,
-                          }}
-                        />
-                      ) : null}
+                      {isSelected ? <View style={styles.fuelListRadioInner} /> : null}
                     </View>
                   </Pressable>
                 );
@@ -1226,12 +1196,7 @@ export default function HomeScreen() {
             <ScrollView
               contentContainerStyle={[
                 styles.stepScrollContent,
-                {
-                  paddingBottom:
-                    currentStep === 1 || currentStep === 2 || currentStep === 3
-                      ? 120 + Math.max(insets.bottom, 32)
-                      : Math.max(insets.bottom, 48),
-                },
+                { paddingBottom: Math.max(insets.bottom, Spacing.xl) },
               ]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -1264,72 +1229,42 @@ export default function HomeScreen() {
               </Animated.View>
             </ScrollView>
 
-            {currentStep === 1 ? (
-              <Pressable
-                onPress={() => goForward(2)}
-                disabled={!selectedProduct}
-                style={({ pressed }) => [
-                  styles.primaryBtn,
-                  styles.absoluteBottomBtn,
-                  pressed && !!selectedProduct && styles.primaryBtnPressed,
-                  !selectedProduct && styles.primaryBtnDisabled,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.primaryBtnText,
-                    !selectedProduct && styles.primaryBtnTextDisabled,
-                  ]}
-                >
-                  Continue
-                </Text>
-              </Pressable>
-            ) : null}
+            <View
+              style={[
+                styles.stepFooter,
+                { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+              ]}
+            >
+              {currentStep === 1 ? (
+                <ActionButton
+                  label="Continue"
+                  icon="arrow-forward"
+                  onPress={() => goForward(2)}
+                  disabled={!selectedProduct}
+                />
+              ) : null}
 
-            {currentStep === 2 ? (
-              <Pressable
-                onPress={() => goForward(3)}
-                disabled={!step2CanContinue}
-                style={({ pressed }) => [
-                  styles.primaryBtn,
-                  styles.absoluteBottomBtn,
-                  pressed && step2CanContinue && styles.primaryBtnPressed,
-                  !step2CanContinue && styles.primaryBtnDisabled,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.primaryBtnText,
-                    !step2CanContinue && styles.primaryBtnTextDisabled,
-                  ]}
-                >
-                  Continue
-                </Text>
-              </Pressable>
-            ) : null}
+              {currentStep === 2 ? (
+                <ActionButton
+                  label="Continue"
+                  icon="arrow-forward"
+                  onPress={() => goForward(3)}
+                  disabled={!step2CanContinue}
+                />
+              ) : null}
 
-            {currentStep === 3 ? (
-              <Pressable
-                onPress={handlePrint}
-                disabled={isPrinting || printer.isReconnecting}
-                style={({ pressed }) => [
-                  styles.primaryBtn,
-                  styles.absoluteBottomBtn,
-                  { height: 60 },
-                  pressed && !isPrinting && !printer.isReconnecting && styles.primaryBtnPressed,
-                  (isPrinting || printer.isReconnecting) && styles.primaryBtnDisabled,
-                ]}
-              >
-                {isPrinting || printer.isReconnecting ? (
-                  <View style={styles.loadingRow}>
-                    <ActivityIndicator size="small" color={Colors.text.primary} />
-                    <Text style={styles.primaryBtnText}>Printing...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.primaryBtnText}>🖨  Print Receipt</Text>
-                )}
-              </Pressable>
-            ) : null}
+              {currentStep === 3 ? (
+                <ActionButton
+                  label="Print Receipt"
+                  icon="print-outline"
+                  onPress={handlePrint}
+                  loading={isPrinting || printer.isReconnecting}
+                  loadingLabel="Printing..."
+                  disabled={isPrinting || printer.isReconnecting}
+                  style={{ height: 60 }}
+                />
+              ) : null}
+            </View>
           </KeyboardAvoidingView>
         </View>
       )}
@@ -1389,27 +1324,19 @@ export default function HomeScreen() {
               Print duplicate in {duplicateCountdown}s
             </Text>
 
-            <Pressable
+            <ActionButton
+              label="Print Duplicate?"
+              icon="copy-outline"
+              variant="outline"
               onPress={handleDuplicatePrint}
-              style={({ pressed }) => [
-                styles.accentOutlineBtn,
-                { width: "100%", height: 52, marginTop: 16, marginBottom: 10 },
-                pressed && styles.accentOutlineBtnPressed,
-              ]}
-            >
-              <Text style={styles.accentOutlineBtnText}>Print Duplicate?</Text>
-            </Pressable>
+              style={{ marginTop: Spacing.lg, marginBottom: Spacing.sm }}
+            />
 
-            <Pressable
+            <ActionButton
+              label="Skip"
+              variant="secondary"
               onPress={handleDismissDuplicate}
-              style={({ pressed }) => [
-                styles.secondaryBtn,
-                { width: "100%" },
-                pressed && styles.secondaryBtnPressed,
-              ]}
-            >
-              <Text style={styles.secondaryBtnText}>Skip</Text>
-            </Pressable>
+            />
           </Animated.View>
         </View>
       ) : null}
@@ -1454,39 +1381,25 @@ export default function HomeScreen() {
               onFocus={() => setAdminPasswordFocused(true)}
               onBlur={() => setAdminPasswordFocused(false)}
             />
-            <Pressable
+            <ActionButton
+              label="Login"
+              icon="log-in-outline"
               onPress={handleAdminLogin}
+              loading={adminSigningIn}
+              loadingLabel="Signing in..."
               disabled={adminSigningIn}
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                styles.loginPrimaryBtn,
-                pressed && !adminSigningIn && styles.primaryBtnPressed,
-                adminSigningIn && styles.primaryBtnDisabled,
-              ]}
-            >
-              {adminSigningIn ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator size="small" color={Colors.text.primary} />
-                  <Text style={styles.primaryBtnText}>Signing in...</Text>
-                </View>
-              ) : (
-                <Text style={styles.primaryBtnText}>Login</Text>
-              )}
-            </Pressable>
-            <Pressable
+              style={styles.loginPrimaryBtn}
+            />
+            <ActionButton
+              label="Cancel"
+              variant="secondary"
               onPress={() => {
                 setShowAdminLogin(false);
                 setAdminEmail("");
                 setAdminPassword("");
               }}
-              style={({ pressed }) => [
-                styles.secondaryBtn,
-                styles.loginSecondaryBtn,
-                pressed && styles.secondaryBtnPressed,
-              ]}
-            >
-              <Text style={styles.secondaryBtnText}>Cancel</Text>
-            </Pressable>
+              style={styles.loginSecondaryBtn}
+            />
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1932,16 +1845,68 @@ const styles = StyleSheet.create({
     bottom: 32,
     left: 20,
     right: 20,
+    alignSelf: "stretch",
+  },
+  stepFooter: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.subtle,
+    backgroundColor: Colors.bg.primary,
   },
   fuelListCard: {
-    marginHorizontal: Spacing.xl,
     marginTop: Spacing.xl,
-    marginBottom: 100,
+    marginBottom: Spacing.lg,
     backgroundColor: Colors.bg.card,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border.default,
     overflow: "hidden",
+  },
+  fuelListRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 64,
+    paddingHorizontal: Spacing.xl,
+  },
+  fuelListRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  fuelListRowPressed: {
+    backgroundColor: Colors.bg.elevated,
+  },
+  fuelListDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: Spacing.md,
+    flexShrink: 0,
+  },
+  fuelListLabel: {
+    flex: 1,
+    fontSize: Typography.md,
+    fontWeight: Typography.semibold,
+    letterSpacing: Typography.wide,
+  },
+  fuelListRadio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  fuelListRadioEmpty: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: Colors.border.default,
+  },
+  fuelListRadioInner: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: Colors.text.primary,
   },
   headerTitleWrap: {
     justifyContent: "center",
@@ -2407,20 +2372,22 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.78)",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: Spacing.xxl,
     zIndex: 999,
   },
   duplicateCard: {
     position: "relative",
+    alignSelf: "stretch",
     width: "100%",
+    maxWidth: 360,
     backgroundColor: Colors.bg.elevated,
     borderRadius: Radius.xl,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    marginHorizontal: Spacing.xxl,
     paddingTop: 44,
     paddingBottom: Spacing.xxl,
     paddingHorizontal: Spacing.xxl,
-    alignItems: "center",
+    alignItems: "stretch",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
@@ -2435,6 +2402,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
+    alignSelf: "center",
   },
   duplicateSuccessTitle: {
     fontSize: 22,
@@ -2442,12 +2410,14 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     marginBottom: 6,
     textAlign: "center",
+    alignSelf: "center",
   },
   duplicateCountdownText: {
     fontSize: Typography.sm,
     color: Colors.text.secondary,
     textAlign: "center",
     marginBottom: 20,
+    alignSelf: "center",
   },
   modalOverlay: {
     flex: 1,
@@ -2466,17 +2436,19 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.xxl,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    alignItems: "center",
+    alignItems: "stretch",
     ...Shadow.elevated,
   },
   loginLockIcon: {
     marginBottom: Spacing.xl,
+    alignSelf: "center",
   },
   loginTitle: {
     fontSize: Typography.xl,
     fontWeight: Typography.bold,
     color: Colors.text.primary,
     textAlign: "center",
+    alignSelf: "center",
   },
   loginSubtitle: {
     fontSize: Typography.sm,
@@ -2484,6 +2456,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 6,
     marginBottom: Spacing.xl,
+    alignSelf: "center",
   },
   loginInput: {
     borderWidth: 1,

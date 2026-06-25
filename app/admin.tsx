@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import { ActionButton } from "../components/ActionButton";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getPriceHistory, type PriceChange } from "../src/services/PriceHistoryService";
@@ -693,15 +694,13 @@ export default function AdminScreen() {
             })}
           </View>
 
-          <Pressable
+          <ActionButton
+            label="End Session"
+            icon="stop-circle-outline"
+            variant="secondary"
             onPress={handleEndSession}
-            style={({ pressed }) => [
-              styles.endSessionButton,
-              pressed && styles.endSessionButtonPressed,
-            ]}
-          >
-            <Text style={styles.endSessionButtonText}>End Session</Text>
-          </Pressable>
+            style={styles.endSessionButton}
+          />
         </>
       ) : (
         <View style={styles.slipSessionCard}>
@@ -822,24 +821,15 @@ export default function AdminScreen() {
         </Text>
       ) : null}
 
-      <Pressable
+      <ActionButton
+        label="Refresh Rates"
+        icon="refresh-outline"
         onPress={handleRefreshRates}
+        loading={ratesRefreshing}
+        loadingLabel="Refreshing..."
         disabled={ratesRefreshing}
-        style={({ pressed }) => [
-          styles.refreshRatesButton,
-          pressed && !ratesRefreshing && styles.refreshRatesButtonPressed,
-          ratesRefreshing && styles.refreshRatesButtonLoading,
-        ]}
-      >
-        {ratesRefreshing ? (
-          <View style={styles.loadingButtonRow}>
-            <ActivityIndicator size="small" color={Colors.text.secondary} />
-            <Text style={styles.refreshRatesButtonText}>Refreshing...</Text>
-          </View>
-        ) : (
-          <Text style={styles.refreshRatesButtonText}>↻  Refresh Rates</Text>
-        )}
-      </Pressable>
+        style={styles.refreshRatesButton}
+      />
 
       <SectionLabel>CREDENTIALS</SectionLabel>
       <View style={styles.credentialsGroup}>
@@ -868,43 +858,26 @@ export default function AdminScreen() {
         </View>
       </View>
 
-      <Pressable
+      <ActionButton
+        label="Update Credentials"
+        icon="save-outline"
         onPress={handleUpdatePortalCredentials}
+        loading={portalSaving}
+        loadingLabel="Saving..."
         disabled={portalSaving}
-        style={({ pressed }) => [
-          styles.portalUpdateButton,
-          pressed && !portalSaving && styles.portalUpdateButtonPressed,
-          portalSaving && styles.portalUpdateButtonLoading,
-        ]}
-      >
-        {portalSaving ? (
-          <View style={styles.loadingButtonRow}>
-            <ActivityIndicator size="small" color={Colors.text.primary} />
-            <Text style={styles.portalUpdateButtonText}>Saving...</Text>
-          </View>
-        ) : (
-          <Text style={styles.portalUpdateButtonText}>Update Credentials</Text>
-        )}
-      </Pressable>
+        style={styles.portalUpdateButton}
+      />
 
-      <Pressable
+      <ActionButton
+        label="Test Connection"
+        icon="pulse-outline"
+        variant="outline"
         onPress={handleTestPortalConnection}
+        loading={portalTesting}
+        loadingLabel="Testing..."
         disabled={portalTesting}
-        style={({ pressed }) => [
-          styles.portalTestButton,
-          pressed && !portalTesting && styles.portalTestButtonPressed,
-          portalTesting && styles.portalTestButtonLoading,
-        ]}
-      >
-        {portalTesting ? (
-          <View style={styles.loadingButtonRow}>
-            <ActivityIndicator size="small" color={Colors.text.accent} />
-            <Text style={styles.portalTestButtonText}>Testing...</Text>
-          </View>
-        ) : (
-          <Text style={styles.portalTestButtonText}>Test Connection</Text>
-        )}
-      </Pressable>
+        style={styles.portalTestButton}
+      />
     </ScrollView>
   );
 
@@ -1596,6 +1569,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    width: "100%",
   },
   rateRowLeft: {
     flexDirection: "row",
@@ -1660,68 +1634,27 @@ const styles = StyleSheet.create({
     ...Buttons.loadingRow,
   },
   refreshRatesButton: {
-    ...Buttons.secondaryCompact,
     marginTop: Spacing.sm,
     marginBottom: Spacing.lg,
-    marginLeft: Spacing.lg,
-    alignSelf: "flex-start",
-    height: 38,
-    paddingHorizontal: Spacing.lg,
-  },
-  refreshRatesButtonPressed: {
-    ...Buttons.secondaryPressed,
-  },
-  refreshRatesButtonLoading: {
-    opacity: 0.7,
-  },
-  refreshRatesButtonText: {
-    ...Buttons.secondaryCompactText,
+    marginHorizontal: Spacing.lg,
+    height: 48,
   },
   portalUpdateButton: {
-    ...Buttons.primary,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.xl,
-    marginBottom: 0,
     height: 52,
   },
-  portalUpdateButtonPressed: {
-    ...Buttons.primaryPressed,
-  },
-  portalUpdateButtonLoading: {
-    ...Buttons.primaryLoading,
-  },
-  portalUpdateButtonText: {
-    ...Buttons.primaryText,
-  },
   portalTestButton: {
-    ...Buttons.accentOutline,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.sm,
     marginBottom: Spacing.lg,
     height: 48,
   },
-  portalTestButtonPressed: {
-    ...Buttons.accentOutlinePressed,
-  },
-  portalTestButtonLoading: {
-    opacity: 0.7,
-  },
-  portalTestButtonText: {
-    ...Buttons.accentOutlineText,
-  },
   endSessionButton: {
-    ...Buttons.secondary,
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.md,
     marginBottom: Spacing.lg,
     height: 46,
-  },
-  endSessionButtonPressed: {
-    ...Buttons.secondaryPressed,
-  },
-  endSessionButtonText: {
-    ...Buttons.secondaryText,
-    fontSize: Typography.sm,
   },
   reprintOverlay: {
     ...StyleSheet.absoluteFillObject,
