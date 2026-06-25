@@ -5,11 +5,19 @@ import { cleanLogoBase64 } from "./logoStorage";
 /** Sunmi 58mm printable width in dots. */
 export const THERMAL_PAPER_WIDTH_DOTS = 384;
 
-/** Logo print width at 30% of paper width, centered. */
-export const LOGO_PRINT_WIDTH_30_PCT = Math.round(THERMAL_PAPER_WIDTH_DOTS * 0.3);
-export const LOGO_PRINT_LEFT_30_PCT = Math.floor(
-  (THERMAL_PAPER_WIDTH_DOTS - LOGO_PRINT_WIDTH_30_PCT) / 2
+/** Logo print width as a fraction of printable paper width (58mm ≈ 384 dots). */
+export const LOGO_PRINT_WIDTH_PCT = 0.45;
+
+/** Logo print width at 45% of paper width, centered. */
+export const LOGO_PRINT_WIDTH = Math.round(THERMAL_PAPER_WIDTH_DOTS * LOGO_PRINT_WIDTH_PCT);
+export const LOGO_PRINT_LEFT = Math.floor(
+  (THERMAL_PAPER_WIDTH_DOTS - LOGO_PRINT_WIDTH) / 2
 );
+
+/** @deprecated Use LOGO_PRINT_WIDTH — was 30% width constant name. */
+export const LOGO_PRINT_WIDTH_30_PCT = LOGO_PRINT_WIDTH;
+/** @deprecated Use LOGO_PRINT_LEFT */
+export const LOGO_PRINT_LEFT_30_PCT = LOGO_PRINT_LEFT;
 
 /** Preprocess width: 384 dots × 1.5 for sharp thermal output. */
 export const LOGO_PREPROCESS_WIDTH = 576;

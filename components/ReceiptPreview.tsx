@@ -64,10 +64,8 @@ export function ReceiptPreview({ visible, data, onClose }: ReceiptPreviewProps) 
                 <Image
                   source={{ uri: data.logoDataUrl }}
                   style={{
-                    width: 80,
-                    height: 80,
+                    width: Math.round(receiptWidthPx * 0.45),
                     alignSelf: "center",
-                    marginBottom: spacing.sm,
                     resizeMode: "contain",
                   }}
                 />

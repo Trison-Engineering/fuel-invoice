@@ -148,9 +148,9 @@ function buildHtmlReceipt(data: ReceiptData): { html: string; heightMm: number }
     }
     .logo {
       display: block;
-      max-width: 70%;
+      max-width: 45%;
       max-height: 12mm;
-      margin: 0 auto 2mm;
+      margin: 0 auto 0;
       object-fit: contain;
     }
     .center { text-align: center; }

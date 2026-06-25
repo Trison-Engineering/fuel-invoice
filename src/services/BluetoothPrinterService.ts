@@ -7,8 +7,8 @@ import {
 import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
 import {
-  LOGO_PRINT_LEFT_30_PCT,
-  LOGO_PRINT_WIDTH_30_PCT,
+  LOGO_PRINT_LEFT,
+  LOGO_PRINT_WIDTH,
   preprocessLogoForPrinting,
   resolveLogoBase64,
 } from "../utils/printLogoUtil";
@@ -109,8 +109,8 @@ const printLogo = async (): Promise<void> => {
     );
 
     await BluetoothEscposPrinter.printPic(logo1Processed, {
-      width: LOGO_PRINT_WIDTH_30_PCT,
-      left: LOGO_PRINT_LEFT_30_PCT,
+      width: LOGO_PRINT_WIDTH,
+      left: LOGO_PRINT_LEFT,
       center: false,
       autoCut: false,
       feed: 0,

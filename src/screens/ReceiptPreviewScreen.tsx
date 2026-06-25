@@ -28,7 +28,7 @@ interface ReceiptPreviewScreenProps {
 
 const RECEIPT_WIDTH = 220;
 const PREVIEW_LINE_WIDTH = 32;
-const LOGO_PREVIEW_WIDTH = 200;
+const LOGO_PREVIEW_WIDTH = Math.round(RECEIPT_WIDTH * 0.45);
 
 function ReceiptRow({
   label,
@@ -246,8 +246,6 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 3,
-    paddingBottom: 2,
   },
   logoImage: {
     width: LOGO_PREVIEW_WIDTH,
