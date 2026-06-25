@@ -2212,6 +2212,7 @@ const styles = StyleSheet.create({
   },
   stepKeyboard: {
     flex: 1,
+    position: "relative",
   },
   stepScrollContent: {
     flexGrow: 1,
