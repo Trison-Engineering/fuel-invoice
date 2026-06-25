@@ -871,33 +871,33 @@ export default function HomeScreen() {
                   <Pressable
                     key={product.name}
                     onPress={() => handleSelectFuel(product.name)}
-                    style={({ pressed }) => [
-                      styles.fuelListRow,
+                    style={[
                       !isLast && styles.fuelListRowBorder,
                       isSelected && { backgroundColor: `${product.color}18` },
-                      !isSelected && pressed && styles.fuelListRowPressed,
                     ]}
                   >
-                    <View
-                      style={[styles.fuelListDot, { backgroundColor: product.color }]}
-                    />
-                    <Text
-                      style={[
-                        styles.fuelListLabel,
-                        { color: isSelected ? product.color : Colors.text.primary },
-                      ]}
-                    >
-                      {product.label}
-                    </Text>
-                    <View
-                      style={[
-                        styles.fuelListRadio,
-                        isSelected
-                          ? { backgroundColor: product.color, borderWidth: 0 }
-                          : styles.fuelListRadioEmpty,
-                      ]}
-                    >
-                      {isSelected ? <View style={styles.fuelListRadioInner} /> : null}
+                    <View style={styles.fuelListRowInner}>
+                      <View
+                        style={[styles.fuelListDot, { backgroundColor: product.color }]}
+                      />
+                      <Text
+                        style={[
+                          styles.fuelListLabel,
+                          { color: isSelected ? product.color : Colors.text.primary },
+                        ]}
+                      >
+                        {product.label}
+                      </Text>
+                      <View
+                        style={[
+                          styles.fuelListRadio,
+                          isSelected
+                            ? { backgroundColor: product.color, borderWidth: 0 }
+                            : styles.fuelListRadioEmpty,
+                        ]}
+                      >
+                        {isSelected ? <View style={styles.fuelListRadioInner} /> : null}
+                      </View>
                     </View>
                   </Pressable>
                 );
@@ -1863,7 +1863,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.default,
     overflow: "hidden",
   },
-  fuelListRow: {
+  fuelListRowInner: {
     flexDirection: "row",
     alignItems: "center",
     height: 64,
@@ -1872,9 +1872,6 @@ const styles = StyleSheet.create({
   fuelListRowBorder: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.subtle,
-  },
-  fuelListRowPressed: {
-    backgroundColor: Colors.bg.elevated,
   },
   fuelListDot: {
     width: 10,

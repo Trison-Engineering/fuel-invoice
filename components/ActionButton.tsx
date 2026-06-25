@@ -1,15 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Pressable,
   Text,
   View,
   ActivityIndicator,
+  StyleSheet,
   StyleProp,
   ViewStyle,
   TextStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Buttons, Colors } from "../constants/theme";
+import { Colors, Radius, Spacing, Typography } from "../constants/theme";
 
 type ActionButtonVariant = "primary" | "secondary" | "outline" | "destructive";
 
@@ -25,56 +26,6 @@ type ActionButtonProps = {
   loadingLabel?: string;
 };
 
-const VARIANT_STYLES: Record<
-  ActionButtonVariant,
-  {
-    button: ViewStyle;
-    pressed: ViewStyle;
-    disabled: ViewStyle;
-    loading: ViewStyle;
-    text: TextStyle;
-    textDisabled: TextStyle;
-    spinnerColor: string;
-  }
-> = {
-  primary: {
-    button: Buttons.primary,
-    pressed: Buttons.primaryPressed,
-    disabled: Buttons.primaryDisabled,
-    loading: Buttons.primaryLoading,
-    text: Buttons.primaryText,
-    textDisabled: Buttons.primaryTextDisabled,
-    spinnerColor: Colors.text.primary,
-  },
-  secondary: {
-    button: Buttons.secondary,
-    pressed: Buttons.secondaryPressed,
-    disabled: { opacity: 0.5 },
-    loading: { opacity: 0.7 },
-    text: Buttons.secondaryText,
-    textDisabled: Buttons.secondaryText,
-    spinnerColor: Colors.text.secondary,
-  },
-  outline: {
-    button: Buttons.accentOutline,
-    pressed: Buttons.accentOutlinePressed,
-    disabled: { opacity: 0.5 },
-    loading: { opacity: 0.7 },
-    text: Buttons.accentOutlineText,
-    textDisabled: Buttons.accentOutlineText,
-    spinnerColor: Colors.text.accent,
-  },
-  destructive: {
-    button: Buttons.destructive,
-    pressed: Buttons.destructivePressed,
-    disabled: { opacity: 0.5 },
-    loading: { opacity: 0.7 },
-    text: Buttons.destructiveText,
-    textDisabled: Buttons.destructiveText,
-    spinnerColor: Colors.text.danger,
-  },
-};
-
 export function ActionButton({
   label,
   onPress,
@@ -86,42 +37,151 @@ export function ActionButton({
   textStyle,
   loadingLabel,
 }: ActionButtonProps) {
-  const v = VARIANT_STYLES[variant];
+  const [pressed, setPressed] = useState(false);
   const isDisabled = disabled || loading;
+
+  const buttonStyle = [
+    styles.base,
+    styles[variant],
+    pressed && !isDisabled ? styles[`${variant}Pressed`] : null,
+    isDisabled ? styles[`${variant}Disabled`] : null,
+    loading && variant === "primary" ? styles.primaryLoading : null,
+    style,
+  ];
+
+  const labelStyle = [
+    styles[`${variant}Text`],
+    isDisabled && variant === "primary" ? styles.primaryTextDisabled : null,
+    textStyle,
+  ];
+
+  const spinnerColor =
+    variant === "primary"
+      ? Colors.text.primary
+      : variant === "destructive"
+        ? Colors.text.danger
+        : Colors.text.accent;
 
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      style={({ pressed }) => [
-        v.button,
-        styles.stretch,
-        style,
-        pressed && !isDisabled && v.pressed,
-        isDisabled && v.disabled,
-        loading && v.loading,
-      ]}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      style={buttonStyle}
     >
       {loading ? (
-        <View style={Buttons.loadingRow}>
-          <ActivityIndicator size="small" color={v.spinnerColor} />
-          <Text style={[v.text, textStyle]}>{loadingLabel ?? label}</Text>
+        <View style={styles.contentRow}>
+          <ActivityIndicator size="small" color={spinnerColor} />
+          <Text style={labelStyle}>{loadingLabel ?? label}</Text>
         </View>
       ) : (
-        <View style={Buttons.loadingRow}>
+        <View style={styles.contentRow}>
           {icon ? (
-            <Ionicons name={icon} size={18} color={v.text.color as string} />
+            <Ionicons name={icon} size={18} color={styles[`${variant}Text`].color as string} />
           ) : null}
-          <Text style={[v.text, isDisabled && v.textDisabled, textStyle]}>{label}</Text>
+          <Text style={labelStyle}>{label}</Text>
         </View>
       )}
     </Pressable>
   );
 }
 
-const styles = {
-  stretch: {
-    alignSelf: "stretch" as const,
-    width: undefined,
+const styles = StyleSheet.create({
+  base: {
+    alignSelf: "stretch",
+    minHeight: 48,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
-};
+  contentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  primary: {
+    backgroundColor: Colors.accent,
+    minHeight: 56,
+  },
+  primaryPressed: {
+    backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.98 }],
+  },
+  primaryDisabled: {
+    backgroundColor: Colors.bg.hover,
+    opacity: 0.7,
+  },
+  primaryLoading: {
+    backgroundColor: Colors.accentDark,
+    opacity: 0.85,
+  },
+  primaryText: {
+    color: Colors.text.primary,
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+  },
+  primaryTextDisabled: {
+    color: Colors.text.tertiary,
+  },
+  secondary: {
+    backgroundColor: Colors.bg.elevated,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    minHeight: 50,
+    borderRadius: Radius.md,
+  },
+  secondaryPressed: {
+    backgroundColor: Colors.bg.hover,
+    borderColor: Colors.border.strong,
+  },
+  secondaryDisabled: {
+    opacity: 0.5,
+  },
+  secondaryText: {
+    color: Colors.text.secondary,
+    fontSize: Typography.base,
+    fontWeight: Typography.medium,
+  },
+  outline: {
+    backgroundColor: Colors.accentAlpha,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
+    minHeight: 48,
+    borderRadius: Radius.md,
+  },
+  outlinePressed: {
+    backgroundColor: "rgba(59,130,246,0.2)",
+    transform: [{ scale: 0.98 }],
+  },
+  outlineDisabled: {
+    opacity: 0.5,
+  },
+  outlineText: {
+    color: Colors.text.accent,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+  },
+  destructive: {
+    backgroundColor: "rgba(239,68,68,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.35)",
+    minHeight: 50,
+    borderRadius: Radius.md,
+  },
+  destructivePressed: {
+    backgroundColor: "rgba(239,68,68,0.18)",
+  },
+  destructiveDisabled: {
+    opacity: 0.5,
+  },
+  destructiveText: {
+    color: Colors.text.danger,
+    fontSize: Typography.base,
+    fontWeight: Typography.medium,
+  },
+});
