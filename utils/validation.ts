@@ -35,3 +35,20 @@ export function isValidDecimal(value: string): boolean {
   if (value === "" || value === ".") return true;
   return /^\d*\.?\d*$/.test(value);
 }
+
+/** Allow typing an IPv4 address (digits and dots only). */
+export function isValidPortalIpInput(value: string): boolean {
+  return /^[\d.]*$/.test(value);
+}
+
+/** Validate IPv4 e.g. 192.168.0.100 */
+export function isValidPortalIp(value: string): boolean {
+  const trimmed = value.trim();
+  const parts = trimmed.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part)) return false;
+    const octet = Number(part);
+    return octet >= 0 && octet <= 255;
+  });
+}

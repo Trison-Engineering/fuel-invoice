@@ -22,13 +22,14 @@ import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { ActionButton } from "../components/ActionButton";
-import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
+import { useRouter, useLocalSearchParams, useNavigation, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStationStore } from "../stores/stationStore";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { isValidDecimal } from "../utils/validation";
-import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
+import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
 import { recordPriceChange } from "../src/services/PriceHistoryService";
+import { fetchRates } from "../src/services/EzPumpService";
 import { preprocessLogoForUpload } from "../src/utils/printLogoUtil";
 import type { StationProfile } from "../stores/stationStore";
 
@@ -387,11 +388,31 @@ export default function SettingsScreen() {
     });
   }, [navigation]);
 
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      (async () => {
+        try {
+          const [email, password, ip] = await Promise.all([
+            AsyncStorage.getItem(EZPUMP_EMAIL),
+            AsyncStorage.getItem(EZPUMP_PASSWORD),
+            AsyncStorage.getItem(EZPUMP_IP),
+          ]);
+          if (!email || !password || !ip || cancelled) return;
+          await fetchRates();
+        } catch {
+          // Keep existing station prices when EzPump is unreachable.
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
   const [saving, setSaving] = useState(false);
-  const [showEzPumpSetup, setShowEzPumpSetup] = useState(false);
-  const [ezPumpEmail, setEzPumpEmail] = useState("");
-  const [ezPumpPassword, setEzPumpPassword] = useState("");
-  const [savingEzPump, setSavingEzPump] = useState(false);
   const [logoProcessing, setLogoProcessing] = useState(false);
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
@@ -407,9 +428,6 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     (async () => {
-      const savedEmail = await AsyncStorage.getItem(EZPUMP_EMAIL);
-      setShowEzPumpSetup(!savedEmail);
-
       const enabled = await AsyncStorage.getItem(LIVE_FEED_FILTER_ENABLED);
       const product = await AsyncStorage.getItem(LIVE_FEED_FILTER_PRODUCT);
       setFilterEnabled(enabled === "true");
@@ -433,33 +451,6 @@ export default function SettingsScreen() {
     },
     []
   );
-
-  const handleSaveEzPumpCredentials = async () => {
-    if (!ezPumpEmail.trim() || !ezPumpPassword.trim()) {
-      setToast({
-        visible: true,
-        message: "Email and password are required",
-        type: "error",
-      });
-      return;
-    }
-
-    setSavingEzPump(true);
-    try {
-      await AsyncStorage.setItem(EZPUMP_EMAIL, ezPumpEmail.trim());
-      await AsyncStorage.setItem(EZPUMP_PASSWORD, ezPumpPassword);
-      setShowEzPumpSetup(false);
-      setEzPumpPassword("");
-      setToast({
-        visible: true,
-        message: "Connected to EzPump portal",
-        type: "success",
-      });
-      router.replace("/");
-    } finally {
-      setSavingEzPump(false);
-    }
-  };
 
   const handlePriceChange =
     (setter: (value: string) => void) => (value: string) => {
@@ -818,47 +809,6 @@ export default function SettingsScreen() {
                     }
                   />
                 </View>
-              </SectionGroup>
-            </>
-          ) : null}
-
-          {showEzPumpSetup && !isInitialSetup ? (
-            <>
-              <SectionLabel>EZPUMP PORTAL</SectionLabel>
-              <SectionGroup>
-                <View style={styles.ezPumpInfoRow}>
-                  <Ionicons name="wifi-outline" size={16} color={Colors.text.tertiary} />
-                  <Text style={styles.ezPumpInfoText}>Connect to live receipt feed</Text>
-                </View>
-                <View style={styles.sectionGroupPadded}>
-                  <SettingsInputRow
-                    label="Portal Email"
-                    fieldLabel="PORTAL EMAIL"
-                    value={ezPumpEmail}
-                    onChangeText={setEzPumpEmail}
-                    placeholder="admin@ez-pump.com"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                  <SettingsInputRow
-                    label="Portal Password"
-                    fieldLabel="PORTAL PASSWORD"
-                    value={ezPumpPassword}
-                    onChangeText={setEzPumpPassword}
-                    placeholder="Enter password"
-                    secureTextEntry
-                    isLast
-                  />
-                </View>
-                <ActionButton
-                  label="Save & Connect"
-                  icon="wifi-outline"
-                  onPress={handleSaveEzPumpCredentials}
-                  loading={savingEzPump}
-                  loadingLabel="Saving..."
-                  disabled={savingEzPump}
-                  style={styles.saveEzPumpButton}
-                />
               </SectionGroup>
             </>
           ) : null}
@@ -1374,25 +1324,6 @@ const styles = StyleSheet.create({
   changeLogoText: {
     color: Colors.text.accent,
     fontSize: Typography.sm,
-  },
-  ezPumpInfoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    paddingVertical: 14,
-    paddingHorizontal: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
-  },
-  ezPumpInfoText: {
-    color: Colors.text.secondary,
-    fontSize: Typography.sm,
-  },
-  saveEzPumpButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
-    height: 52,
   },
   saveProfileButton: {
     marginHorizontal: Spacing.lg,

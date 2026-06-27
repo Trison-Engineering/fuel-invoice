@@ -31,6 +31,7 @@ import {
   EzPumpService,
   fetchRates,
   clearRatesCache,
+  clearEzPumpSession,
   getRatesFromCache,
   type EzPumpRates,
 } from "../src/services/EzPumpService";
@@ -45,7 +46,8 @@ import { usePrinterContext } from "../contexts/PrinterContext";
 import { formatCurrency, formatCurrencyValue, generateInvoiceNumber } from "../utils/formatters";
 import type { ReceiptData } from "../utils/generateReceipt";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
-import { EZPUMP_EMAIL, EZPUMP_PASSWORD } from "../utils/storage";
+import { EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, DEFAULT_PORTAL_IP } from "../utils/storage";
+import { isValidPortalIp, isValidPortalIpInput } from "../utils/validation";
 
 type Tab = "invoices" | "price" | "slips" | "portal";
 type ProductFilter = "all" | "Petrol" | "Diesel" | "Hi-Octane";
@@ -264,6 +266,7 @@ export default function AdminScreen() {
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [reprintingId, setReprintingId] = useState<string | null>(null);
   const [showReprintOverlay, setShowReprintOverlay] = useState(false);
+  const [portalIp, setPortalIp] = useState(DEFAULT_PORTAL_IP);
   const [portalEmail, setPortalEmail] = useState("");
   const [portalPassword, setPortalPassword] = useState("");
   const [savedPortalEmail, setSavedPortalEmail] = useState<string | null>(null);
@@ -280,13 +283,14 @@ export default function AdminScreen() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [history, sessions, active, current, invoiceList, email] = await Promise.all([
+    const [history, sessions, active, current, invoiceList, email, ip] = await Promise.all([
       getPriceHistory(),
       getSessionHistory(),
       isSessionActive(),
       getCurrentSession(),
       getOriginalInvoices(),
       AsyncStorage.getItem(EZPUMP_EMAIL),
+      AsyncStorage.getItem(EZPUMP_IP),
     ]);
     setPriceHistory(history);
     setSessionHistory(sessions);
@@ -294,8 +298,9 @@ export default function AdminScreen() {
     setCurrentSession(current);
     setInvoices(invoiceList);
     setSavedPortalEmail(email);
-    setPortalConfigured(!!email);
+    setPortalConfigured(!!email && !!ip);
     if (email) setPortalEmail(email);
+    setPortalIp(ip?.trim() || DEFAULT_PORTAL_IP);
     setLoading(false);
   }, []);
 
@@ -404,6 +409,16 @@ export default function AdminScreen() {
   }, [loadData]);
 
   const handleUpdatePortalCredentials = useCallback(async () => {
+    const trimmedIp = portalIp.trim();
+    if (!isValidPortalIp(trimmedIp)) {
+      setToast({
+        visible: true,
+        message: "Enter a valid portal IP (e.g. 192.168.0.100)",
+        type: "error",
+      });
+      return;
+    }
+
     if (!portalEmail.trim() || !portalPassword.trim()) {
       setToast({
         visible: true,
@@ -415,20 +430,22 @@ export default function AdminScreen() {
 
     setPortalSaving(true);
     try {
+      await AsyncStorage.setItem(EZPUMP_IP, trimmedIp);
       await AsyncStorage.setItem(EZPUMP_EMAIL, portalEmail.trim());
       await AsyncStorage.setItem(EZPUMP_PASSWORD, portalPassword);
+      clearEzPumpSession();
       setSavedPortalEmail(portalEmail.trim());
       setPortalConfigured(true);
       setPortalPassword("");
       setToast({
         visible: true,
-        message: "Credentials updated",
+        message: "Portal settings updated",
         type: "success",
       });
     } finally {
       setPortalSaving(false);
     }
-  }, [portalEmail, portalPassword]);
+  }, [portalIp, portalEmail, portalPassword]);
 
   const handleTestPortalConnection = useCallback(async () => {
     setPortalTesting(true);
@@ -833,6 +850,21 @@ export default function AdminScreen() {
 
       <SectionLabel>CREDENTIALS</SectionLabel>
       <View style={styles.credentialsGroup}>
+        <View style={styles.credentialsRow}>
+          <Text style={styles.credentialsLabel}>Portal IP</Text>
+          <TextInput
+            style={styles.credentialsInput}
+            value={portalIp}
+            onChangeText={(value) => {
+              if (isValidPortalIpInput(value)) setPortalIp(value);
+            }}
+            keyboardType="decimal-pad"
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder={DEFAULT_PORTAL_IP}
+            placeholderTextColor={Colors.text.tertiary}
+          />
+        </View>
         <View style={styles.credentialsRow}>
           <Text style={styles.credentialsLabel}>Portal Email</Text>
           <TextInput

@@ -1,7 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { EZPUMP_EMAIL, EZPUMP_PASSWORD } from "../../utils/storage";
-
-const BASE_URL = "http://192.168.0.100";
+import {
+  DEFAULT_PORTAL_IP,
+  EZPUMP_EMAIL,
+  EZPUMP_IP,
+  EZPUMP_PASSWORD,
+} from "../../utils/storage";
+import { isValidPortalIp } from "../../utils/validation";
+import { syncStationRatesFromEzPump } from "./syncStationRatesFromEzPump";
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -29,6 +34,20 @@ export interface EzPumpSale {
 let sessionCookies = "";
 let cachedRates: EzPumpRates | null = null;
 const RATES_CACHE_TTL = 10 * 60 * 1000;
+
+async function getPortalHost(): Promise<string> {
+  const stored = (await AsyncStorage.getItem(EZPUMP_IP))?.trim();
+  const host = stored || DEFAULT_PORTAL_IP;
+  if (!isValidPortalIp(host)) {
+    throw new Error("PORTAL_IP_NOT_SET");
+  }
+  return host;
+}
+
+async function getBaseUrl(): Promise<string> {
+  const host = await getPortalHost();
+  return `http://${host}`;
+}
 
 async function getCredentials(): Promise<{ email: string; password: string }> {
   const email = await AsyncStorage.getItem(EZPUMP_EMAIL);
@@ -138,13 +157,15 @@ function extractCsrfToken(html: string): string {
 }
 
 async function getLoginToken(): Promise<string> {
-  const response = await fetchWithTimeout(`${BASE_URL}/login`);
+  const baseUrl = await getBaseUrl();
+  const response = await fetchWithTimeout(`${baseUrl}/login`);
   updateSessionCookies(response);
   const html = await response.text();
   return extractCsrfToken(html);
 }
 
 async function login(csrfToken: string): Promise<void> {
+  const baseUrl = await getBaseUrl();
   const { email, password } = await getCredentials();
 
   const body = new URLSearchParams({
@@ -154,14 +175,14 @@ async function login(csrfToken: string): Promise<void> {
     remember: "on",
   }).toString();
 
-  const response = await fetchWithTimeout(`${BASE_URL}/login`, {
+  const response = await fetchWithTimeout(`${baseUrl}/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Cookie: sessionCookies,
       "X-XSRF-TOKEN": getXsrfToken(),
-      Referer: `${BASE_URL}/login`,
-      Origin: BASE_URL,
+      Referer: `${baseUrl}/login`,
+      Origin: baseUrl,
     },
     body,
     redirect: "manual",
@@ -246,6 +267,11 @@ export function clearRatesCache(): void {
   cachedRates = null;
 }
 
+export function clearEzPumpSession(): void {
+  sessionCookies = "";
+  clearRatesCache();
+}
+
 export function getRatesFromCache(): EzPumpRates | null {
   return cachedRates;
 }
@@ -258,15 +284,16 @@ export async function fetchRates(retryAfterLogin = true): Promise<EzPumpRates> {
     return cachedRates;
   }
 
+  const baseUrl = await getBaseUrl();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${BASE_URL}/Rates`, {
+    const response = await fetch(`${baseUrl}/Rates`, {
       method: "GET",
       headers: {
         Accept: "text/html,application/xhtml+xml",
-        Referer: `${BASE_URL}/`,
+        Referer: `${baseUrl}/`,
         Cookie: sessionCookies,
       },
       signal: controller.signal,
@@ -292,6 +319,11 @@ export async function fetchRates(retryAfterLogin = true): Promise<EzPumpRates> {
 
     const rates = parseRatesFromHtml(html);
     cachedRates = { ...rates, fetchedAt: Date.now() };
+
+    syncStationRatesFromEzPump(cachedRates).catch((err) =>
+      console.warn("[EzPump] syncStationRatesFromEzPump failed:", err)
+    );
+
     return cachedRates;
   } catch (error: unknown) {
     clearTimeout(timeout);
@@ -337,10 +369,11 @@ function enrichSalesWithRates(
 }
 
 async function fetchDataframe(): Promise<Omit<EzPumpSale, "officialRate" | "calculatedRate">[]> {
-  const response = await fetchWithTimeout(`${BASE_URL}/dataframe`, {
+  const baseUrl = await getBaseUrl();
+  const response = await fetchWithTimeout(`${baseUrl}/dataframe`, {
     headers: {
       Cookie: sessionCookies,
-      Referer: `${BASE_URL}/`,
+      Referer: `${baseUrl}/`,
     },
   });
 
@@ -379,7 +412,7 @@ async function getRecentSales(): Promise<EzPumpSale[]> {
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
 
-    if (message === "CREDENTIALS_NOT_SET") {
+    if (message === "CREDENTIALS_NOT_SET" || message === "PORTAL_IP_NOT_SET") {
       throw err;
     }
 
@@ -394,7 +427,8 @@ async function getRecentSales(): Promise<EzPumpSale[]> {
         const retryMessage = retryErr instanceof Error ? retryErr.message : "";
         if (
           retryMessage === "NETWORK_UNAVAILABLE" ||
-          retryMessage === "CREDENTIALS_NOT_SET"
+          retryMessage === "CREDENTIALS_NOT_SET" ||
+          retryMessage === "PORTAL_IP_NOT_SET"
         ) {
           throw retryErr;
         }
@@ -425,5 +459,6 @@ export const EzPumpService = {
   getRecentSales,
   fetchRates,
   clearRatesCache,
+  clearEzPumpSession,
   getRatesFromCache,
 };
