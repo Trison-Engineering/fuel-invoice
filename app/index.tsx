@@ -618,6 +618,9 @@ export default function HomeScreen() {
       if (err instanceof Error && err.message === "CREDENTIALS_NOT_SET") {
         setEzPumpError("CREDENTIALS_NOT_SET");
         setEzPumpPollEnabled(false);
+      } else if (err instanceof Error && err.message === "PORTAL_IP_NOT_SET") {
+        setEzPumpError("PORTAL_IP_NOT_SET");
+        setEzPumpPollEnabled(false);
       } else if (err instanceof Error && err.message === "NETWORK_UNAVAILABLE") {
         setEzPumpError("Not connected to station network");
       } else {
@@ -757,6 +760,8 @@ export default function HomeScreen() {
         setSessionCount(slipCounts.todayCount);
         setSessionTotal(slipCounts.totalSlips);
 
+        await saveInvoiceFromReceipt(receiptData, false);
+
         setLastPrintData(receiptData);
         setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
         setShowDuplicate(true);
@@ -768,7 +773,7 @@ export default function HomeScreen() {
         setCardReprintingId(null);
       }
     },
-    [form.station, printer]
+    [form.station, printer, saveInvoiceFromReceipt]
   );
 
   const handlePrint = useCallback(
@@ -1058,29 +1063,37 @@ export default function HomeScreen() {
         <EmptyState
           icon={<Ionicons name="cloud-offline-outline" size={48} color={Colors.text.tertiary} />}
           title={
-            ezPumpError === "CREDENTIALS_NOT_SET"
+            ezPumpError === "CREDENTIALS_NOT_SET" || ezPumpError === "PORTAL_IP_NOT_SET"
               ? "Portal not configured"
               : ezPumpError === "Not connected to station network"
                 ? "Not connected to station network"
                 : "Unable to load live data"
           }
           subtitle={
-            ezPumpError === "CREDENTIALS_NOT_SET"
-              ? "Set credentials in Settings to enable live receipts"
+            ezPumpError === "CREDENTIALS_NOT_SET" || ezPumpError === "PORTAL_IP_NOT_SET"
+              ? "Set portal IP and credentials in Admin → Portal"
               : ezPumpError === "Not connected to station network"
                 ? "Connect to TrisonPumpController WiFi"
                 : "Check your connection and try again"
           }
-          actionLabel={ezPumpError !== "CREDENTIALS_NOT_SET" ? "Retry" : undefined}
-          onAction={ezPumpError !== "CREDENTIALS_NOT_SET" ? fetchEzPumpSales : undefined}
+          actionLabel={
+            ezPumpError !== "CREDENTIALS_NOT_SET" && ezPumpError !== "PORTAL_IP_NOT_SET"
+              ? "Retry"
+              : undefined
+          }
+          onAction={
+            ezPumpError !== "CREDENTIALS_NOT_SET" && ezPumpError !== "PORTAL_IP_NOT_SET"
+              ? fetchEzPumpSales
+              : undefined
+          }
         />
       ) : null}
 
       {!ezPumpError && !ezPumpLoading && ezPumpSales.length === 0 ? (
         <EmptyState
           icon={<Ionicons name="receipt-outline" size={48} color={Colors.text.tertiary} />}
-          title="No receipts found"
-          subtitle="Printed receipts will appear here"
+          title="No live receipts yet"
+          subtitle="Pump sales from EzPump will appear here"
         />
       ) : null}
 
