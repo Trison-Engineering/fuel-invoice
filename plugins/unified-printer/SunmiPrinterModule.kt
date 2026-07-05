@@ -116,6 +116,22 @@ class SunmiPrinterModule(reactContext: ReactApplicationContext) :
     }.start()
   }
 
+  @ReactMethod
+  fun printLogo(logoBase64: String, promise: Promise) {
+    Thread {
+      try {
+        if (!waitForService(8000)) {
+          promise.reject("NOT_CONNECTED", "Sunmi printer service not connected after retry")
+          return@Thread
+        }
+        engine.printLogo(logoBase64)
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("LOGO_FAILED", e.message, e)
+      }
+    }.start()
+  }
+
   /** High-level AIDL test: printText + lineWrap (no setAlignment). */
   @ReactMethod
   fun printHelloWorld(promise: Promise) {

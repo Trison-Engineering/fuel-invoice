@@ -19,8 +19,13 @@ export const LOGO_PRINT_WIDTH_30_PCT = LOGO_PRINT_WIDTH;
 /** @deprecated Use LOGO_PRINT_LEFT */
 export const LOGO_PRINT_LEFT_30_PCT = LOGO_PRINT_LEFT;
 
-/** Preprocess width: 384 dots × 1.5 for sharp thermal output. */
-export const LOGO_PREPROCESS_WIDTH = 576;
+/**
+ * Print-time raster width in dots (58mm printable width).
+ * 576 produced an oversized 24-bit RGB PNG (~300KB) that older Sunmi firmware
+ * (e.g. OS 3.0.14) blank-fed — paper advanced by image height with no ink.
+ * 384 keeps the raster small enough for all firmware to buffer.
+ */
+export const LOGO_PREPROCESS_WIDTH = THERMAL_PAPER_WIDTH_DOTS;
 
 export const LOGO_PRINT_WIDTH_SINGLE = THERMAL_PAPER_WIDTH_DOTS;
 export const LOGO_PRINT_WIDTH_DUAL = 180;
@@ -40,7 +45,7 @@ function toManipulatorUri(source: string): string {
   return `data:image/png;base64,${cleanLogoBase64(source)}`;
 }
 
-/** Resize logo to optimal thermal resolution before print (576px wide PNG). */
+/** Resize logo to LOGO_PREPROCESS_WIDTH (384px) before print. */
 export async function preprocessLogoForPrinting(source: string): Promise<string> {
   try {
     const result = await ImageManipulator.manipulateAsync(

@@ -1,18 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Buffer } from "buffer";
+import { NativeModules } from "react-native";
 import {
   BluetoothEscposPrinter,
   BluetoothManager,
 } from "@vardrz/react-native-bluetooth-escpos-printer";
 import { getItem, StorageKeys } from "../../utils/storage";
 import type { StationProfile } from "../../stores/stationStore";
-import {
-  LOGO_PRINT_LEFT,
-  LOGO_PRINT_WIDTH,
-  preprocessLogoForPrinting,
-  resolveLogoBase64,
-} from "../utils/printLogoUtil";
+import { resolveLogoBase64 } from "../utils/printLogoUtil";
 import { RawLogoKeys } from "../utils/logoStorage";
+
+const { SunmiPrinterModule } = NativeModules;
 
 export const INNER_PRINTER_MAC = "00:11:22:33:44:55";
 export const INNER_PRINTER_NAME = "InnerPrinter";
@@ -102,19 +100,12 @@ const printLogo = async (): Promise<void> => {
 
     if (!logo1) return;
 
-    const logo1Processed = await preprocessLogoForPrinting(logo1);
-    console.log(
-      "[BT] Printing logo at 576px preprocessed, base64 length:",
-      logo1Processed.length
-    );
-
-    await BluetoothEscposPrinter.printPic(logo1Processed, {
-      width: LOGO_PRINT_WIDTH,
-      left: LOGO_PRINT_LEFT,
-      center: false,
-      autoCut: false,
-      feed: 0,
-    });
+    try {
+      await SunmiPrinterModule.printLogo(logo1);
+      console.log("[BT] logo printed via native Sunmi printBitmap");
+    } catch (e) {
+      console.warn("[BT] native logo print failed:", e);
+    }
   } catch (e) {
     console.warn("[BT] Logo print failed:", e);
   }
