@@ -98,6 +98,7 @@ export function useFormState() {
       vehicleNumber,
       customerName: "",
       stationPhone: station.stationPhone,
+      stationPhone2: station.stationPhone2,
       logoDataUrl: station.logoDataUrl,
       logo2DataUrl: station.logo2DataUrl,
       includeLogoInPrint: station.includeLogoInPrint,

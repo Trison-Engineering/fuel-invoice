@@ -100,3 +100,12 @@ export function wrapText(text: string, width = 32): string[] {
 export function uppercasePayment(method: string): string {
   return method.toUpperCase();
 }
+
+export function formatContactNumbers(phone1?: string, phone2?: string): string | null {
+  const p1 = phone1?.trim();
+  const p2 = phone2?.trim();
+  if (p1 && p2) return `Contact Us : ${p1} | ${p2}`;
+  if (p1) return `Contact Us : ${p1}`;
+  if (p2) return `Contact Us : ${p2}`;
+  return null;
+}

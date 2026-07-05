@@ -13,6 +13,7 @@ export interface StationProfile {
   stationName: string;
   stationAddress: string;
   stationPhone: string;
+  stationPhone2: string;
   paymentMethod: string;
   fuelPrices: FuelPrices;
   logoDataUrl: string | null;
@@ -26,6 +27,7 @@ interface StationState extends StationProfile {
   setStationName: (name: string) => void;
   setStationAddress: (address: string) => void;
   setStationPhone: (phone: string) => void;
+  setStationPhone2: (phone: string) => void;
   setPetrolPrice: (price: string) => void;
   setDieselPrice: (price: string) => void;
   setHiOctanePrice: (price: string) => void;
@@ -51,6 +53,7 @@ const defaultProfile: StationProfile = {
   stationName: "",
   stationAddress: "",
   stationPhone: "",
+  stationPhone2: "",
   paymentMethod: "Cash",
   fuelPrices: defaultFuelPrices,
   logoDataUrl: null,
@@ -66,6 +69,7 @@ export const useStationStore = create<StationState>((set, get) => ({
   setStationName: (stationName) => set({ stationName }),
   setStationAddress: (stationAddress) => set({ stationAddress }),
   setStationPhone: (stationPhone) => set({ stationPhone: stationPhone.replace(/\D/g, "") }),
+  setStationPhone2: (stationPhone2) => set({ stationPhone2: stationPhone2.replace(/\D/g, "") }),
   setPetrolPrice: (petrol) =>
     set((state) => ({ fuelPrices: { ...state.fuelPrices, petrol } })),
   setDieselPrice: (diesel) =>
@@ -121,6 +125,7 @@ export const useStationStore = create<StationState>((set, get) => ({
       set({
         ...profile,
         stationPhone: profile.stationPhone ?? "",
+        stationPhone2: profile.stationPhone2 ?? "",
         fuelPrices: profile.fuelPrices ?? defaultFuelPrices,
         logo2DataUrl: profile.logo2DataUrl ?? null,
         paymentMethod: "Cash",
@@ -139,6 +144,7 @@ export const useStationStore = create<StationState>((set, get) => ({
       stationName: state.stationName,
       stationAddress: state.stationAddress,
       stationPhone: state.stationPhone,
+      stationPhone2: state.stationPhone2,
       paymentMethod: "Cash",
       fuelPrices: state.fuelPrices,
       logoDataUrl: state.logoDataUrl,

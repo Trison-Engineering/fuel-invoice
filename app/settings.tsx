@@ -621,6 +621,14 @@ export default function SettingsScreen() {
             onChangeText={station.setStationPhone}
             placeholder="e.g. 03001234567"
             keyboardType="number-pad"
+          />
+          <SettingsInputRow
+            label="Contact Phone 2"
+            fieldLabel="CONTACT PHONE 2"
+            value={station.stationPhone2}
+            onChangeText={station.setStationPhone2}
+            placeholder="e.g. 03009876543"
+            keyboardType="number-pad"
             isLast
           />
         </View>
@@ -749,6 +757,14 @@ export default function SettingsScreen() {
                     value={station.stationPhone}
                     onChangeText={station.setStationPhone}
                     placeholder="e.g. 03001234567"
+                    keyboardType="number-pad"
+                  />
+                  <SettingsInputRow
+                    label="Contact Phone 2"
+                    fieldLabel="CONTACT PHONE 2"
+                    value={station.stationPhone2}
+                    onChangeText={station.setStationPhone2}
+                    placeholder="e.g. 03009876543"
                     keyboardType="number-pad"
                     isLast
                   />

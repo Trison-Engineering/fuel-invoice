@@ -43,6 +43,7 @@ import {
   type StoredInvoice,
 } from "../src/services/InvoiceHistoryService";
 import { usePrinterContext } from "../contexts/PrinterContext";
+import { useStationStore } from "../stores/stationStore";
 import { formatCurrency, formatCurrencyValue, generateInvoiceNumber } from "../utils/formatters";
 import type { ReceiptData } from "../utils/generateReceipt";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
@@ -141,7 +142,10 @@ function maskEmail(email: string): string {
   return `${visible}***@${domain}`;
 }
 
-function storedInvoiceToReceiptData(invoice: StoredInvoice): ReceiptData {
+function storedInvoiceToReceiptData(
+  invoice: StoredInvoice,
+  contact?: { stationPhone?: string; stationPhone2?: string }
+): ReceiptData {
   const printed = new Date(invoice.printedAt);
   const year = printed.getFullYear();
   const month = String(printed.getMonth() + 1).padStart(2, "0");
@@ -162,6 +166,8 @@ function storedInvoiceToReceiptData(invoice: StoredInvoice): ReceiptData {
     totalAmount: invoice.totalAmount,
     vehicleNumber: invoice.vehicleNo,
     customerName: "",
+    stationPhone: contact?.stationPhone,
+    stationPhone2: contact?.stationPhone2,
     includeLogoInPrint: false,
   };
 }
@@ -255,6 +261,8 @@ export default function AdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const printer = usePrinterContext();
+  const stationPhone = useStationStore((s) => s.stationPhone);
+  const stationPhone2 = useStationStore((s) => s.stationPhone2);
   const [activeTab, setActiveTab] = useState<Tab>("invoices");
   const [loading, setLoading] = useState(true);
   const [priceHistory, setPriceHistory] = useState<PriceChange[]>([]);
@@ -367,7 +375,10 @@ export default function AdminScreen() {
         } catch {
           // Native printReceipt retries bind — continue even if JS check failed
         }
-        const receiptData = storedInvoiceToReceiptData(invoice);
+        const receiptData = storedInvoiceToReceiptData(invoice, {
+          stationPhone,
+          stationPhone2,
+        });
         await printer.printReceipt(receiptData, true);
 
         await saveInvoice({
@@ -391,7 +402,7 @@ export default function AdminScreen() {
         setReprintingId(null);
       }
     },
-    [printer]
+    [printer, stationPhone, stationPhone2]
   );
 
   const handleEndSession = useCallback(async () => {

@@ -22,6 +22,7 @@ export interface ReceiptData {
   vehicleNumber: string;
   customerName: string;
   stationPhone?: string;
+  stationPhone2?: string;
   logoDataUrl?: string | null;
   logo2DataUrl?: string | null;
   includeLogoInPrint?: boolean;

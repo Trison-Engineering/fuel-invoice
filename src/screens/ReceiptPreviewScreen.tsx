@@ -17,6 +17,7 @@ import {
   wrapWords,
 } from "../../utils/receiptFormat";
 import { formatCurrency, formatVolume } from "../utils/printerUtils";
+import { formatContactNumbers } from "../../utils/formatters";
 
 interface ReceiptPreviewScreenProps {
   visible: boolean;
@@ -76,9 +77,9 @@ export function ReceiptPreviewScreen({
   const dateTime = `${view.date}  ${view.time}`;
   const showLogo = Boolean(data.includeLogoInPrint && view.logoDataUrl);
   const logoUri = showLogo ? view.logoDataUrl : null;
-  const phone = data.stationPhone?.trim();
-  const contactFooter = phone
-    ? wrapWords(`Thank you for visiting us! Contact Us : ${phone}`, PREVIEW_LINE_WIDTH).map(
+  const contactLine = formatContactNumbers(data.stationPhone, data.stationPhone2);
+  const contactFooter = contactLine
+    ? wrapWords(`Thank you for visiting us! ${contactLine}`, PREVIEW_LINE_WIDTH).map(
         (line) => centerText(line, PREVIEW_LINE_WIDTH)
       )
     : [centerText("Thank you for visiting us!", PREVIEW_LINE_WIDTH)];

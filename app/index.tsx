@@ -146,6 +146,7 @@ function ezPumpSaleToReceiptData(
   stationAddress: string,
   stationExtras: {
     stationPhone?: string;
+    stationPhone2?: string;
     logoDataUrl?: string | null;
     logo2DataUrl?: string | null;
     includeLogoInPrint?: boolean;
@@ -180,6 +181,7 @@ function ezPumpSaleToReceiptData(
     vehicleNumber: sale.vehicle,
     customerName: sale.customer,
     stationPhone: stationExtras.stationPhone,
+    stationPhone2: stationExtras.stationPhone2,
     logoDataUrl: stationExtras.logoDataUrl,
     logo2DataUrl: stationExtras.logo2DataUrl,
     includeLogoInPrint: stationExtras.includeLogoInPrint,
@@ -745,6 +747,7 @@ export default function HomeScreen() {
           form.station.stationAddress,
           {
             stationPhone: form.station.stationPhone,
+            stationPhone2: form.station.stationPhone2,
             logoDataUrl: form.station.logoDataUrl,
             logo2DataUrl: form.station.logo2DataUrl,
             includeLogoInPrint: form.station.includeLogoInPrint,

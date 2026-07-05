@@ -19,6 +19,7 @@ export interface SunmiReceiptData {
   total: string;
   vehicleNo?: string;
   stationPhone?: string;
+  stationPhone2?: string;
   logoBase64?: string;
 }
 
@@ -51,6 +52,7 @@ export async function printSunmiReceipt(
       total: data.total,
       vehicleNo: data.vehicleNo,
       stationPhone: data.stationPhone,
+      stationPhone2: data.stationPhone2,
     },
     isDuplicate
   );
@@ -74,6 +76,7 @@ export async function printSunmiReceiptFromFuelData(
       total: formatCurrency(data.totalAmount),
       vehicleNo: view.vehicleNo.trim() || undefined,
       stationPhone: data.stationPhone?.trim() || undefined,
+      stationPhone2: data.stationPhone2?.trim() || undefined,
     },
     isDuplicate
   );

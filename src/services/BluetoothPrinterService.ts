@@ -13,6 +13,7 @@ import {
   resolveLogoBase64,
 } from "../utils/printLogoUtil";
 import { RawLogoKeys } from "../utils/logoStorage";
+import { formatContactNumbers } from "../../utils/formatters";
 
 export const INNER_PRINTER_MAC = "00:11:22:33:44:55";
 export const INNER_PRINTER_NAME = "InnerPrinter";
@@ -150,10 +151,10 @@ const buildReceiptLines = (data: BluetoothReceiptData, isDuplicate = false): str
 
   lines.push(center("POWERED BY TRISON"));
 
-  const phone = data.stationPhone?.trim();
-  if (phone) {
+  const contactLine = formatContactNumbers(data.stationPhone, data.stationPhone2);
+  if (contactLine) {
     lines.push(
-      ...wrapWordLines(`Thank you for visiting us! Contact Us : ${phone}`)
+      ...wrapWordLines(`Thank you for visiting us! ${contactLine}`)
     );
   } else {
     lines.push(center("Thank you for visiting us!"));
@@ -217,6 +218,7 @@ export interface BluetoothReceiptData {
   total: string;
   vehicleNo?: string;
   stationPhone?: string;
+  stationPhone2?: string;
 }
 
 export const printReceipt = async (
