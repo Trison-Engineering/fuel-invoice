@@ -8,6 +8,7 @@ const JAVA_REL =
 
 const SEND_RAW_MARKER = "void sendRAWData(String base64";
 const PRINT_DUAL_MARKER = "void printDualPic(String base64Left";
+const PRINT_RASTER_MARKER = "void printPicRaster(String base64";
 const PRINT_PIC_FEED_MARKER = 'options.hasKey("feed") ? options.getInt("feed") : 30';
 
 const SEND_RAW_METHOD = `
@@ -85,6 +86,40 @@ const PRINT_DUAL_METHOD = `
     }
 `;
 
+const PRINT_RASTER_METHOD = `
+    @ReactMethod
+    public void printPicRaster(String base64, @Nullable ReadableMap options, final Promise promise) {
+        try {
+            int logoWidth = 200;
+            if (options != null && options.hasKey("width")) {
+                logoWidth = options.getInt("width");
+            }
+            byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+            Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bmp == null) {
+                promise.reject("INVALID_LOGO", "Could not decode logo bitmap");
+                return;
+            }
+
+            int targetW = logoWidth;
+            int targetH = Math.round(bmp.getHeight() * ((float) targetW / bmp.getWidth()));
+            Bitmap scaled = Bitmap.createScaledBitmap(bmp, targetW, targetH, true);
+
+            byte[] data = PrintPicture.POS_PrintBMP(scaled, targetW, 0, 0);
+            android.util.Log.i("RasterLogo", "POS_PrintBMP " + targetW + "w returned " + (data == null ? "null" : data.length + " bytes"));
+            if (data != null && sendDataByte(Command.ESC_Init) && sendDataByte(data)) {
+                int feed = options != null && options.hasKey("feed") ? options.getInt("feed") : 3;
+                sendDataByte(PrinterCommand.POS_Set_PrtAndFeedPaper(feed));
+                promise.resolve(null);
+            } else {
+                promise.reject("COMMAND_NOT_SEND");
+            }
+        } catch (Exception e) {
+            promise.reject("RASTER_LOGO_FAILED", e);
+        }
+    }
+`;
+
 function patchBluetoothEscposModule(projectRoot) {
   const javaPath = path.join(projectRoot, "node_modules", PACKAGE_DIR, JAVA_REL);
   if (!fs.existsSync(javaPath)) {
@@ -112,6 +147,13 @@ function patchBluetoothEscposModule(projectRoot) {
     source = source.replace(anchor, `${PRINT_DUAL_METHOD}\n${anchor}`);
     changed = true;
     console.log("[withBluetoothRawPrinter] Added printDualPic()");
+  }
+
+  if (!source.includes(PRINT_RASTER_MARKER)) {
+    const anchor = "    private boolean sendDataByte(byte[] data) {";
+    source = source.replace(anchor, `${PRINT_RASTER_METHOD}\n${anchor}`);
+    changed = true;
+    console.log("[withBluetoothRawPrinter] Added printPicRaster()");
   }
 
   if (!source.includes(PRINT_PIC_FEED_MARKER)) {

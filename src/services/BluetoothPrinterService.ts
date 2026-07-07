@@ -102,7 +102,7 @@ const printLogo = async (): Promise<void> => {
 
     try {
       await SunmiPrinterModule.printLogo(logo1);
-      console.log("[BT] logo printed via native Sunmi printBitmap");
+      console.log("[BT] logo printed via native AIDL printBitmap");
     } catch (e) {
       console.warn("[BT] native logo print failed:", e);
     }
@@ -214,12 +214,14 @@ export const printReceipt = async (
   data: BluetoothReceiptData,
   isDuplicate = false
 ): Promise<void> => {
+  // Print logo via native AIDL FIRST, before opening the Bluetooth SPP session
+  // (an open SPP session blocks native printBitmap from rendering).
+  await printLogo();
+
   const ok = await connectInnerPrinter();
   if (!ok) {
     throw new Error("Could not connect to InnerPrinter");
   }
-
-  await printLogo();
 
   const lines = buildReceiptLines(data, isDuplicate);
   const bytes = buildRawReceipt(lines, 5);
@@ -250,4 +252,28 @@ export const printTestLine = async (): Promise<void> => {
 
   const bytes = buildRawReceipt([center("TEST PRINT OK")], 3);
   await sendRawBytes(bytes);
+};
+
+export const printLogoOnlyTest = async (): Promise<void> => {
+  try {
+    try {
+      await BluetoothManager.disconnect(INNER_PRINTER_MAC);
+      console.log("[TEST] Bluetooth disconnected");
+    } catch (e) {
+      console.log("[TEST] disconnect failed/unavailable:", e);
+    }
+
+    // Give the SPP session time to fully release the printer.
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const logo1 = await AsyncStorage.getItem(RawLogoKeys.LOGO_1);
+    if (!logo1) {
+      console.log("[TEST] no logo in storage");
+      return;
+    }
+    await SunmiPrinterModule.printLogo(logo1);
+    console.log("[TEST] logo-only native print done");
+  } catch (e) {
+    console.warn("[TEST] logo-only test failed:", e);
+  }
 };

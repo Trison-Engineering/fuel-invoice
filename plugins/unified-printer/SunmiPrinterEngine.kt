@@ -224,28 +224,15 @@ class SunmiPrinterEngine private constructor(context: Context) {
   fun printLogo(logoBase64: String) {
     val api = printApi ?: throw IllegalStateException("Sunmi printer service not connected")
     waitForPrinterReady()
-
     val clean = logoBase64.substringAfter("base64,", logoBase64)
     val bytes = android.util.Base64.decode(clean, android.util.Base64.DEFAULT)
     val decoded = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
       ?: throw IllegalStateException("Could not decode logo bitmap")
-    val testPixel = decoded.getPixel(decoded.width / 2, decoded.height / 2)
-    Log.i(TAG, "logo decoded ${decoded.width}x${decoded.height}, center pixel=${Integer.toHexString(testPixel)}, hasAlpha=${decoded.hasAlpha()}, config=${decoded.config}")
-
-    val paperW = 384
     val targetW = 200
-    val scaledH = decoded.height * targetW / decoded.width
-    val scaled = android.graphics.Bitmap.createScaledBitmap(decoded, targetW, scaledH, true)
-
-    // Center within the paper width by padding with white on both sides.
-    val padded = android.graphics.Bitmap.createBitmap(paperW, scaledH, android.graphics.Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(padded)
-    canvas.drawColor(android.graphics.Color.WHITE)
-    val left = ((paperW - targetW) / 2).toFloat()
-    canvas.drawBitmap(scaled, left, 0f, null)
-
-    Log.i(TAG, "printLogo padded ${padded.width}x${padded.height}, logo at left=$left")
-    api.printBitmap(padded)
+    val h = decoded.height * targetW / decoded.width
+    val scaled = android.graphics.Bitmap.createScaledBitmap(decoded, targetW, h, true)
+    Log.i(TAG, "printLogo scaled ${scaled.width}x${scaled.height}")
+    api.printBitmap(scaled)
   }
 
   fun printHelloWorld() {
@@ -310,12 +297,10 @@ class SunmiPrinterEngine private constructor(context: Context) {
     }
 
     override fun printBitmap(bitmap: android.graphics.Bitmap) {
-      Log.i(TAG, "printBitmap via AIDL, ${bitmap.width}x${bitmap.height}")
-      service.enterPrinterBuffer(true)
+      Log.i(TAG, "printBitmap via AIDL start, ${bitmap.width}x${bitmap.height}")
       service.printBitmap(bitmap, null)
-      service.lineWrap(3, null)
-      service.exitPrinterBuffer(true)
-      Log.i(TAG, "printBitmap done (buffered)")
+      service.lineWrap(2, null)
+      Log.i(TAG, "printBitmap via AIDL done")
     }
 
     override fun printReceiptHighLevel(
