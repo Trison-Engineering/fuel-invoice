@@ -31,7 +31,6 @@ import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, LIVE_FE
 import { recordPriceChange } from "../src/services/PriceHistoryService";
 import { fetchRates } from "../src/services/EzPumpService";
 import { preprocessLogoForUpload } from "../src/utils/printLogoUtil";
-import { printLogoOnlyTest } from "../src/services/BluetoothPrinterService";
 import type { StationProfile } from "../stores/stationStore";
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
@@ -857,15 +856,6 @@ export default function SettingsScreen() {
             />
           ) : null}
 
-          <Pressable
-            onPress={() => {
-              printLogoOnlyTest();
-            }}
-            style={({ pressed }) => [styles.testLogoButton, pressed && styles.buttonDisabled]}
-          >
-            <Text style={styles.testLogoButtonText}>TEST LOGO ONLY</Text>
-          </Pressable>
-
           <Text style={styles.versionText}>
             Version {Constants.expoConfig?.version ?? "1.0.0"}
           </Text>
@@ -1364,23 +1354,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
-  },
-  testLogoButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.xl,
-    height: 48,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    backgroundColor: Colors.bg.card,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  testLogoButtonText: {
-    color: Colors.text.primary,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
-    letterSpacing: Typography.widest,
   },
   versionText: {
     textAlign: "center",

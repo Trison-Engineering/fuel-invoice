@@ -214,18 +214,35 @@ export const printReceipt = async (
   data: BluetoothReceiptData,
   isDuplicate = false
 ): Promise<void> => {
-  // Print logo via native AIDL FIRST, before opening the Bluetooth SPP session
-  // (an open SPP session blocks native printBitmap from rendering).
-  await printLogo();
-
-  const ok = await connectInnerPrinter();
-  if (!ok) {
-    throw new Error("Could not connect to InnerPrinter");
+  // Print the entire receipt (logo + text) through the native Sunmi service.
+  // Do NOT open a competing @vardrz Bluetooth SPP session — it holds the
+  // physical printer and blocks native bitmap output.
+  const includeLogo = await getItem<boolean>(StorageKeys.INCLUDE_LOGO_IN_PRINT);
+  let logo1: string | null = null;
+  if (includeLogo) {
+    logo1 = await AsyncStorage.getItem(RawLogoKeys.LOGO_1);
+    if (!logo1) {
+      const profile = await getItem<StationProfile>(StorageKeys.STATION_PROFILE);
+      if (profile?.logoDataUrl) {
+        logo1 = (await resolveLogoBase64(profile.logoDataUrl).catch(() => null)) ?? null;
+      }
+    }
   }
 
-  const lines = buildReceiptLines(data, isDuplicate);
-  const bytes = buildRawReceipt(lines, 5);
-  await sendRawBytes(bytes);
+  await SunmiPrinterModule.printFullReceipt(
+    logo1 ?? "",
+    data.storeName,
+    data.address,
+    data.dateTime,
+    data.product,
+    data.volume,
+    data.rate,
+    data.total,
+    data.vehicleNo ?? "",
+    data.stationPhone ?? "",
+    isDuplicate
+  );
+  console.log("[Printer] full receipt printed via native Sunmi service");
 };
 
 export const printDiagnostic = async (): Promise<void> => {
@@ -252,28 +269,4 @@ export const printTestLine = async (): Promise<void> => {
 
   const bytes = buildRawReceipt([center("TEST PRINT OK")], 3);
   await sendRawBytes(bytes);
-};
-
-export const printLogoOnlyTest = async (): Promise<void> => {
-  try {
-    try {
-      await BluetoothManager.disconnect(INNER_PRINTER_MAC);
-      console.log("[TEST] Bluetooth disconnected");
-    } catch (e) {
-      console.log("[TEST] disconnect failed/unavailable:", e);
-    }
-
-    // Give the SPP session time to fully release the printer.
-    await new Promise((r) => setTimeout(r, 1500));
-
-    const logo1 = await AsyncStorage.getItem(RawLogoKeys.LOGO_1);
-    if (!logo1) {
-      console.log("[TEST] no logo in storage");
-      return;
-    }
-    await SunmiPrinterModule.printLogo(logo1);
-    console.log("[TEST] logo-only native print done");
-  } catch (e) {
-    console.warn("[TEST] logo-only test failed:", e);
-  }
 };

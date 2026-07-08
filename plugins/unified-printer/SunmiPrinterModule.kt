@@ -101,6 +101,51 @@ class SunmiPrinterModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun printFullReceipt(
+    logoBase64: String,
+    storeName: String,
+    address: String,
+    dateTime: String,
+    product: String,
+    volume: String,
+    rate: String,
+    total: String,
+    vehicleNo: String,
+    stationPhone: String,
+    isDuplicate: Boolean,
+    promise: Promise,
+  ) {
+    Thread {
+      try {
+        if (!waitForService(8000)) {
+          promise.reject(
+            "NOT_CONNECTED",
+            "Sunmi printer service not connected after retry",
+          )
+          return@Thread
+        }
+
+        engine.printFullReceipt(
+          logoBase64.ifBlank { null },
+          storeName,
+          address,
+          dateTime,
+          product,
+          volume,
+          rate,
+          total,
+          vehicleNo,
+          stationPhone,
+          isDuplicate,
+        )
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("PRINT_FAILED", e.message, e)
+      }
+    }.start()
+  }
+
+  @ReactMethod
   fun printTestLine(promise: Promise) {
     Thread {
       try {

@@ -217,8 +217,61 @@ class SunmiPrinterEngine private constructor(context: Context) {
       rate,
       total,
       vehicleNo,
+      "",
+      false,
     )
     Log.d(TAG, "Receipt print completed successfully")
+  }
+
+  fun printFullReceipt(
+    logoBase64: String?,
+    storeName: String,
+    address: String,
+    dateTime: String,
+    product: String,
+    volume: String,
+    rate: String,
+    total: String,
+    vehicleNo: String,
+    stationPhone: String,
+    isDuplicate: Boolean,
+  ) {
+    val api = printApi ?: throw IllegalStateException("Sunmi printer service not connected")
+    waitForPrinterReady()
+    api.enterBuffer()
+    try {
+      if (!logoBase64.isNullOrBlank()) {
+        try {
+          val cleanStr = logoBase64.substringAfter("base64,", logoBase64)
+          val bytes = android.util.Base64.decode(cleanStr, android.util.Base64.DEFAULT)
+          val decoded = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+          if (decoded != null) {
+            val maxW = 384
+            val tw = if (decoded.width > maxW) maxW else decoded.width
+            val th = decoded.height * tw / decoded.width
+            val scaled = android.graphics.Bitmap.createScaledBitmap(decoded, tw, th, true)
+            Log.i(TAG, "printFullReceipt logo ${scaled.width}x${scaled.height}")
+            api.printBitmapCustom(scaled, 2)
+          }
+        } catch (e: Exception) {
+          Log.e(TAG, "logo failed: ${e.message}")
+        }
+      }
+      api.printReceiptHighLevel(
+        storeName,
+        address,
+        dateTime,
+        product,
+        volume,
+        rate,
+        total,
+        vehicleNo,
+        stationPhone,
+        isDuplicate,
+      )
+    } finally {
+      api.exitBufferCommit()
+    }
   }
 
   fun printLogo(logoBase64: String) {
@@ -228,11 +281,13 @@ class SunmiPrinterEngine private constructor(context: Context) {
     val bytes = android.util.Base64.decode(clean, android.util.Base64.DEFAULT)
     val decoded = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
       ?: throw IllegalStateException("Could not decode logo bitmap")
-    val targetW = 200
-    val h = decoded.height * targetW / decoded.width
-    val scaled = android.graphics.Bitmap.createScaledBitmap(decoded, targetW, h, true)
+    // Scale so width <= 384 (thermal max); keep aspect ratio.
+    val maxW = 384
+    val targetW = if (decoded.width > maxW) maxW else decoded.width
+    val targetH = decoded.height * targetW / decoded.width
+    val scaled = android.graphics.Bitmap.createScaledBitmap(decoded, targetW, targetH, true)
     Log.i(TAG, "printLogo scaled ${scaled.width}x${scaled.height}")
-    api.printBitmap(scaled)
+    api.printBitmapCustom(scaled, 2)
   }
 
   fun printHelloWorld() {
@@ -268,6 +323,12 @@ class SunmiPrinterEngine private constructor(context: Context) {
 
     fun printBitmap(bitmap: android.graphics.Bitmap)
 
+    fun printBitmapCustom(bitmap: android.graphics.Bitmap, type: Int)
+
+    fun enterBuffer()
+
+    fun exitBufferCommit()
+
     fun printReceiptHighLevel(
       storeName: String,
       address: String,
@@ -277,6 +338,8 @@ class SunmiPrinterEngine private constructor(context: Context) {
       rate: String,
       total: String,
       vehicleNo: String,
+      stationPhone: String,
+      isDuplicate: Boolean,
     )
   }
 
@@ -303,6 +366,23 @@ class SunmiPrinterEngine private constructor(context: Context) {
       Log.i(TAG, "printBitmap via AIDL done")
     }
 
+    override fun printBitmapCustom(bitmap: android.graphics.Bitmap, type: Int) {
+      Log.i(TAG, "printBitmapCustom type=$type ${bitmap.width}x${bitmap.height}")
+      service.printBitmapCustom(bitmap, type, null)
+      service.lineWrap(2, null)
+      Log.i(TAG, "printBitmapCustom done type=$type")
+    }
+
+    override fun enterBuffer() {
+      Log.i(TAG, "enterPrinterBuffer")
+      service.enterPrinterBuffer(true)
+    }
+
+    override fun exitBufferCommit() {
+      Log.i(TAG, "exitPrinterBuffer commit")
+      service.exitPrinterBuffer(true)
+    }
+
     override fun printReceiptHighLevel(
       storeName: String,
       address: String,
@@ -312,6 +392,8 @@ class SunmiPrinterEngine private constructor(context: Context) {
       rate: String,
       total: String,
       vehicleNo: String,
+      stationPhone: String,
+      isDuplicate: Boolean,
     ) {
       Log.d(TAG, "Starting RAW ESC/POS print...")
 
@@ -325,6 +407,8 @@ class SunmiPrinterEngine private constructor(context: Context) {
           rate,
           total,
           vehicleNo,
+          stationPhone,
+          isDuplicate,
         )
 
       Log.d(TAG, "Sending ${bytes.size} bytes via sendRAWData")
@@ -352,6 +436,8 @@ class SunmiPrinterEngine private constructor(context: Context) {
       rate: String,
       total: String,
       vehicleNo: String,
+      stationPhone: String,
+      isDuplicate: Boolean,
     ): ByteArray {
       val LINE = 32
       val DIV = "-".repeat(LINE)
@@ -372,24 +458,35 @@ class SunmiPrinterEngine private constructor(context: Context) {
         return label + " ".repeat(spaces) + value
       }
 
+      // Mirror wrapWordLines() in BluetoothPrinterService.ts: word-wrap at LINE, center each line.
+      fun wrapWordLines(text: String): List<String> {
+        val words = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val wrapped = mutableListOf<String>()
+        var current = ""
+        for (word in words) {
+          val test = if (current.isEmpty()) word else "$current $word"
+          if (test.length <= LINE) {
+            current = test
+          } else {
+            if (current.isNotEmpty()) wrapped.add(center(current))
+            current = word
+          }
+        }
+        if (current.isNotEmpty()) wrapped.add(center(current))
+        return wrapped
+      }
+
       val lines = mutableListOf<String>()
 
-      lines.add(center(storeName.uppercase()))
-
-      val words = address.split(" ")
-      var addrLine = ""
-      for (word in words) {
-        val test = if (addrLine.isEmpty()) word else "$addrLine $word"
-        if (test.length <= LINE) {
-          addrLine = test
-        } else {
-          if (addrLine.isNotEmpty()) lines.add(center(addrLine))
-          addrLine = word
-        }
-      }
-      if (addrLine.isNotEmpty()) lines.add(center(addrLine))
-
+      lines.add(center("Welcome to"))
+      lines.addAll(wrapWordLines(storeName.uppercase()))
+      lines.addAll(wrapWordLines(address))
       lines.add(center("FUEL RECEIPT"))
+
+      if (isDuplicate) {
+        lines.add(center("** DUPLICATE COPY **"))
+      }
+
       lines.add(DIV)
       lines.add(row("DATE:", dateTime))
       lines.add(DIV)
@@ -406,6 +503,13 @@ class SunmiPrinterEngine private constructor(context: Context) {
       }
 
       lines.add(center("POWERED BY TRISON"))
+
+      val phone = stationPhone.trim()
+      if (phone.isNotEmpty()) {
+        lines.addAll(wrapWordLines("Thank you for visiting us! Contact Us : $phone"))
+      } else {
+        lines.add(center("Thank you for visiting us!"))
+      }
 
       val out = java.io.ByteArrayOutputStream()
       out.write(byteArrayOf(0x1B, 0x40))

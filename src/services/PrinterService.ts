@@ -1,7 +1,6 @@
 import { Platform } from "react-native";
 import type { ReceiptData as FuelReceiptData } from "../../utils/generateReceipt";
 import {
-  connectInnerPrinter,
   printBluetoothDiagnostic,
   initSunmiPrinter,
   isSunmiConnected,
@@ -55,10 +54,7 @@ class PrinterServiceImpl {
 
   private async assertPrinterReady(): Promise<void> {
     if (!this.initialized) await this.init();
-    const connected = await connectInnerPrinter();
-    if (!connected) {
-      throw new Error("Could not connect to InnerPrinter via Bluetooth");
-    }
+    // Native Sunmi service handles its own connection; do NOT open @vardrz Bluetooth.
   }
 
   async printCalibrationLine(): Promise<void> {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { printerService } from "../src/services/PrinterService";
-import { connectInnerPrinter } from "../src/services/BluetoothPrinterService";
 import { hasNativePrinterModule, waitForPrinterConnection } from "../src/services/printerNativeModule";
 import type { ReceiptData } from "../utils/generateReceipt";
 
@@ -61,7 +60,7 @@ export function usePrinter() {
 
     try {
       await printerService.init();
-      const connected = await waitForPrinterConnection(3);
+      const connected = await waitForPrinterConnection(3); // now native-only per printerNativeModule change below
       const status = await refreshStatus();
 
       if (connected) {
@@ -87,14 +86,11 @@ export function usePrinter() {
   }, [initPrinter]);
 
   const ensureConnected = useCallback(async (): Promise<boolean> => {
-    const connected = await connectInnerPrinter();
-    if (connected) {
-      setConnectionStatus("connected");
-      await refreshStatus();
-      return true;
-    }
-    return initPrinter();
-  }, [initPrinter, refreshStatus]);
+    // Native Sunmi service owns the printer. Do NOT open @vardrz Bluetooth (it blocks native output).
+    setConnectionStatus("connected");
+    await refreshStatus();
+    return true;
+  }, [refreshStatus]);
 
   const printReceipt = useCallback(
     async (data: ReceiptData, isDuplicate = false): Promise<void> => {

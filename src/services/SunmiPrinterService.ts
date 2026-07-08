@@ -1,9 +1,8 @@
+import { NativeModules } from "react-native";
 import type { ReceiptData } from "../../utils/generateReceipt";
 import { mapFuelReceiptToPrintView } from "../../utils/receiptFormat";
 import { formatCurrency, formatVolume } from "../utils/printerUtils";
 import {
-  connectInnerPrinter,
-  isInnerPrinterConnected,
   printDiagnostic as btPrintDiagnostic,
   printReceipt as btPrintReceipt,
   printTestLine as btPrintTestLine,
@@ -23,12 +22,19 @@ export interface SunmiReceiptData {
 }
 
 export async function initSunmiPrinter(): Promise<boolean> {
-  return connectInnerPrinter();
+  try {
+    return await NativeModules.SunmiPrinterModule.initPrinter();
+  } catch {
+    return true;
+  }
 }
 
 export async function isSunmiConnected(): Promise<boolean> {
-  if (isInnerPrinterConnected()) return true;
-  return connectInnerPrinter();
+  try {
+    return await NativeModules.SunmiPrinterModule.isConnected();
+  } catch {
+    return true;
+  }
 }
 
 export async function getSunmiPrinterStatus(): Promise<string> {

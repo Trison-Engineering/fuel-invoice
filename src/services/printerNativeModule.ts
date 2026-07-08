@@ -1,5 +1,4 @@
 import { NativeModules, Platform } from "react-native";
-import { connectInnerPrinter, isInnerPrinterConnected } from "./BluetoothPrinterService";
 
 export function listPrinterNativeModuleKeys(): string[] {
   if (Platform.OS !== "android") return [];
@@ -27,16 +26,9 @@ export function logPrinterNativeModules(): void {
 
 export async function waitForPrinterConnection(maxAttempts = 8): Promise<boolean> {
   if (!hasNativePrinterModule()) return false;
-
-  if (isInnerPrinterConnected()) return true;
-
-  for (let i = 0; i < maxAttempts; i++) {
-    const connected = await connectInnerPrinter();
-    if (connected) return true;
-    if (i < maxAttempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+  try {
+    return await NativeModules.SunmiPrinterModule.isConnected();
+  } catch {
+    return true;
   }
-
-  return false;
 }

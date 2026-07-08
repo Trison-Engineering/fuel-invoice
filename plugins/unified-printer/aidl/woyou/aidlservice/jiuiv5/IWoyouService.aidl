@@ -15,6 +15,7 @@ interface IWoyouService {
   void printTextWithFont(String text, String typeface, float fontSize, ICallback callback);
   void printColumnsText(in String[] colsTextArr, in int[] colsWidthArr, in int[] colsAlign, ICallback callback);
   void printBitmap(in Bitmap bitmap, ICallback callback);
+  void printBitmapCustom(in Bitmap bitmap, int type, ICallback callback);
   void printBarCode(String data, int symbology, int height, int width, int textposition, ICallback callback);
   void printQRCode(String data, int modulesize, int errorlevel, ICallback callback);
   void lineWrap(int n, ICallback callback);
