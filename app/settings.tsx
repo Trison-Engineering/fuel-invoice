@@ -27,7 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStationStore } from "../stores/stationStore";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { isValidDecimal } from "../utils/validation";
-import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
+import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT, MOCK_DATA_ENABLED } from "../utils/storage";
 import { recordPriceChange } from "../src/services/PriceHistoryService";
 import { fetchRates } from "../src/services/EzPumpService";
 import { preprocessLogoForUpload } from "../src/utils/printLogoUtil";
@@ -416,6 +416,7 @@ export default function SettingsScreen() {
   const [logoProcessing, setLogoProcessing] = useState(false);
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
+  const [mockDataEnabled, setMockDataEnabled] = useState(false);
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -430,9 +431,16 @@ export default function SettingsScreen() {
     (async () => {
       const enabled = await AsyncStorage.getItem(LIVE_FEED_FILTER_ENABLED);
       const product = await AsyncStorage.getItem(LIVE_FEED_FILTER_PRODUCT);
+      const mock = await AsyncStorage.getItem(MOCK_DATA_ENABLED);
       setFilterEnabled(enabled === "true");
       setLiveFeedFilterProduct(product || null);
+      setMockDataEnabled(mock === "true");
     })();
+  }, []);
+
+  const handleToggleMockData = useCallback(async (value: boolean) => {
+    setMockDataEnabled(value);
+    await AsyncStorage.setItem(MOCK_DATA_ENABLED, value ? "true" : "false");
   }, []);
 
   const handleToggleLiveFeedFilter = useCallback(async (value: boolean) => {
@@ -820,6 +828,28 @@ export default function SettingsScreen() {
               onToggle={handleToggleLiveFeedFilter}
               onSelectProduct={handleSelectLiveFeedProduct}
             />
+          ) : null}
+
+          {!isInitialSetup ? (
+            <>
+              <SectionLabel>DEVELOPER</SectionLabel>
+              <SectionGroup>
+                <View style={[styles.row, styles.rowLast]}>
+                  <View style={styles.mockRowLabelWrap}>
+                    <Text style={styles.rowLabel}>Enable Mock Data</Text>
+                    <Text style={styles.mockRowHint}>
+                      Simulates live receipts every 10s on Home
+                    </Text>
+                  </View>
+                  <Switch
+                    value={mockDataEnabled}
+                    onValueChange={handleToggleMockData}
+                    trackColor={{ false: Colors.bg.hover, true: Colors.accentAlpha }}
+                    thumbColor={mockDataEnabled ? Colors.accent : Colors.text.tertiary}
+                  />
+                </View>
+              </SectionGroup>
+            </>
           ) : null}
 
           {!isInitialSetup ? (
@@ -1242,6 +1272,15 @@ const styles = StyleSheet.create({
     fontSize: Typography.base,
     flexShrink: 0,
     marginRight: Spacing.md,
+  },
+  mockRowLabelWrap: {
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  mockRowHint: {
+    color: Colors.text.tertiary,
+    fontSize: Typography.xs,
+    marginTop: 2,
   },
   rowInput: {
     flex: 1,

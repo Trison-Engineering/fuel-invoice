@@ -56,3 +56,4 @@ export const EZPUMP_IP = "@fuel_receipt:ezpump_ip";
 export const DEFAULT_PORTAL_IP = "192.168.0.100";
 export const LIVE_FEED_FILTER_ENABLED = "@fuel_receipt:live_feed_filter_enabled";
 export const LIVE_FEED_FILTER_PRODUCT = "@fuel_receipt:live_feed_filter_product";
+export const MOCK_DATA_ENABLED = "@fuel_receipt:mock_data_enabled";

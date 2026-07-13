@@ -47,8 +47,9 @@ import {
   getOfficialRateForProduct,
   type EzPumpSale,
 } from "../src/services/EzPumpService";
+import { generateMockSales } from "../src/services/MockDataService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT } from "../utils/storage";
+import { LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT, MOCK_DATA_ENABLED } from "../utils/storage";
 
 const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 180;
@@ -318,6 +319,7 @@ export default function HomeScreen() {
   const [ezPumpError, setEzPumpError] = useState<string | null>(null);
   const [liveFeedFilterEnabled, setLiveFeedFilterEnabled] = useState(false);
   const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
+  const [mockDataEnabled, setMockDataEnabled] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [vehicleFocused, setVehicleFocused] = useState(false);
   const [adminEmailFocused, setAdminEmailFocused] = useState(false);
@@ -343,8 +345,10 @@ export default function HomeScreen() {
   const loadLiveFeedFilter = useCallback(async () => {
     const enabled = await AsyncStorage.getItem(LIVE_FEED_FILTER_ENABLED);
     const product = await AsyncStorage.getItem(LIVE_FEED_FILTER_PRODUCT);
+    const mock = await AsyncStorage.getItem(MOCK_DATA_ENABLED);
     setLiveFeedFilterEnabled(enabled === "true");
     setLiveFeedFilterProduct(product || null);
+    setMockDataEnabled(mock === "true");
   }, []);
 
   useEffect(() => {
@@ -607,6 +611,13 @@ export default function HomeScreen() {
     }
   }, [lastPrintData, printer, resetSteps, saveInvoiceFromReceipt]);
 
+  const loadMockSales = useCallback(() => {
+    setEzPumpError(null);
+    setEzPumpLoading(false);
+    setEzPumpSales(generateMockSales());
+    setLastRefreshed(new Date());
+  }, []);
+
   const fetchEzPumpSales = useCallback(async () => {
     try {
       setEzPumpLoading(true);
@@ -651,12 +662,20 @@ export default function HomeScreen() {
   }, [ezPumpSales, liveFeedFilterEnabled, liveFeedFilterProduct]);
 
   useEffect(() => {
-    if (currentStep !== 0 || !ezPumpPollEnabled) return;
+    if (currentStep !== 0) return;
+
+    if (mockDataEnabled) {
+      loadMockSales();
+      const interval = setInterval(loadMockSales, 10000);
+      return () => clearInterval(interval);
+    }
+
+    if (!ezPumpPollEnabled) return;
 
     fetchEzPumpSales();
     const interval = setInterval(fetchEzPumpSales, 10000);
     return () => clearInterval(interval);
-  }, [currentStep, ezPumpPollEnabled, fetchEzPumpSales]);
+  }, [currentStep, ezPumpPollEnabled, fetchEzPumpSales, mockDataEnabled, loadMockSales]);
 
   const handleDismissDuplicate = useCallback(() => {
     if (closingDuplicate.current) return;
@@ -1013,7 +1032,7 @@ export default function HomeScreen() {
       refreshControl={
         <RefreshControl
           refreshing={ezPumpLoading}
-          onRefresh={fetchEzPumpSales}
+          onRefresh={mockDataEnabled ? loadMockSales : fetchEzPumpSales}
           tintColor={Colors.accent}
         />
       }
