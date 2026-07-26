@@ -311,6 +311,7 @@ export default function HomeScreen() {
   const [sessionTotal, setSessionTotal] = useState(0);
   const [ezPumpPollEnabled, setEzPumpPollEnabled] = useState(true);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminLoginIntent, setAdminLoginIntent] = useState<"admin" | "manualPrint">("admin");
   const [adminSigningIn, setAdminSigningIn] = useState(false);
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -415,7 +416,10 @@ export default function HomeScreen() {
             </View>
           ) : null}
           <Pressable
-            onPress={() => setShowAdminLogin(true)}
+            onPress={() => {
+              setAdminLoginIntent("admin");
+              setShowAdminLogin(true);
+            }}
             style={({ pressed }) => [styles.headerIconBtn, pressed && styles.headerIconPressed]}
           >
             <Ionicons name="person-outline" size={22} color={Colors.text.secondary} />
@@ -563,15 +567,20 @@ export default function HomeScreen() {
   const handleAdminLogin = useCallback(() => {
     setAdminSigningIn(true);
     if (adminEmail === ADMIN_EMAIL && adminPassword === ADMIN_PASSWORD) {
+      const intent = adminLoginIntent;
       setShowAdminLogin(false);
       setAdminEmail("");
       setAdminPassword("");
-      router.push("/admin");
+      if (intent === "manualPrint") {
+        setCurrentStep(1);
+      } else {
+        router.push("/admin");
+      }
     } else {
       Alert.alert("Invalid credentials");
     }
     setAdminSigningIn(false);
-  }, [adminEmail, adminPassword, router]);
+  }, [adminEmail, adminPassword, adminLoginIntent, router, setCurrentStep]);
 
   const saveInvoiceFromReceipt = useCallback(
     async (receiptData: ReceiptData, isDuplicate: boolean) => {
@@ -1038,7 +1047,10 @@ export default function HomeScreen() {
       }
     >
       <Pressable
-        onPress={() => setCurrentStep(1)}
+        onPress={() => {
+          setAdminLoginIntent("manualPrint");
+          setShowAdminLogin(true);
+        }}
         style={({ pressed }) => [
           styles.printNewReceiptButton,
           pressed && styles.printNewReceiptButtonPressed,
@@ -1380,7 +1392,9 @@ export default function HomeScreen() {
         >
           <View style={styles.loginCard}>
             <Ionicons name="lock-closed-outline" size={40} color={Colors.text.tertiary} style={styles.loginLockIcon} />
-            <Text style={styles.loginTitle}>Admin Access</Text>
+            <Text style={styles.loginTitle}>
+              {adminLoginIntent === "manualPrint" ? "Manual Print" : "Admin Access"}
+            </Text>
             <Text style={styles.loginSubtitle}>Enter credentials to continue</Text>
             <TextInput
               style={[
@@ -1429,6 +1443,7 @@ export default function HomeScreen() {
                 setShowAdminLogin(false);
                 setAdminEmail("");
                 setAdminPassword("");
+                setAdminLoginIntent("admin");
               }}
               style={styles.loginSecondaryBtn}
             />

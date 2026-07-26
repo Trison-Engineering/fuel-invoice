@@ -162,82 +162,6 @@ function LiveFeedFilterSection({
   );
 }
 
-function SetupProgressHeader({ currentStep }: { currentStep: number }) {
-  const dot1Scale = useRef(new Animated.Value(1)).current;
-  const dot2Scale = useRef(new Animated.Value(0.75)).current;
-  const dot3Scale = useRef(new Animated.Value(0.75)).current;
-  const dot4Scale = useRef(new Animated.Value(0.75)).current;
-  const dotScales = [dot1Scale, dot2Scale, dot3Scale, dot4Scale];
-
-  useEffect(() => {
-    dotScales.forEach((scale, index) => {
-      const stepNum = index + 1;
-      const isActive = currentStep === stepNum;
-      Animated.timing(scale, {
-        toValue: isActive ? 1 : 0.75,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    });
-  }, [currentStep, dot1Scale, dot2Scale, dot3Scale, dot4Scale]);
-
-  return (
-    <View style={styles.setupProgressWrap}>
-      <Text style={styles.setupProgressLabel}>
-        SETUP {currentStep} OF 4
-      </Text>
-      <View style={styles.setupDotsRow}>
-        {[1, 2, 3, 4].map((step, index) => {
-          const completed = currentStep > step;
-          const active = currentStep === step;
-          const dotSize = active || completed ? 8 : 6;
-          const dotColor = completed
-            ? Colors.text.success
-            : active
-              ? Colors.accent
-              : Colors.border.default;
-
-          return (
-            <Animated.View
-              key={step}
-              style={[
-                styles.setupDot,
-                {
-                  width: dotSize,
-                  height: dotSize,
-                  borderRadius: dotSize / 2,
-                  backgroundColor: dotColor,
-                  transform: [{ scale: dotScales[index] }],
-                },
-              ]}
-            />
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-function SetupSectionCard({
-  step,
-  title,
-  children,
-}: {
-  step: number;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <View style={styles.setupSectionCard}>
-      <View style={styles.setupBadge}>
-        <Text style={styles.setupBadgeText}>{step}</Text>
-      </View>
-      <Text style={styles.setupCardTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
 function SettingsInputRow({
   label,
   fieldLabel,
@@ -601,105 +525,6 @@ export default function SettingsScreen() {
     hiOctane: handlePriceChange(station.setHiOctanePrice),
   };
 
-  const setupStep = isInitialSetup ? 1 : 0;
-
-  const renderSetupForm = () => (
-    <>
-      <SetupSectionCard step={1} title="Station Profile">
-        <View style={styles.stackedFieldsWrap}>
-          <SettingsInputRow
-            label="Station Name"
-            fieldLabel="STATION NAME"
-            value={station.stationName}
-            onChangeText={station.setStationName}
-            placeholder="Enter station name"
-          />
-          <SettingsInputRow
-            label="Station Address"
-            fieldLabel="STATION ADDRESS"
-            value={station.stationAddress}
-            onChangeText={station.setStationAddress}
-            placeholder="Enter station address"
-            multiline
-          />
-          <SettingsInputRow
-            label="Contact Phone"
-            fieldLabel="CONTACT PHONE"
-            value={station.stationPhone}
-            onChangeText={station.setStationPhone}
-            placeholder="e.g. 03001234567"
-            keyboardType="number-pad"
-            isLast
-          />
-        </View>
-      </SetupSectionCard>
-
-      <SetupSectionCard step={2} title="Fuel Prices">
-        <View style={styles.stackedFieldsWrap}>
-          {FUEL_PRICE_ROWS.map((fuel, index) => (
-            <FuelPriceRow
-              key={fuel.key}
-              label={fuel.label}
-              value={fuelValues[fuel.key]}
-              onChangeText={fuelSetters[fuel.key]}
-              isLast={index === FUEL_PRICE_ROWS.length - 1}
-            />
-          ))}
-        </View>
-      </SetupSectionCard>
-
-      <SetupSectionCard step={3} title="Station Logo">
-        <Pressable
-          onPress={showLogoPickerOptions}
-          disabled={logoProcessing}
-          style={styles.logoUploadAreaSetup}
-        >
-          {logoProcessing ? (
-            <ActivityIndicator color={Colors.accent} />
-          ) : station.logoDataUrl ? (
-            <View style={styles.logoPreviewWrap}>
-              <Image
-                source={{ uri: station.logoDataUrl }}
-                style={styles.logoPreview}
-                resizeMode="contain"
-              />
-              <Text style={styles.changeLogoText}>Change Logo</Text>
-            </View>
-          ) : (
-            <View style={styles.logoUploadContent}>
-              <Ionicons name="cloud-upload-outline" size={24} color={Colors.text.tertiary} />
-              <Text style={styles.logoUploadTitle}>Tap to upload logo</Text>
-              <Text style={styles.logoUploadHint}>PNG/JPG, max 2MB</Text>
-            </View>
-          )}
-        </Pressable>
-      </SetupSectionCard>
-
-      <SetupSectionCard step={4} title="Print Options">
-        <SectionGroup>
-          <View style={[styles.row, styles.rowLast]}>
-            <Text style={styles.rowLabel}>Include logo in print</Text>
-            <Switch
-              value={station.includeLogoInPrint}
-              onValueChange={station.setIncludeLogoInPrint}
-              trackColor={{ false: Colors.bg.hover, true: Colors.accentAlpha }}
-              thumbColor={
-                station.includeLogoInPrint ? Colors.accent : Colors.text.tertiary
-              }
-            />
-          </View>
-        </SectionGroup>
-      </SetupSectionCard>
-
-      <LiveFeedFilterSection
-        filterEnabled={filterEnabled}
-        selectedProduct={liveFeedFilterProduct}
-        onToggle={handleToggleLiveFeedFilter}
-        onSelectProduct={handleSelectLiveFeedProduct}
-      />
-    </>
-  );
-
   return (
     <View style={styles.root}>
       <KeyboardAvoidingView
@@ -714,145 +539,139 @@ export default function SettingsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {isInitialSetup ? (
-            <SetupProgressHeader currentStep={setupStep} />
-          ) : (
+          {!isInitialSetup ? (
             <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]} hitSlop={8}>
               <Text style={styles.backLinkText}>← Back</Text>
             </Pressable>
-          )}
+          ) : null}
 
-          {!isInitialSetup ? (
-            <View style={styles.pageHeader}>
-              <Text style={styles.pageTitle}>Settings</Text>
-              <Text style={styles.pageSubtitle}>Petro Slip Pro</Text>
+          <View style={styles.pageHeader}>
+            <Text style={styles.pageTitle}>{isInitialSetup ? "Initial Setup" : "Settings"}</Text>
+            <Text style={styles.pageSubtitle}>Petro Slip Pro</Text>
+          </View>
+
+          <SectionLabel>STATION PROFILE</SectionLabel>
+          <SectionGroup>
+            <View style={styles.sectionGroupPadded}>
+              <SettingsInputRow
+                label="Station Name"
+                fieldLabel="STATION NAME"
+                value={station.stationName}
+                onChangeText={station.setStationName}
+                placeholder="Enter station name"
+              />
+              <SettingsInputRow
+                label="Station Address"
+                fieldLabel="STATION ADDRESS"
+                value={station.stationAddress}
+                onChangeText={station.setStationAddress}
+                placeholder="Enter station address"
+                multiline
+              />
+              <SettingsInputRow
+                label="Contact Phone"
+                fieldLabel="CONTACT PHONE"
+                value={station.stationPhone}
+                onChangeText={station.setStationPhone}
+                placeholder="e.g. 03001234567"
+                keyboardType="number-pad"
+                isLast
+              />
             </View>
-          ) : null}
+          </SectionGroup>
 
-          {isInitialSetup ? renderSetupForm() : null}
+          <SectionLabel>FUEL PRICES</SectionLabel>
+          <SectionGroup>
+            <View style={styles.sectionGroupPadded}>
+              {FUEL_PRICE_ROWS.map((fuel, index) => (
+                <FuelPriceRow
+                  key={fuel.key}
+                  label={fuel.label}
+                  value={fuelValues[fuel.key]}
+                  onChangeText={fuelSetters[fuel.key]}
+                  isLast={index === FUEL_PRICE_ROWS.length - 1}
+                />
+              ))}
+            </View>
+          </SectionGroup>
 
-          {!isInitialSetup ? (
-            <>
-              <SectionLabel>STATION PROFILE</SectionLabel>
-              <SectionGroup>
-                <View style={styles.sectionGroupPadded}>
-                  <SettingsInputRow
-                    label="Station Name"
-                    fieldLabel="STATION NAME"
-                    value={station.stationName}
-                    onChangeText={station.setStationName}
-                    placeholder="Enter station name"
-                  />
-                  <SettingsInputRow
-                    label="Station Address"
-                    fieldLabel="STATION ADDRESS"
-                    value={station.stationAddress}
-                    onChangeText={station.setStationAddress}
-                    placeholder="Enter station address"
-                    multiline
-                  />
-                  <SettingsInputRow
-                    label="Contact Phone"
-                    fieldLabel="CONTACT PHONE"
-                    value={station.stationPhone}
-                    onChangeText={station.setStationPhone}
-                    placeholder="e.g. 03001234567"
-                    keyboardType="number-pad"
-                    isLast
-                  />
-                </View>
-              </SectionGroup>
+          <SectionLabel>STATION LOGO</SectionLabel>
+          <Pressable
+            onPress={showLogoPickerOptions}
+            disabled={logoProcessing}
+            style={styles.logoUploadArea}
+          >
+            {logoProcessing ? (
+              <ActivityIndicator color={Colors.accent} />
+            ) : station.logoDataUrl ? (
+              <View style={styles.logoPreviewWrap}>
+                <Image
+                  source={{ uri: station.logoDataUrl }}
+                  style={styles.logoPreview}
+                  resizeMode="contain"
+                />
+                <Text style={styles.changeLogoText}>Change Logo</Text>
+              </View>
+            ) : (
+              <View style={styles.logoUploadContent}>
+                <Ionicons name="cloud-upload-outline" size={24} color={Colors.text.tertiary} />
+                <Text style={styles.logoUploadTitle}>Tap to upload logo</Text>
+                <Text style={styles.logoUploadHint}>PNG/JPG, max 2MB</Text>
+              </View>
+            )}
+          </Pressable>
 
-              <SectionLabel>FUEL PRICES</SectionLabel>
-              <SectionGroup>
-                <View style={styles.sectionGroupPadded}>
-                  {FUEL_PRICE_ROWS.map((fuel, index) => (
-                    <FuelPriceRow
-                      key={fuel.key}
-                      label={fuel.label}
-                      value={fuelValues[fuel.key]}
-                      onChangeText={fuelSetters[fuel.key]}
-                      isLast={index === FUEL_PRICE_ROWS.length - 1}
-                    />
-                  ))}
-                </View>
-              </SectionGroup>
+          <SectionLabel>PRINT OPTIONS</SectionLabel>
+          <SectionGroup>
+            <View style={[styles.row, styles.rowLast]}>
+              <Text style={styles.rowLabel}>Include logo in print</Text>
+              <Switch
+                value={station.includeLogoInPrint}
+                onValueChange={station.setIncludeLogoInPrint}
+                trackColor={{ false: Colors.bg.hover, true: Colors.accentAlpha }}
+                thumbColor={
+                  station.includeLogoInPrint ? Colors.accent : Colors.text.tertiary
+                }
+              />
+            </View>
+          </SectionGroup>
 
-              <SectionLabel>STATION LOGO</SectionLabel>
-              <Pressable
-                onPress={showLogoPickerOptions}
-                disabled={logoProcessing}
-                style={styles.logoUploadArea}
-              >
-                {logoProcessing ? (
-                  <ActivityIndicator color={Colors.accent} />
-                ) : station.logoDataUrl ? (
-                  <View style={styles.logoPreviewWrap}>
-                    <Image
-                      source={{ uri: station.logoDataUrl }}
-                      style={styles.logoPreview}
-                      resizeMode="contain"
-                    />
-                    <Text style={styles.changeLogoText}>Change Logo</Text>
-                  </View>
-                ) : (
-                  <View style={styles.logoUploadContent}>
-                    <Ionicons name="cloud-upload-outline" size={24} color={Colors.text.tertiary} />
-                    <Text style={styles.logoUploadTitle}>Tap to upload logo</Text>
-                    <Text style={styles.logoUploadHint}>PNG/JPG, max 2MB</Text>
-                  </View>
-                )}
-              </Pressable>
+          <LiveFeedFilterSection
+            filterEnabled={filterEnabled}
+            selectedProduct={liveFeedFilterProduct}
+            onToggle={handleToggleLiveFeedFilter}
+            onSelectProduct={handleSelectLiveFeedProduct}
+          />
 
-              <SectionLabel>PRINT OPTIONS</SectionLabel>
-              <SectionGroup>
-                <View style={[styles.row, styles.rowLast]}>
-                  <Text style={styles.rowLabel}>Include logo in print</Text>
-                  <Switch
-                    value={station.includeLogoInPrint}
-                    onValueChange={station.setIncludeLogoInPrint}
-                    trackColor={{ false: Colors.bg.hover, true: Colors.accentAlpha }}
-                    thumbColor={
-                      station.includeLogoInPrint ? Colors.accent : Colors.text.tertiary
-                    }
-                  />
-                </View>
-              </SectionGroup>
-            </>
-          ) : null}
+          <SectionLabel>DEVELOPER</SectionLabel>
+          <SectionGroup>
+            <View style={[styles.row, styles.rowLast]}>
+              <View style={styles.mockRowLabelWrap}>
+                <Text style={styles.rowLabel}>Enable Mock Data</Text>
+                <Text style={styles.mockRowHint}>
+                  Simulates live receipts every 10s on Home
+                </Text>
+              </View>
+              <Switch
+                value={mockDataEnabled}
+                onValueChange={handleToggleMockData}
+                trackColor={{ false: Colors.bg.hover, true: Colors.accentAlpha }}
+                thumbColor={mockDataEnabled ? Colors.accent : Colors.text.tertiary}
+              />
+            </View>
+          </SectionGroup>
 
-          {!isInitialSetup ? (
-            <LiveFeedFilterSection
-              filterEnabled={filterEnabled}
-              selectedProduct={liveFeedFilterProduct}
-              onToggle={handleToggleLiveFeedFilter}
-              onSelectProduct={handleSelectLiveFeedProduct}
+          {isInitialSetup ? (
+            <ActionButton
+              label="Save & Continue"
+              icon="arrow-forward"
+              onPress={handleSave}
+              loading={saving}
+              loadingLabel="Saving..."
+              disabled={saving}
+              style={styles.saveContinueButton}
             />
-          ) : null}
-
-          {!isInitialSetup ? (
-            <>
-              <SectionLabel>DEVELOPER</SectionLabel>
-              <SectionGroup>
-                <View style={[styles.row, styles.rowLast]}>
-                  <View style={styles.mockRowLabelWrap}>
-                    <Text style={styles.rowLabel}>Enable Mock Data</Text>
-                    <Text style={styles.mockRowHint}>
-                      Simulates live receipts every 10s on Home
-                    </Text>
-                  </View>
-                  <Switch
-                    value={mockDataEnabled}
-                    onValueChange={handleToggleMockData}
-                    trackColor={{ false: Colors.bg.hover, true: Colors.accentAlpha }}
-                    thumbColor={mockDataEnabled ? Colors.accent : Colors.text.tertiary}
-                  />
-                </View>
-              </SectionGroup>
-            </>
-          ) : null}
-
-          {!isInitialSetup ? (
+          ) : (
             <>
               <ActionButton
                 label="Save Station Profile"
@@ -872,19 +691,7 @@ export default function SettingsScreen() {
                 style={styles.clearAllButton}
               />
             </>
-          ) : null}
-
-          {isInitialSetup ? (
-            <ActionButton
-              label="Save & Continue"
-              icon="arrow-forward"
-              onPress={handleSave}
-              loading={saving}
-              loadingLabel="Saving..."
-              disabled={saving}
-              style={styles.saveContinueButton}
-            />
-          ) : null}
+          )}
 
           <Text style={styles.versionText}>
             Version {Constants.expoConfig?.version ?? "1.0.0"}
@@ -953,88 +760,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     width: "100%",
   },
-  setupProgressWrap: {
-    alignItems: "center",
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-  },
-  setupProgressLabel: {
-    fontSize: Typography.xs,
-    color: Colors.text.tertiary,
-    letterSpacing: Typography.widest,
-    textTransform: "uppercase",
-    textAlign: "center",
-  },
-  setupDotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    marginTop: Spacing.sm,
-  },
-  setupDot: {
-    marginHorizontal: 0,
-  },
-  setupWelcomeCard: {
-    backgroundColor: Colors.bg.card,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    borderRadius: Radius.xl,
-    paddingVertical: Spacing.xxxl,
-    paddingHorizontal: Spacing.xxl,
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    alignItems: "center",
-  },
-  setupIconPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.bg.elevated,
-  },
-  setupWelcomeTitle: {
-    fontSize: Typography.xxl,
-    fontWeight: Typography.bold,
-    color: Colors.text.primary,
-    textAlign: "center",
-    marginTop: Spacing.lg,
-  },
-  setupWelcomeSubtitle: {
-    fontSize: Typography.base,
-    color: Colors.text.secondary,
-    textAlign: "center",
-    marginTop: Spacing.sm,
-  },
-  setupGetStartedButton: {
-    width: "100%",
-    height: 52,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: Spacing.xxl,
-    ...Shadow.glow,
-  },
-  setupGetStartedText: {
-    color: Colors.text.primary,
-    fontSize: Typography.base,
-    fontWeight: Typography.bold,
-  },
-  welcomeProgressDots: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-  },
-  welcomeProgressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.accent,
-  },
-  stackedFieldsWrap: {
-    width: "100%",
-  },
   sectionGroupPadded: {
     padding: Spacing.lg,
   },
@@ -1073,51 +798,6 @@ const styles = StyleSheet.create({
   fuelPriceStackedInput: {
     fontWeight: Typography.bold,
     color: Colors.text.accent,
-  },
-  setupSectionCard: {
-    backgroundColor: Colors.bg.card,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    borderRadius: Radius.md,
-    padding: Spacing.lg,
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    position: "relative",
-  },
-  setupBadge: {
-    position: "absolute",
-    top: Spacing.lg,
-    left: Spacing.lg,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.accentAlpha,
-    borderWidth: 1,
-    borderColor: Colors.border.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  setupBadgeText: {
-    color: Colors.text.accent,
-    fontSize: Typography.sm,
-    fontWeight: Typography.bold,
-  },
-  setupCardTitle: {
-    color: Colors.text.primary,
-    fontSize: Typography.md,
-    fontWeight: Typography.semibold,
-    marginBottom: Spacing.lg,
-    paddingLeft: 32,
-  },
-  logoUploadAreaSetup: {
-    backgroundColor: Colors.bg.input,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    borderColor: Colors.border.default,
-    borderRadius: Radius.md,
-    height: 100,
-    alignItems: "center",
-    justifyContent: "center",
   },
   loadingButtonRow: {
     ...Buttons.loadingRow,
