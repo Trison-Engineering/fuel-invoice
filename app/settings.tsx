@@ -27,9 +27,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStationStore } from "../stores/stationStore";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { isValidDecimal } from "../utils/validation";
-import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT, MOCK_DATA_ENABLED } from "../utils/storage";
+import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, NOZZLE_FILTER_ENABLED, NOZZLE_FILTER_IDS, MOCK_DATA_ENABLED } from "../utils/storage";
 import { recordPriceChange } from "../src/services/PriceHistoryService";
 import { fetchRates } from "../src/services/EzPumpService";
+import { clearNozzleSalesHistory } from "../src/services/NozzleSalesHistoryService";
 import { preprocessLogoForUpload } from "../src/utils/printLogoUtil";
 import type { StationProfile } from "../stores/stationStore";
 
@@ -41,12 +42,6 @@ const FUEL_PRICE_ROWS = [
   { key: "hiOctane", label: "Hi-Octane", color: Colors.product.hiOctane },
 ] as const;
 
-const LIVE_FEED_PRODUCTS = [
-  { id: "Petrol" as const, label: "Petrol", color: Colors.product.petrol },
-  { id: "Diesel" as const, label: "Diesel", color: Colors.product.diesel },
-  { id: "Hi-Octane" as const, label: "Hi-Octane", color: Colors.product.hiOctane },
-];
-
 function SectionLabel({ children }: { children: string }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
@@ -55,73 +50,36 @@ function SectionGroup({ children }: { children: ReactNode }) {
   return <View style={styles.sectionGroup}>{children}</View>;
 }
 
-function LiveFeedRadioRow({
-  label,
-  color,
-  selected,
-  isLast,
-  onPress,
-}: {
-  label: string;
-  color: string;
-  selected: boolean;
-  isLast?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <>
-      <Pressable onPress={onPress} style={styles.liveFeedRadioRow}>
-        <View style={styles.liveFeedRadioLeft}>
-          <View
-            style={[
-              styles.liveFeedRadioOuter,
-              selected && { borderColor: color },
-            ]}
-          >
-            {selected ? (
-              <View style={[styles.liveFeedRadioInner, { backgroundColor: color }]} />
-            ) : null}
-          </View>
-          <Text
-            style={[
-              styles.liveFeedRadioLabel,
-              { color: selected ? color : Colors.text.secondary },
-            ]}
-          >
-            {label}
-          </Text>
-        </View>
-        <View style={[styles.liveFeedColorDot, { backgroundColor: color }]} />
-      </Pressable>
-      {!isLast ? <View style={styles.liveFeedRadioSeparator} /> : null}
-    </>
-  );
-}
-
-function LiveFeedFilterSection({
+function NozzleFilterSection({
   filterEnabled,
-  selectedProduct,
+  nozzleIds,
+  draft,
   onToggle,
-  onSelectProduct,
+  onChangeDraft,
+  onAddNozzle,
+  onRemoveNozzle,
 }: {
   filterEnabled: boolean;
-  selectedProduct: string | null;
+  nozzleIds: string[];
+  draft: string;
   onToggle: (value: boolean) => void;
-  onSelectProduct: (product: "Petrol" | "Diesel" | "Hi-Octane") => void;
+  onChangeDraft: (value: string) => void;
+  onAddNozzle: () => void;
+  onRemoveNozzle: (id: string) => void;
 }) {
-  const radioAnim = useRef(new Animated.Value(filterEnabled ? 1 : 0)).current;
+  const expandAnim = useRef(new Animated.Value(filterEnabled ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.timing(radioAnim, {
+    Animated.timing(expandAnim, {
       toValue: filterEnabled ? 1 : 0,
       duration: 200,
       useNativeDriver: false,
     }).start();
-  }, [filterEnabled, radioAnim]);
+  }, [filterEnabled, expandAnim]);
 
-  const radioMaxHeight = radioAnim.interpolate({
+  const expandMaxHeight = expandAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 170],
+    outputRange: [0, 220],
   });
 
   return (
@@ -129,7 +87,12 @@ function LiveFeedFilterSection({
       <Text style={styles.liveFeedSectionLabel}>LIVE FEED</Text>
       <SectionGroup>
         <View style={[styles.row, !filterEnabled && styles.rowLast]}>
-          <Text style={styles.rowLabel}>Filter by specific product</Text>
+          <View style={styles.mockRowLabelWrap}>
+            <Text style={styles.rowLabel}>Fetch by nozel id</Text>
+            <Text style={styles.mockRowHint}>
+              Accumulate matching live sales locally
+            </Text>
+          </View>
           <Switch
             value={filterEnabled}
             onValueChange={onToggle}
@@ -139,22 +102,53 @@ function LiveFeedFilterSection({
         </View>
         <Animated.View
           style={{
-            opacity: radioAnim,
-            maxHeight: radioMaxHeight,
+            opacity: expandAnim,
+            maxHeight: expandMaxHeight,
             overflow: "hidden",
           }}
         >
-          <View style={styles.liveFeedRadioContainer}>
-            {LIVE_FEED_PRODUCTS.map((product, index) => (
-              <LiveFeedRadioRow
-                key={product.id}
-                label={product.label}
-                color={product.color}
-                selected={selectedProduct === product.id}
-                isLast={index === LIVE_FEED_PRODUCTS.length - 1}
-                onPress={() => onSelectProduct(product.id)}
+          <View style={styles.nozzleFilterBody}>
+            {nozzleIds.length > 0 ? (
+              <View style={styles.nozzleChipRow}>
+                {nozzleIds.map((id) => (
+                  <Pressable
+                    key={id}
+                    onPress={() => onRemoveNozzle(id)}
+                    style={({ pressed }) => [
+                      styles.nozzleChip,
+                      pressed && styles.nozzleChipPressed,
+                    ]}
+                    accessibilityLabel={`Remove nozzle ${id}`}
+                  >
+                    <Text style={styles.nozzleChipText}>{id}</Text>
+                    <Ionicons name="close" size={14} color={Colors.text.accent} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <View style={styles.nozzleInputRow}>
+              <TextInput
+                style={styles.nozzleInput}
+                value={draft}
+                onChangeText={(text) => onChangeDraft(text.replace(/[^0-9]/g, ""))}
+                placeholder="Type nozel id"
+                placeholderTextColor={Colors.text.tertiary}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                onSubmitEditing={onAddNozzle}
               />
-            ))}
+              <Pressable
+                onPress={onAddNozzle}
+                disabled={!draft.trim()}
+                style={({ pressed }) => [
+                  styles.nozzleAddBtn,
+                  !draft.trim() && styles.nozzleAddBtnDisabled,
+                  pressed && draft.trim() && styles.nozzleAddBtnPressed,
+                ]}
+              >
+                <Text style={styles.nozzleAddBtnText}>Add</Text>
+              </Pressable>
+            </View>
           </View>
         </Animated.View>
       </SectionGroup>
@@ -338,8 +332,9 @@ export default function SettingsScreen() {
 
   const [saving, setSaving] = useState(false);
   const [logoProcessing, setLogoProcessing] = useState(false);
-  const [filterEnabled, setFilterEnabled] = useState(false);
-  const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
+  const [nozzleFilterEnabled, setNozzleFilterEnabled] = useState(false);
+  const [nozzleIds, setNozzleIds] = useState<string[]>([]);
+  const [nozzleDraft, setNozzleDraft] = useState("");
   const [mockDataEnabled, setMockDataEnabled] = useState(false);
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -353,12 +348,26 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     (async () => {
-      const enabled = await AsyncStorage.getItem(LIVE_FEED_FILTER_ENABLED);
-      const product = await AsyncStorage.getItem(LIVE_FEED_FILTER_PRODUCT);
+      const enabled = await AsyncStorage.getItem(NOZZLE_FILTER_ENABLED);
+      const idsRaw = await AsyncStorage.getItem(NOZZLE_FILTER_IDS);
       const mock = await AsyncStorage.getItem(MOCK_DATA_ENABLED);
-      setFilterEnabled(enabled === "true");
-      setLiveFeedFilterProduct(product || null);
+      setNozzleFilterEnabled(enabled === "true");
+      try {
+        const parsed = idsRaw ? (JSON.parse(idsRaw) as unknown) : [];
+        setNozzleIds(
+          Array.isArray(parsed)
+            ? parsed.map((id) => String(id).trim()).filter((id) => /^\d+$/.test(id))
+            : []
+        );
+      } catch {
+        setNozzleIds([]);
+      }
       setMockDataEnabled(mock === "true");
+      // Clean up removed product-filter keys
+      await AsyncStorage.multiRemove([
+        "@fuel_receipt:live_feed_filter_enabled",
+        "@fuel_receipt:live_feed_filter_product",
+      ]);
     })();
   }, []);
 
@@ -367,21 +376,35 @@ export default function SettingsScreen() {
     await AsyncStorage.setItem(MOCK_DATA_ENABLED, value ? "true" : "false");
   }, []);
 
-  const handleToggleLiveFeedFilter = useCallback(async (value: boolean) => {
-    setFilterEnabled(value);
-    await AsyncStorage.setItem(LIVE_FEED_FILTER_ENABLED, value ? "true" : "false");
+  const persistNozzleIds = useCallback(async (ids: string[]) => {
+    setNozzleIds(ids);
+    await AsyncStorage.setItem(NOZZLE_FILTER_IDS, JSON.stringify(ids));
+  }, []);
+
+  const handleToggleNozzleFilter = useCallback(async (value: boolean) => {
+    setNozzleFilterEnabled(value);
+    await AsyncStorage.setItem(NOZZLE_FILTER_ENABLED, value ? "true" : "false");
     if (!value) {
-      setLiveFeedFilterProduct(null);
-      await AsyncStorage.removeItem(LIVE_FEED_FILTER_PRODUCT);
+      await clearNozzleSalesHistory();
     }
   }, []);
 
-  const handleSelectLiveFeedProduct = useCallback(
-    async (product: "Petrol" | "Diesel" | "Hi-Octane") => {
-      setLiveFeedFilterProduct(product);
-      await AsyncStorage.setItem(LIVE_FEED_FILTER_PRODUCT, product);
+  const handleAddNozzle = useCallback(async () => {
+    const id = nozzleDraft.trim();
+    if (!/^\d+$/.test(id)) return;
+    if (nozzleIds.includes(id)) {
+      setNozzleDraft("");
+      return;
+    }
+    setNozzleDraft("");
+    await persistNozzleIds([...nozzleIds, id]);
+  }, [nozzleDraft, nozzleIds, persistNozzleIds]);
+
+  const handleRemoveNozzle = useCallback(
+    async (id: string) => {
+      await persistNozzleIds(nozzleIds.filter((n) => n !== id));
     },
-    []
+    [nozzleIds, persistNozzleIds]
   );
 
   const handlePriceChange =
@@ -504,7 +527,11 @@ export default function SettingsScreen() {
           text: "Clear",
           style: "destructive",
           onPress: async () => {
+            await clearNozzleSalesHistory();
             await station.clearAll();
+            setNozzleFilterEnabled(false);
+            setNozzleIds([]);
+            setNozzleDraft("");
             setToast({ visible: true, message: "All data cleared", type: "success" });
             router.replace("/settings?setup=1");
           },
@@ -636,11 +663,14 @@ export default function SettingsScreen() {
             </View>
           </SectionGroup>
 
-          <LiveFeedFilterSection
-            filterEnabled={filterEnabled}
-            selectedProduct={liveFeedFilterProduct}
-            onToggle={handleToggleLiveFeedFilter}
-            onSelectProduct={handleSelectLiveFeedProduct}
+          <NozzleFilterSection
+            filterEnabled={nozzleFilterEnabled}
+            nozzleIds={nozzleIds}
+            draft={nozzleDraft}
+            onToggle={handleToggleNozzleFilter}
+            onChangeDraft={setNozzleDraft}
+            onAddNozzle={handleAddNozzle}
+            onRemoveNozzle={handleRemoveNozzle}
           />
 
           <SectionLabel>DEVELOPER</SectionLabel>
@@ -874,53 +904,72 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: Spacing.sm,
   },
-  liveFeedRadioContainer: {
+  nozzleFilterBody: {
     borderTopWidth: 1,
     borderTopColor: Colors.border.subtle,
     paddingVertical: 12,
     paddingHorizontal: Spacing.lg,
     backgroundColor: Colors.bg.secondary,
+    gap: Spacing.md,
   },
-  liveFeedRadioRow: {
-    height: 48,
+  nozzleChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+  },
+  nozzleChip: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.xs,
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.accentAlpha,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
   },
-  liveFeedRadioLeft: {
+  nozzleChipPressed: {
+    opacity: 0.75,
+  },
+  nozzleChipText: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    color: Colors.text.accent,
+  },
+  nozzleInputRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: Spacing.sm,
+  },
+  nozzleInput: {
     flex: 1,
-  },
-  liveFeedRadioOuter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    height: 44,
+    backgroundColor: Colors.bg.input,
+    borderWidth: 1,
     borderColor: Colors.border.default,
-    backgroundColor: "transparent",
+    borderRadius: Radius.sm,
+    paddingHorizontal: 12,
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+  },
+  nozzleAddBtn: {
+    height: 44,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.accent,
     alignItems: "center",
     justifyContent: "center",
   },
-  liveFeedRadioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+  nozzleAddBtnPressed: {
+    opacity: 0.85,
   },
-  liveFeedRadioLabel: {
-    fontSize: Typography.base,
-    fontWeight: Typography.semibold,
-    marginLeft: Spacing.md,
+  nozzleAddBtnDisabled: {
+    opacity: 0.4,
   },
-  liveFeedColorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  liveFeedRadioSeparator: {
-    height: 1,
-    backgroundColor: Colors.border.subtle,
+  nozzleAddBtnText: {
+    color: "#FFFFFF",
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
   },
   sectionGroup: {
     backgroundColor: Colors.bg.card,

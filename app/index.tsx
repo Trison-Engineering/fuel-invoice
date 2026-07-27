@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useLayoutEffect, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useLayoutEffect, useEffect, useRef } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   View,
@@ -48,8 +48,13 @@ import {
   type EzPumpSale,
 } from "../src/services/EzPumpService";
 import { generateMockSales } from "../src/services/MockDataService";
+import {
+  upsertNozzleFilteredSales,
+  getNozzleFilteredSales,
+  clearNozzleSalesHistory,
+} from "../src/services/NozzleSalesHistoryService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LIVE_FEED_FILTER_ENABLED, LIVE_FEED_FILTER_PRODUCT, MOCK_DATA_ENABLED } from "../utils/storage";
+import { NOZZLE_FILTER_ENABLED, NOZZLE_FILTER_IDS, MOCK_DATA_ENABLED } from "../utils/storage";
 
 const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 180;
@@ -123,10 +128,6 @@ function formatCardDateTime(dateStr: string): string {
 function mapEzPumpProduct(product: string): string {
   if (product === "HiOctane") return "Hi-Octane";
   return product;
-}
-
-function normalizeProductForLiveFeedFilter(product: string): string {
-  return mapEzPumpProduct(product).toLowerCase().replace(/-/g, "");
 }
 
 function productToBadgeKey(product: string): string {
@@ -305,6 +306,7 @@ export default function HomeScreen() {
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateCountdown, setDuplicateCountdown] = useState(DUPLICATE_COUNTDOWN_SECONDS);
   const [lastPrintData, setLastPrintData] = useState<ReceiptData | null>(null);
+  const [lastPrintWasManual, setLastPrintWasManual] = useState(false);
   const [isPrintingDuplicate, setIsPrintingDuplicate] = useState(false);
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
@@ -319,7 +321,7 @@ export default function HomeScreen() {
   const [ezPumpLoading, setEzPumpLoading] = useState(false);
   const [ezPumpError, setEzPumpError] = useState<string | null>(null);
   const [liveFeedFilterEnabled, setLiveFeedFilterEnabled] = useState(false);
-  const [liveFeedFilterProduct, setLiveFeedFilterProduct] = useState<string | null>(null);
+  const [nozzleFilterIds, setNozzleFilterIds] = useState<string[]>([]);
   const [mockDataEnabled, setMockDataEnabled] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [vehicleFocused, setVehicleFocused] = useState(false);
@@ -344,11 +346,20 @@ export default function HomeScreen() {
   }, []);
 
   const loadLiveFeedFilter = useCallback(async () => {
-    const enabled = await AsyncStorage.getItem(LIVE_FEED_FILTER_ENABLED);
-    const product = await AsyncStorage.getItem(LIVE_FEED_FILTER_PRODUCT);
+    const enabled = await AsyncStorage.getItem(NOZZLE_FILTER_ENABLED);
+    const idsRaw = await AsyncStorage.getItem(NOZZLE_FILTER_IDS);
     const mock = await AsyncStorage.getItem(MOCK_DATA_ENABLED);
     setLiveFeedFilterEnabled(enabled === "true");
-    setLiveFeedFilterProduct(product || null);
+    try {
+      const parsed = idsRaw ? (JSON.parse(idsRaw) as unknown) : [];
+      setNozzleFilterIds(
+        Array.isArray(parsed)
+          ? parsed.map((id) => String(id).trim()).filter((id) => /^\d+$/.test(id))
+          : []
+      );
+    } catch {
+      setNozzleFilterIds([]);
+    }
     setMockDataEnabled(mock === "true");
   }, []);
 
@@ -583,7 +594,7 @@ export default function HomeScreen() {
   }, [adminEmail, adminPassword, adminLoginIntent, router, setCurrentStep]);
 
   const saveInvoiceFromReceipt = useCallback(
-    async (receiptData: ReceiptData, isDuplicate: boolean) => {
+    async (receiptData: ReceiptData, isDuplicate: boolean, isManual = false) => {
       await saveInvoice({
         product: productTypeToStorageKey(receiptData.productType),
         volume: parseFloat(receiptData.volume),
@@ -594,6 +605,7 @@ export default function HomeScreen() {
         address: receiptData.stationAddress,
         dateTime: formatSlipDateTime(),
         isDuplicate,
+        isManual,
       });
     },
     []
@@ -609,7 +621,7 @@ export default function HomeScreen() {
         // Native printReceipt retries bind — continue even if JS check failed
       }
       await printer.printReceipt(lastPrintData, true);
-      await saveInvoiceFromReceipt(lastPrintData, true);
+      await saveInvoiceFromReceipt(lastPrintData, true, lastPrintWasManual);
       setShowDuplicate(false);
       resetSteps();
     } catch (e) {
@@ -618,21 +630,37 @@ export default function HomeScreen() {
     } finally {
       setIsPrintingDuplicate(false);
     }
-  }, [lastPrintData, printer, resetSteps, saveInvoiceFromReceipt]);
+  }, [lastPrintData, lastPrintWasManual, printer, resetSteps, saveInvoiceFromReceipt]);
 
-  const loadMockSales = useCallback(() => {
+  const applySalesForDisplay = useCallback(
+    async (sales: EzPumpSale[]) => {
+      if (liveFeedFilterEnabled) {
+        if (nozzleFilterIds.length === 0) {
+          setEzPumpSales([]);
+          return;
+        }
+        const stored = await upsertNozzleFilteredSales(sales, nozzleFilterIds);
+        setEzPumpSales(stored);
+        return;
+      }
+      setEzPumpSales(sales);
+    },
+    [liveFeedFilterEnabled, nozzleFilterIds]
+  );
+
+  const loadMockSales = useCallback(async () => {
     setEzPumpError(null);
     setEzPumpLoading(false);
-    setEzPumpSales(generateMockSales());
+    await applySalesForDisplay(generateMockSales());
     setLastRefreshed(new Date());
-  }, []);
+  }, [applySalesForDisplay]);
 
   const fetchEzPumpSales = useCallback(async () => {
     try {
       setEzPumpLoading(true);
       setEzPumpError(null);
       const sales = await EzPumpService.getRecentSales();
-      setEzPumpSales(sales);
+      await applySalesForDisplay(sales);
       setLastRefreshed(new Date());
     } catch (err: unknown) {
       if (err instanceof Error && err.message === "CREDENTIALS_NOT_SET") {
@@ -646,36 +674,63 @@ export default function HomeScreen() {
       } else {
         setEzPumpError("Unable to load live data");
       }
+      if (liveFeedFilterEnabled && nozzleFilterIds.length > 0) {
+        const stored = await getNozzleFilteredSales(nozzleFilterIds);
+        if (stored.length > 0) {
+          setEzPumpSales(stored);
+        }
+      }
     } finally {
       setEzPumpLoading(false);
     }
-  }, []);
+  }, [applySalesForDisplay, liveFeedFilterEnabled, nozzleFilterIds]);
 
   useFocusEffect(
     useCallback(() => {
-      if (currentStep === 0) {
-        setEzPumpPollEnabled(true);
-        loadLiveFeedFilter();
-      }
+      if (currentStep !== 0) return;
+      setEzPumpPollEnabled(true);
+      let cancelled = false;
+      (async () => {
+        await loadLiveFeedFilter();
+        if (cancelled) return;
+        const enabled = await AsyncStorage.getItem(NOZZLE_FILTER_ENABLED);
+        const idsRaw = await AsyncStorage.getItem(NOZZLE_FILTER_IDS);
+        if (enabled === "true") {
+          let ids: string[] = [];
+          try {
+            const parsed = idsRaw ? (JSON.parse(idsRaw) as unknown) : [];
+            ids = Array.isArray(parsed)
+              ? parsed.map((id) => String(id).trim()).filter((id) => /^\d+$/.test(id))
+              : [];
+          } catch {
+            ids = [];
+          }
+          if (ids.length > 0) {
+            const stored = await getNozzleFilteredSales(ids);
+            if (!cancelled && stored.length > 0) {
+              setEzPumpSales(stored);
+            }
+          } else if (!cancelled) {
+            setEzPumpSales([]);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
     }, [currentStep, loadLiveFeedFilter])
   );
 
-  const displayedSales = useMemo(() => {
-    if (!liveFeedFilterEnabled || !liveFeedFilterProduct) {
-      return ezPumpSales;
-    }
-    const filterKey = liveFeedFilterProduct.toLowerCase().replace(/-/g, "");
-    return ezPumpSales.filter(
-      (sale) => normalizeProductForLiveFeedFilter(sale.product) === filterKey
-    );
-  }, [ezPumpSales, liveFeedFilterEnabled, liveFeedFilterProduct]);
+  const displayedSales = ezPumpSales;
 
   useEffect(() => {
     if (currentStep !== 0) return;
 
     if (mockDataEnabled) {
       loadMockSales();
-      const interval = setInterval(loadMockSales, 10000);
+      const interval = setInterval(() => {
+        loadMockSales();
+      }, 10000);
       return () => clearInterval(interval);
     }
 
@@ -788,9 +843,10 @@ export default function HomeScreen() {
         setSessionCount(slipCounts.todayCount);
         setSessionTotal(slipCounts.totalSlips);
 
-        await saveInvoiceFromReceipt(receiptData, false);
+        await saveInvoiceFromReceipt(receiptData, false, false);
 
         setLastPrintData(receiptData);
+        setLastPrintWasManual(false);
         setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
         setShowDuplicate(true);
         setTimeout(() => setPrintSuccess(false), 800);
@@ -834,9 +890,10 @@ export default function HomeScreen() {
         setSessionCount(slipCounts.todayCount);
         setSessionTotal(slipCounts.totalSlips);
 
-        await saveInvoiceFromReceipt(receiptData, false);
+        await saveInvoiceFromReceipt(receiptData, false, true);
 
         setLastPrintData(receiptData);
+        setLastPrintWasManual(true);
         setDuplicateCountdown(DUPLICATE_COUNTDOWN_SECONDS);
         setShowDuplicate(true);
         setTimeout(() => setPrintSuccess(false), 800);
@@ -1120,7 +1177,7 @@ export default function HomeScreen() {
         />
       ) : null}
 
-      {!ezPumpError && !ezPumpLoading && ezPumpSales.length === 0 ? (
+      {!ezPumpError && !ezPumpLoading && ezPumpSales.length === 0 && !liveFeedFilterEnabled ? (
         <EmptyState
           icon={<Ionicons name="receipt-outline" size={48} color={Colors.text.tertiary} />}
           title="No live receipts yet"
@@ -1131,13 +1188,15 @@ export default function HomeScreen() {
       {!ezPumpError &&
       !ezPumpLoading &&
       liveFeedFilterEnabled &&
-      liveFeedFilterProduct &&
-      ezPumpSales.length > 0 &&
       displayedSales.length === 0 ? (
         <EmptyState
           icon={<Ionicons name="filter-outline" size={32} color={Colors.text.tertiary} />}
-          title={`No ${liveFeedFilterProduct} sales yet`}
-          subtitle={`Showing ${liveFeedFilterProduct} only · change in Settings`}
+          title={
+            nozzleFilterIds.length > 0
+              ? `No Sales for Nozel ids : ${nozzleFilterIds.join(", ")}`
+              : "No Sales for Nozel ids : —"
+          }
+          subtitle="Add or change nozel ids in Settings"
         />
       ) : null}
 

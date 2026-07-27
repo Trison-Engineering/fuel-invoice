@@ -380,6 +380,7 @@ export default function AdminScreen() {
           address: invoice.address,
           dateTime: formatSlipDateTime(),
           isDuplicate: true,
+          isManual: invoice.isManual === true,
         });
 
         const updated = await getOriginalInvoices();
@@ -552,18 +553,25 @@ export default function AdminScreen() {
                 <View style={[styles.receiptCardAccent, { backgroundColor: productColor }]} />
                 <View style={styles.receiptCard}>
                   <View style={styles.receiptRow1}>
-                    <View
-                      style={[
-                        styles.productPill,
-                        {
-                          backgroundColor: `${productColor}1A`,
-                          borderColor: `${productColor}40`,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.productPillText, { color: productColor }]}>
-                        ● {invoice.product}
-                      </Text>
+                    <View style={styles.invoiceBadgesRow}>
+                      <View
+                        style={[
+                          styles.productPill,
+                          {
+                            backgroundColor: `${productColor}1A`,
+                            borderColor: `${productColor}40`,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.productPillText, { color: productColor }]}>
+                          ● {invoice.product}
+                        </Text>
+                      </View>
+                      {invoice.isManual ? (
+                        <View style={styles.manualBadge}>
+                          <Text style={styles.manualBadgeText}>Printed manually</Text>
+                        </View>
+                      ) : null}
                     </View>
                     <Text style={styles.invoiceIdText}>#{invoice.id.slice(0, 8)}</Text>
                   </View>
@@ -1168,7 +1176,15 @@ const styles = StyleSheet.create({
   receiptRow1: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: Spacing.sm,
+  },
+  invoiceBadgesRow: {
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
+    gap: Spacing.sm,
   },
   productPill: {
     borderWidth: 1,
@@ -1182,9 +1198,25 @@ const styles = StyleSheet.create({
     letterSpacing: Typography.wider,
     textTransform: "uppercase",
   },
+  manualBadge: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+    backgroundColor: "rgba(245,158,11,0.12)",
+    borderColor: "rgba(245,158,11,0.4)",
+  },
+  manualBadgeText: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    letterSpacing: Typography.wider,
+    textTransform: "uppercase",
+    color: "#D97706",
+  },
   invoiceIdText: {
     color: Colors.text.tertiary,
     fontSize: Typography.xs,
+    marginTop: 4,
   },
   receiptRow2: {
     flexDirection: "row",
