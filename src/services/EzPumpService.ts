@@ -1,14 +1,22 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  DEFAULT_PORTAL_IP,
+  DEFAULT_PORTAL_URL,
   EZPUMP_EMAIL,
-  EZPUMP_IP,
   EZPUMP_PASSWORD,
+  PORTAL_STATION_ID,
+  PORTAL_URL,
 } from "../../utils/storage";
-import { isValidPortalIp } from "../../utils/validation";
+import {
+  extractCsrfMiddlewareToken,
+  findStationId,
+  isPortalLoginPage,
+  parsePortalSalesPage,
+  type ParsedPortalSale,
+} from "./portalSalesParser";
 import { syncStationRatesFromEzPump } from "./syncStationRatesFromEzPump";
 
-const FETCH_TIMEOUT_MS = 8000;
+const FETCH_TIMEOUT_MS = 10000;
+const VENDOR_CODE = "tepl";
 
 export interface EzPumpRates {
   petrol: number | null;
@@ -31,22 +39,36 @@ export interface EzPumpSale {
   calculatedRate: number | null;
 }
 
-let sessionCookies = "";
+/*
+ * Fuelmatic portal (Django). Login sets the `fuelmatic_sid` session cookie, which the
+ * native HTTP stack stores and resends (OkHttp cookie jar / NSHTTPCookieStorage) —
+ * fetch follows redirects there, so JS never sees the 302 Set-Cookie itself. We keep
+ * the station id the login redirect points at (/portal/s/<id>/) and re-login whenever a
+ * request lands back on /login/.
+ */
+
+let stationId: string | null = null;
 let cachedRates: EzPumpRates | null = null;
 const RATES_CACHE_TTL = 10 * 60 * 1000;
 
-async function getPortalHost(): Promise<string> {
-  const stored = (await AsyncStorage.getItem(EZPUMP_IP))?.trim();
-  const host = stored || DEFAULT_PORTAL_IP;
-  if (!isValidPortalIp(host)) {
-    throw new Error("PORTAL_IP_NOT_SET");
-  }
-  return host;
+export function normalizePortalUrl(value: string): string {
+  let url = value.trim();
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+  return url.replace(/\/+$/, "");
+}
+
+export function isValidPortalUrl(value: string): boolean {
+  return /^https?:\/\/[^\s/?#]+(:\d+)?(\/[^\s]*)?$/i.test(normalizePortalUrl(value));
 }
 
 async function getBaseUrl(): Promise<string> {
-  const host = await getPortalHost();
-  return `http://${host}`;
+  const stored = (await AsyncStorage.getItem(PORTAL_URL))?.trim();
+  const url = normalizePortalUrl(stored || DEFAULT_PORTAL_URL);
+  if (!isValidPortalUrl(url)) {
+    throw new Error("PORTAL_URL_NOT_SET");
+  }
+  return url;
 }
 
 async function getCredentials(): Promise<{ email: string; password: string }> {
@@ -60,186 +82,197 @@ async function getCredentials(): Promise<{ email: string; password: string }> {
   return { email, password };
 }
 
-function extractField(html: string, label: string): string {
-  const liPattern = new RegExp(
-    label + "[\\s\\S]*?<\\/b>[\\s\\S]*?<span>([\\s\\S]*?)<\\/span>",
-    "i"
-  );
-  const match = html.match(liPattern);
-  return match ? match[1].trim() : "";
-}
-
-function parseCookiePair(pair: string): [string, string] | null {
-  const trimmed = pair.trim();
-  if (!trimmed) return null;
-  const eq = trimmed.indexOf("=");
-  if (eq <= 0) return null;
-  return [trimmed.slice(0, eq), trimmed.slice(eq + 1)];
-}
-
-function mergeCookies(existing: string, setCookieHeaders: string[]): string {
-  const cookieMap = new Map<string, string>();
-
-  if (existing) {
-    for (const part of existing.split(";")) {
-      const parsed = parseCookiePair(part);
-      if (parsed) cookieMap.set(parsed[0], parsed[1]);
-    }
-  }
-
-  for (const header of setCookieHeaders) {
-    const parsed = parseCookiePair(header.split(";")[0]);
-    if (parsed) cookieMap.set(parsed[0], parsed[1]);
-  }
-
-  return Array.from(cookieMap.entries())
-    .map(([name, value]) => `${name}=${value}`)
-    .join("; ");
-}
-
-function getSetCookieHeaders(response: Response): string[] {
-  const headers = response.headers as Headers & { getSetCookie?: () => string[] };
-  if (typeof headers.getSetCookie === "function") {
-    return headers.getSetCookie();
-  }
-
-  const raw = (headers as Headers & { raw?: () => Record<string, string[]> }).raw?.();
-  if (raw?.["set-cookie"]) {
-    return raw["set-cookie"];
-  }
-
-  const single = response.headers.get("set-cookie");
-  return single ? [single] : [];
-}
-
-function updateSessionCookies(response: Response): void {
-  const setCookies = getSetCookieHeaders(response);
-  if (setCookies.length > 0) {
-    sessionCookies = mergeCookies(sessionCookies, setCookies);
-  }
-}
-
-function getXsrfToken(): string {
-  const match = sessionCookies.match(/XSRF-TOKEN=([^;]+)/);
-  if (!match) return "";
-  return decodeURIComponent(match[1]);
-}
-
 async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("NETWORK_UNAVAILABLE");
-    }
+    return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
+  } catch {
     throw new Error("NETWORK_UNAVAILABLE");
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function extractCsrfToken(html: string): string {
-  const patterns = [
-    /<input[^>]*name="_token"[^>]*value="([^"]+)"/i,
-    /<input[^>]*value="([^"]+)"[^>]*name="_token"/i,
-    /name="_token"\s+value="([^"]+)"/i,
-  ];
+function landedOnLogin(response: Response): boolean {
+  return /\/login\/?(\?|$)/.test(response.url ?? "");
+}
 
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) return match[1];
+/**
+ * Logs in with the given credentials and returns the station id. Does not persist
+ * anything, so Admin can verify credentials before saving them.
+ */
+export async function loginToPortal(
+  portalUrl: string,
+  email: string,
+  password: string
+): Promise<string> {
+  const baseUrl = normalizePortalUrl(portalUrl);
+
+  // /login/ redirects away while a session is active, so drop any previous one first.
+  await fetchWithTimeout(`${baseUrl}/logout/`).catch(() => undefined);
+
+  const loginPage = await fetchWithTimeout(`${baseUrl}/login/`);
+  const csrfToken = extractCsrfMiddlewareToken(await loginPage.text());
+  if (!csrfToken) {
+    throw new Error("AUTH_FAILED");
   }
 
-  throw new Error("AUTH_FAILED");
-}
-
-async function getLoginToken(): Promise<string> {
-  const baseUrl = await getBaseUrl();
-  const response = await fetchWithTimeout(`${baseUrl}/login`);
-  updateSessionCookies(response);
-  const html = await response.text();
-  return extractCsrfToken(html);
-}
-
-async function login(csrfToken: string): Promise<void> {
-  const baseUrl = await getBaseUrl();
-  const { email, password } = await getCredentials();
-
   const body = new URLSearchParams({
-    _token: csrfToken,
-    email,
+    csrfmiddlewaretoken: csrfToken,
+    next: "",
+    email: email.trim(),
     password,
-    remember: "on",
+    vendor_code: VENDOR_CODE,
   }).toString();
 
-  const response = await fetchWithTimeout(`${baseUrl}/login`, {
+  const response = await fetchWithTimeout(`${baseUrl}/login/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Cookie: sessionCookies,
-      "X-XSRF-TOKEN": getXsrfToken(),
-      Referer: `${baseUrl}/login`,
+      Referer: `${baseUrl}/login/`,
       Origin: baseUrl,
     },
     body,
-    redirect: "manual",
   });
 
-  updateSessionCookies(response);
-
-  if (response.status !== 200 && response.status !== 302) {
+  const html = await response.text();
+  if (response.status === 401 || landedOnLogin(response) || isPortalLoginPage(html)) {
     throw new Error("AUTH_FAILED");
   }
+
+  const id = findStationId(response.url ?? "", html);
+  if (!id) {
+    throw new Error("STATION_NOT_FOUND");
+  }
+  return id;
 }
 
-function parseSaleRow(chunk: string): Omit<EzPumpSale, "officialRate" | "calculatedRate"> | null {
-  const idMatch =
-    chunk.match(/name="id"\s+value="(\d+)"/) ??
-    chunk.match(/name="id"\s+value='(\d+)'/);
-  const productMatch =
-    chunk.match(/name="product"\s+value="([^"]+)"/) ??
-    chunk.match(/name="product"\s+value='([^']+)'/);
+async function login(): Promise<string> {
+  const baseUrl = await getBaseUrl();
+  const { email, password } = await getCredentials();
+  const id = await loginToPortal(baseUrl, email, password);
+  stationId = id;
+  await AsyncStorage.setItem(PORTAL_STATION_ID, id);
+  return id;
+}
 
-  if (!idMatch) return null;
+async function getStationId(): Promise<string> {
+  if (stationId) return stationId;
+  const stored = await AsyncStorage.getItem(PORTAL_STATION_ID);
+  if (stored) {
+    stationId = stored;
+    return stored;
+  }
+  return login();
+}
 
+function toEzPumpSale(sale: ParsedPortalSale): EzPumpSale {
+  const qty = parseFloat(sale.qty);
+  const amount = parseFloat(sale.amount);
   return {
-    id: idMatch[1].trim(),
-    product: (productMatch?.[1] ?? "").trim(),
-    date: extractField(chunk, "Date:"),
-    qty: extractField(chunk, "Qty:"),
-    amount: extractField(chunk, "Amount:"),
-    nozzleId: extractField(chunk, "Nozel ID:"),
-    payment: extractField(chunk, "Payment:"),
-    customer: extractField(chunk, "Customer:"),
-    vehicle: extractField(chunk, "Vehicle:"),
+    id: sale.id,
+    product: sale.product,
+    date: sale.date,
+    qty: sale.qty,
+    amount: sale.amount,
+    nozzleId: sale.nozzleId,
+    payment: sale.payment,
+    customer: sale.customer,
+    vehicle: sale.vehicle,
+    officialRate: sale.rate,
+    calculatedRate: qty > 0 ? parseFloat((amount / qty).toFixed(2)) : null,
   };
 }
 
-function isLoginPage(html: string, saleCount: number): boolean {
-  return saleCount === 0 && /login/i.test(html) && html.includes("Login");
+/** Latest rate per product, taken from the newest sale of each product. */
+function ratesFromSales(sales: EzPumpSale[]): EzPumpRates {
+  const rates: EzPumpRates = { petrol: null, hiOctane: null, diesel: null, fetchedAt: Date.now() };
+  for (const sale of sales) {
+    const rate = sale.officialRate;
+    if (rate == null) continue;
+    if (sale.product === "Petrol" && rates.petrol == null) rates.petrol = rate;
+    else if (sale.product === "HiOctane" && rates.hiOctane == null) rates.hiOctane = rate;
+    else if (sale.product === "Diesel" && rates.diesel == null) rates.diesel = rate;
+  }
+  return rates;
 }
 
-function parseRatesFromHtml(html: string): Omit<EzPumpRates, "fetchedAt"> {
-  function extractPrice(productName: string): number | null {
-    const pattern = new RegExp(
-      `<strong>${productName}<\\/strong>[\\s\\S]{0,300}<b>Rs\\.\\s*([\\d,]+\\.?\\d*)<\\/b>`,
-      "i"
-    );
-    const match = html.match(pattern);
-    if (match && match[1]) {
-      return parseFloat(match[1].replace(/,/g, ""));
-    }
-    return null;
+function updateRatesCache(sales: EzPumpSale[]): void {
+  const fresh = ratesFromSales(sales);
+  // Keep rates for products that had no sale in this window.
+  cachedRates = {
+    petrol: fresh.petrol ?? cachedRates?.petrol ?? null,
+    hiOctane: fresh.hiOctane ?? cachedRates?.hiOctane ?? null,
+    diesel: fresh.diesel ?? cachedRates?.diesel ?? null,
+    fetchedAt: fresh.fetchedAt,
+  };
+
+  syncStationRatesFromEzPump(cachedRates).catch((err) =>
+    console.warn("[Portal] syncStationRatesFromEzPump failed:", err)
+  );
+}
+
+async function fetchSalesPage(): Promise<EzPumpSale[]> {
+  const baseUrl = await getBaseUrl();
+  const id = await getStationId();
+  const url = `${baseUrl}/portal/s/${id}/sales/`;
+
+  const response = await fetchWithTimeout(url, {
+    headers: {
+      Accept: "*/*",
+      "HX-Request": "true",
+      "HX-Boosted": "true",
+      "HX-Current-URL": `${baseUrl}/portal/s/${id}/`,
+      Referer: `${baseUrl}/portal/s/${id}/`,
+    },
+  });
+
+  const html = await response.text();
+  if (landedOnLogin(response) || isPortalLoginPage(html)) {
+    throw new Error("SESSION_EXPIRED");
   }
 
-  return {
-    petrol: extractPrice("Petrol"),
-    hiOctane: extractPrice("HiOctane"),
-    diesel: extractPrice("Diesel"),
-  };
+  const parsed = parsePortalSalesPage(html);
+  if (!parsed) {
+    // Station id no longer valid for this account (e.g. 403/404 page)
+    throw new Error("SESSION_EXPIRED");
+  }
+
+  return parsed.map(toEzPumpSale);
+}
+
+async function getRecentSales(): Promise<EzPumpSale[]> {
+  await getCredentials();
+
+  let sales: EzPumpSale[];
+  try {
+    sales = await fetchSalesPage();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    if (message !== "SESSION_EXPIRED" && message !== "AUTH_FAILED") {
+      throw err;
+    }
+
+    try {
+      await login();
+      sales = await fetchSalesPage();
+    } catch (retryErr) {
+      const retryMessage = retryErr instanceof Error ? retryErr.message : "";
+      if (
+        retryMessage === "NETWORK_UNAVAILABLE" ||
+        retryMessage === "CREDENTIALS_NOT_SET" ||
+        retryMessage === "PORTAL_URL_NOT_SET"
+      ) {
+        throw retryErr;
+      }
+      throw new Error("AUTH_FAILED");
+    }
+  }
+
+  updateRatesCache(sales);
+  return sales;
 }
 
 export function getOfficialRateForProduct(
@@ -267,192 +300,30 @@ export function clearRatesCache(): void {
   cachedRates = null;
 }
 
-export function clearEzPumpSession(): void {
-  sessionCookies = "";
+/** Forget the session; call after portal credentials change. */
+export async function clearEzPumpSession(): Promise<void> {
+  stationId = null;
   clearRatesCache();
+  await AsyncStorage.removeItem(PORTAL_STATION_ID);
+}
+
+/** Remember the station id from a login that Admin already performed. */
+export async function setPortalStationId(id: string): Promise<void> {
+  stationId = id;
+  await AsyncStorage.setItem(PORTAL_STATION_ID, id);
 }
 
 export function getRatesFromCache(): EzPumpRates | null {
   return cachedRates;
 }
 
-export async function fetchRates(retryAfterLogin = true): Promise<EzPumpRates> {
-  if (
-    cachedRates &&
-    Date.now() - cachedRates.fetchedAt < RATES_CACHE_TTL
-  ) {
+/** Rates come from the latest sale of each product on the portal's sales page. */
+export async function fetchRates(): Promise<EzPumpRates> {
+  if (cachedRates && Date.now() - cachedRates.fetchedAt < RATES_CACHE_TTL) {
     return cachedRates;
   }
-
-  const baseUrl = await getBaseUrl();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${baseUrl}/Rates`, {
-      method: "GET",
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        Referer: `${baseUrl}/`,
-        Cookie: sessionCookies,
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-    updateSessionCookies(response);
-
-    if (!response.ok) {
-      throw new Error("RATES_FETCH_FAILED");
-    }
-
-    const html = await response.text();
-
-    if (html.includes("/login") && html.includes("form")) {
-      if (retryAfterLogin) {
-        const token = await getLoginToken();
-        await login(token);
-        return fetchRates(false);
-      }
-      throw new Error("SESSION_EXPIRED");
-    }
-
-    const rates = parseRatesFromHtml(html);
-    cachedRates = { ...rates, fetchedAt: Date.now() };
-
-    syncStationRatesFromEzPump(cachedRates).catch((err) =>
-      console.warn("[EzPump] syncStationRatesFromEzPump failed:", err)
-    );
-
-    return cachedRates;
-  } catch (error: unknown) {
-    clearTimeout(timeout);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("NETWORK_UNAVAILABLE");
-    }
-    throw error;
-  }
-}
-
-function enrichSalesWithRates(
-  sales: Omit<EzPumpSale, "officialRate" | "calculatedRate">[],
-  rates: EzPumpRates
-): EzPumpSale[] {
-  return sales.map((sale) => {
-    let officialRate: number | null = null;
-
-    const product = sale.product?.toLowerCase() || "";
-
-    if (product.includes("petrol")) {
-      officialRate = rates.petrol;
-    } else if (
-      product.includes("hioctane") ||
-      product.includes("hi-octane") ||
-      product.includes("hi octane")
-    ) {
-      officialRate = rates.hiOctane;
-    } else if (product.includes("diesel")) {
-      officialRate = rates.diesel;
-    }
-
-    return {
-      ...sale,
-      officialRate,
-      calculatedRate:
-        sale.qty && parseFloat(sale.qty) > 0
-          ? parseFloat(
-              (parseFloat(sale.amount) / parseFloat(sale.qty)).toFixed(2)
-            )
-          : null,
-    };
-  });
-}
-
-async function fetchDataframe(): Promise<Omit<EzPumpSale, "officialRate" | "calculatedRate">[]> {
-  const baseUrl = await getBaseUrl();
-  const response = await fetchWithTimeout(`${baseUrl}/dataframe`, {
-    headers: {
-      Cookie: sessionCookies,
-      Referer: `${baseUrl}/`,
-    },
-  });
-
-  updateSessionCookies(response);
-  const html = await response.text();
-  const chunks = html.split('class="card new_sale_id mb-3 saleRow');
-  const sales: Omit<EzPumpSale, "officialRate" | "calculatedRate">[] = [];
-
-  for (let i = 1; i < chunks.length; i++) {
-    const sale = parseSaleRow(chunks[i]);
-    if (sale) sales.push(sale);
-  }
-
-  if (isLoginPage(html, sales.length)) {
-    throw new Error("SESSION_EXPIRED");
-  }
-
-  return sales;
-}
-
-async function authenticateAndFetch(): Promise<
-  Omit<EzPumpSale, "officialRate" | "calculatedRate">[]
-> {
-  const token = await getLoginToken();
-  await login(token);
-  return fetchDataframe();
-}
-
-async function getRecentSales(): Promise<EzPumpSale[]> {
-  await getCredentials();
-
-  let sales: Omit<EzPumpSale, "officialRate" | "calculatedRate">[];
-
-  try {
-    sales = await fetchDataframe();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "";
-
-    if (message === "CREDENTIALS_NOT_SET" || message === "PORTAL_IP_NOT_SET") {
-      throw err;
-    }
-
-    if (message === "NETWORK_UNAVAILABLE") {
-      throw err;
-    }
-
-    if (message === "SESSION_EXPIRED" || message === "AUTH_FAILED") {
-      try {
-        sales = await authenticateAndFetch();
-      } catch (retryErr) {
-        const retryMessage = retryErr instanceof Error ? retryErr.message : "";
-        if (
-          retryMessage === "NETWORK_UNAVAILABLE" ||
-          retryMessage === "CREDENTIALS_NOT_SET" ||
-          retryMessage === "PORTAL_IP_NOT_SET"
-        ) {
-          throw retryErr;
-        }
-        throw new Error("AUTH_FAILED");
-      }
-    } else {
-      throw new Error("NETWORK_UNAVAILABLE");
-    }
-  }
-
-  let rates: EzPumpRates = {
-    petrol: null,
-    hiOctane: null,
-    diesel: null,
-    fetchedAt: 0,
-  };
-
-  try {
-    rates = await fetchRates();
-  } catch (err) {
-    console.warn("fetchRates failed:", err);
-  }
-
-  return enrichSalesWithRates(sales, rates);
+  await getRecentSales();
+  return cachedRates ?? { petrol: null, hiOctane: null, diesel: null, fetchedAt: Date.now() };
 }
 
 export const EzPumpService = {

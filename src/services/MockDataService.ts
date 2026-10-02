@@ -53,7 +53,7 @@ function formatMockDate(date: Date): string {
 
 /**
  * Generates a batch of 20-30 fake sales that mirror the exact shape returned by
- * the EzPump /dataframe endpoint (after rate enrichment). Used for demoing the
+ * the portal sales page (after rate enrichment). Used for demoing the
  * live feed without a real portal connection.
  */
 export function generateMockSales(): EzPumpSale[] {

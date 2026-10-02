@@ -679,11 +679,13 @@ export default function HomeScreen() {
       if (err instanceof Error && err.message === "CREDENTIALS_NOT_SET") {
         setEzPumpError("CREDENTIALS_NOT_SET");
         setEzPumpPollEnabled(false);
-      } else if (err instanceof Error && err.message === "PORTAL_IP_NOT_SET") {
-        setEzPumpError("PORTAL_IP_NOT_SET");
+      } else if (err instanceof Error && err.message === "PORTAL_URL_NOT_SET") {
+        setEzPumpError("PORTAL_URL_NOT_SET");
         setEzPumpPollEnabled(false);
       } else if (err instanceof Error && err.message === "NETWORK_UNAVAILABLE") {
-        setEzPumpError("Not connected to station network");
+        setEzPumpError("NETWORK_UNAVAILABLE");
+      } else if (err instanceof Error && err.message === "AUTH_FAILED") {
+        setEzPumpError("AUTH_FAILED");
       } else {
         setEzPumpError("Unable to load live data");
       }
@@ -1179,26 +1181,30 @@ export default function HomeScreen() {
         <EmptyState
           icon={<Ionicons name="cloud-offline-outline" size={48} color={Colors.text.tertiary} />}
           title={
-            ezPumpError === "CREDENTIALS_NOT_SET" || ezPumpError === "PORTAL_IP_NOT_SET"
+            ezPumpError === "CREDENTIALS_NOT_SET" || ezPumpError === "PORTAL_URL_NOT_SET"
               ? "Portal not configured"
-              : ezPumpError === "Not connected to station network"
-                ? "Not connected to station network"
-                : "Unable to load live data"
+              : ezPumpError === "NETWORK_UNAVAILABLE"
+                ? "Can't reach the portal"
+                : ezPumpError === "AUTH_FAILED"
+                  ? "Portal login failed"
+                  : "Unable to load live data"
           }
           subtitle={
-            ezPumpError === "CREDENTIALS_NOT_SET" || ezPumpError === "PORTAL_IP_NOT_SET"
-              ? "Set portal IP and credentials in Admin → Portal"
-              : ezPumpError === "Not connected to station network"
-                ? "Connect to TrisonPumpController WiFi"
-                : "Check your connection and try again"
+            ezPumpError === "CREDENTIALS_NOT_SET" || ezPumpError === "PORTAL_URL_NOT_SET"
+              ? "Set portal link and credentials in Admin → Portal"
+              : ezPumpError === "NETWORK_UNAVAILABLE"
+                ? "Check your internet connection"
+                : ezPumpError === "AUTH_FAILED"
+                  ? "Check email and password in Admin → Portal"
+                  : "Check your connection and try again"
           }
           actionLabel={
-            ezPumpError !== "CREDENTIALS_NOT_SET" && ezPumpError !== "PORTAL_IP_NOT_SET"
+            ezPumpError !== "CREDENTIALS_NOT_SET" && ezPumpError !== "PORTAL_URL_NOT_SET"
               ? "Retry"
               : undefined
           }
           onAction={
-            ezPumpError !== "CREDENTIALS_NOT_SET" && ezPumpError !== "PORTAL_IP_NOT_SET"
+            ezPumpError !== "CREDENTIALS_NOT_SET" && ezPumpError !== "PORTAL_URL_NOT_SET"
               ? fetchEzPumpSales
               : undefined
           }
@@ -1209,7 +1215,7 @@ export default function HomeScreen() {
         <EmptyState
           icon={<Ionicons name="receipt-outline" size={48} color={Colors.text.tertiary} />}
           title="No live receipts yet"
-          subtitle="Pump sales from EzPump will appear here"
+          subtitle="Pump sales from the portal will appear here"
         />
       ) : null}
 

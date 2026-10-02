@@ -36,6 +36,10 @@ import {
   clearRatesCache,
   clearEzPumpSession,
   getRatesFromCache,
+  isValidPortalUrl,
+  loginToPortal,
+  normalizePortalUrl,
+  setPortalStationId,
   type EzPumpRates,
 } from "../src/services/EzPumpService";
 import {
@@ -49,8 +53,7 @@ import { usePrinterContext } from "../contexts/PrinterContext";
 import { formatCurrency, formatCurrencyValue, generateInvoiceNumber } from "../utils/formatters";
 import type { ReceiptData } from "../utils/generateReceipt";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
-import { EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, DEFAULT_PORTAL_IP } from "../utils/storage";
-import { isValidPortalIp, isValidPortalIpInput } from "../utils/validation";
+import { EZPUMP_EMAIL, EZPUMP_PASSWORD, PORTAL_URL, DEFAULT_PORTAL_URL } from "../utils/storage";
 import {
   getPaymentMethods,
   addPaymentMethod,
@@ -276,7 +279,7 @@ export default function AdminScreen() {
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [reprintingId, setReprintingId] = useState<string | null>(null);
   const [showReprintOverlay, setShowReprintOverlay] = useState(false);
-  const [portalIp, setPortalIp] = useState(DEFAULT_PORTAL_IP);
+  const [portalUrl, setPortalUrl] = useState(DEFAULT_PORTAL_URL);
   const [portalEmail, setPortalEmail] = useState("");
   const [portalPassword, setPortalPassword] = useState("");
   const [savedPortalEmail, setSavedPortalEmail] = useState<string | null>(null);
@@ -299,14 +302,14 @@ export default function AdminScreen() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [history, sessions, active, current, invoiceList, email, ip, methods] = await Promise.all([
+    const [history, sessions, active, current, invoiceList, email, url, methods] = await Promise.all([
       getPriceHistory(),
       getSessionHistory(),
       isSessionActive(),
       getCurrentSession(),
       getOriginalInvoices(),
       AsyncStorage.getItem(EZPUMP_EMAIL),
-      AsyncStorage.getItem(EZPUMP_IP),
+      AsyncStorage.getItem(PORTAL_URL),
       getPaymentMethods(),
     ]);
     setPriceHistory(history);
@@ -316,9 +319,9 @@ export default function AdminScreen() {
     setInvoices(invoiceList);
     setPaymentMethods(methods);
     setSavedPortalEmail(email);
-    setPortalConfigured(!!email && !!ip);
+    setPortalConfigured(!!email);
     if (email) setPortalEmail(email);
-    setPortalIp(ip?.trim() || DEFAULT_PORTAL_IP);
+    setPortalUrl(url?.trim() || DEFAULT_PORTAL_URL);
     setLoading(false);
   }, []);
 
@@ -430,11 +433,10 @@ export default function AdminScreen() {
   }, [loadData]);
 
   const handleUpdatePortalCredentials = useCallback(async () => {
-    const trimmedIp = portalIp.trim();
-    if (!isValidPortalIp(trimmedIp)) {
+    if (!isValidPortalUrl(portalUrl)) {
       setToast({
         visible: true,
-        message: "Enter a valid portal IP (e.g. 192.168.0.100)",
+        message: `Enter a valid portal link (e.g. ${DEFAULT_PORTAL_URL})`,
         type: "error",
       });
       return;
@@ -451,22 +453,40 @@ export default function AdminScreen() {
 
     setPortalSaving(true);
     try {
-      await AsyncStorage.setItem(EZPUMP_IP, trimmedIp);
+      // Log in first so wrong credentials are never saved
+      const url = normalizePortalUrl(portalUrl);
+      const stationId = await loginToPortal(url, portalEmail.trim(), portalPassword);
+
+      await AsyncStorage.setItem(PORTAL_URL, url);
       await AsyncStorage.setItem(EZPUMP_EMAIL, portalEmail.trim());
       await AsyncStorage.setItem(EZPUMP_PASSWORD, portalPassword);
-      clearEzPumpSession();
+      await clearEzPumpSession();
+      await setPortalStationId(stationId);
+      setPortalUrl(url);
       setSavedPortalEmail(portalEmail.trim());
       setPortalConfigured(true);
       setPortalPassword("");
       setToast({
         visible: true,
-        message: "Portal settings updated",
+        message: `Logged in · station ${stationId}`,
         type: "success",
+      });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "";
+      setToast({
+        visible: true,
+        message:
+          code === "AUTH_FAILED"
+            ? "Login failed — check email and password"
+            : code === "STATION_NOT_FOUND"
+              ? "Logged in, but no station found for this account"
+              : "Can't reach the portal — check the link and internet",
+        type: "error",
       });
     } finally {
       setPortalSaving(false);
     }
-  }, [portalIp, portalEmail, portalPassword]);
+  }, [portalUrl, portalEmail, portalPassword]);
 
   const handleTestPortalConnection = useCallback(async () => {
     setPortalTesting(true);
@@ -901,7 +921,7 @@ export default function AdminScreen() {
         </View>
       </View>
 
-      <SectionLabel>CURRENT RATES FROM EZPUMP</SectionLabel>
+      <SectionLabel>CURRENT RATES FROM PORTAL</SectionLabel>
       <View style={styles.credentialsGroup}>
         {EZPUMP_RATE_PRODUCTS.map((product, index) => {
           const rate = ezPumpRates?.[product.key] ?? null;
@@ -950,17 +970,15 @@ export default function AdminScreen() {
       <SectionLabel>CREDENTIALS</SectionLabel>
       <View style={styles.credentialsGroup}>
         <View style={styles.credentialsRow}>
-          <Text style={styles.credentialsLabel}>Portal IP</Text>
+          <Text style={styles.credentialsLabel}>Portal Link</Text>
           <TextInput
             style={styles.credentialsInput}
-            value={portalIp}
-            onChangeText={(value) => {
-              if (isValidPortalIpInput(value)) setPortalIp(value);
-            }}
-            keyboardType="decimal-pad"
+            value={portalUrl}
+            onChangeText={setPortalUrl}
+            keyboardType="url"
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder={DEFAULT_PORTAL_IP}
+            placeholder={DEFAULT_PORTAL_URL}
             placeholderTextColor={Colors.text.tertiary}
           />
         </View>
@@ -972,7 +990,7 @@ export default function AdminScreen() {
             onChangeText={setPortalEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            placeholder="admin@ez-pump.com"
+            placeholder="you@station.com"
             placeholderTextColor={Colors.text.tertiary}
           />
         </View>

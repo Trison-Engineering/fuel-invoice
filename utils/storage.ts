@@ -52,8 +52,9 @@ export const StorageKeys = {
 
 export const EZPUMP_EMAIL = "@fuel_receipt:ezpump_email";
 export const EZPUMP_PASSWORD = "@fuel_receipt:ezpump_password";
-export const EZPUMP_IP = "@fuel_receipt:ezpump_ip";
-export const DEFAULT_PORTAL_IP = "192.168.0.100";
+export const PORTAL_URL = "@fuel_receipt:portal_url";
+export const PORTAL_STATION_ID = "@fuel_receipt:portal_station_id";
+export const DEFAULT_PORTAL_URL = "http://portal.vynixsystems.com:8080/";
 export const NOZZLE_FILTER_ENABLED = "@fuel_receipt:nozzle_filter_enabled";
 export const NOZZLE_FILTER_IDS = "@fuel_receipt:nozzle_filter_ids";
 export const MOCK_DATA_ENABLED = "@fuel_receipt:mock_data_enabled";

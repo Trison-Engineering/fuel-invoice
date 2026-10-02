@@ -27,7 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStationStore } from "../stores/stationStore";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { isValidDecimal } from "../utils/validation";
-import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, NOZZLE_FILTER_ENABLED, NOZZLE_FILTER_IDS, MOCK_DATA_ENABLED } from "../utils/storage";
+import { getItem, StorageKeys, EZPUMP_EMAIL, EZPUMP_PASSWORD, NOZZLE_FILTER_ENABLED, NOZZLE_FILTER_IDS, MOCK_DATA_ENABLED } from "../utils/storage";
 import { recordPriceChange } from "../src/services/PriceHistoryService";
 import { fetchRates } from "../src/services/EzPumpService";
 import { clearNozzleSalesHistory } from "../src/services/NozzleSalesHistoryService";
@@ -312,15 +312,14 @@ export default function SettingsScreen() {
 
       (async () => {
         try {
-          const [email, password, ip] = await Promise.all([
+          const [email, password] = await Promise.all([
             AsyncStorage.getItem(EZPUMP_EMAIL),
             AsyncStorage.getItem(EZPUMP_PASSWORD),
-            AsyncStorage.getItem(EZPUMP_IP),
           ]);
-          if (!email || !password || !ip || cancelled) return;
+          if (!email || !password || cancelled) return;
           await fetchRates();
         } catch {
-          // Keep existing station prices when EzPump is unreachable.
+          // Keep existing station prices when the portal is unreachable.
         }
       })();
 
