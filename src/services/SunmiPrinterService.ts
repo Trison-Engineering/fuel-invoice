@@ -18,6 +18,7 @@ export interface SunmiReceiptData {
   rate: string;
   total: string;
   vehicleNo?: string;
+  paymentMethod?: string;
   stationPhone?: string;
   logoBase64?: string;
 }
@@ -50,6 +51,7 @@ export async function printSunmiReceipt(
       rate: data.rate,
       total: data.total,
       vehicleNo: data.vehicleNo,
+      paymentMethod: data.paymentMethod,
       stationPhone: data.stationPhone,
     },
     isDuplicate
@@ -73,6 +75,7 @@ export async function printSunmiReceiptFromFuelData(
       rate: formatCurrency(data.fuelRate),
       total: formatCurrency(data.totalAmount),
       vehicleNo: view.vehicleNo.trim() || undefined,
+      paymentMethod: data.paymentMethod?.trim() || undefined,
       stationPhone: data.stationPhone?.trim() || undefined,
     },
     isDuplicate

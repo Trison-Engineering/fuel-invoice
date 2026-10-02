@@ -148,6 +148,17 @@ const buildReceiptLines = (data: BluetoothReceiptData, isDuplicate = false): str
     lines.push(row("VEHICLE NO:", data.vehicleNo), DIV);
   }
 
+  const paymentMethod = data.paymentMethod?.trim();
+  if (paymentMethod) {
+    const label = "PAYMENT METHOD:";
+    if (label.length + 1 + paymentMethod.length <= LINE) {
+      lines.push(row(label, paymentMethod), DIV);
+    } else {
+      // Long names: label on its own line, name right-aligned below
+      lines.push(label, paymentMethod.padStart(LINE), DIV);
+    }
+  }
+
   lines.push(center("POWERED BY TRISON"));
 
   const phone = data.stationPhone?.trim();
@@ -216,6 +227,7 @@ export interface BluetoothReceiptData {
   rate: string;
   total: string;
   vehicleNo?: string;
+  paymentMethod?: string;
   stationPhone?: string;
 }
 
