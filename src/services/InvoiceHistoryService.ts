@@ -18,6 +18,7 @@ export interface StoredInvoice {
   isDuplicate: boolean;
   /** True when printed via the Print New Receipt (manual) flow */
   isManual?: boolean;
+  paymentMethod?: string;
 }
 
 export function formatSlipDateTime(date: Date = new Date()): string {

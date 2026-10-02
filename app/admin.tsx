@@ -11,6 +11,9 @@ import {
   Animated,
   Modal,
   InteractionManager,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -48,8 +51,14 @@ import type { ReceiptData } from "../utils/generateReceipt";
 import { Colors, Typography, Radius, Spacing, Shadow, Buttons } from "../constants/theme";
 import { EZPUMP_EMAIL, EZPUMP_PASSWORD, EZPUMP_IP, DEFAULT_PORTAL_IP } from "../utils/storage";
 import { isValidPortalIp, isValidPortalIpInput } from "../utils/validation";
+import {
+  getPaymentMethods,
+  addPaymentMethod,
+  deletePaymentMethod,
+  type PaymentMethod,
+} from "../src/services/PaymentMethodService";
 
-type Tab = "invoices" | "price" | "slips" | "portal";
+type Tab = "invoices" | "price" | "slips" | "portal" | "paymentMethods";
 type ProductFilter = "all" | "Petrol" | "Diesel" | "Hi-Octane";
 
 const PRODUCT_FILTERS: {
@@ -68,6 +77,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "price", label: "Price History" },
   { id: "slips", label: "Slip Counter" },
   { id: "portal", label: "Portal" },
+  { id: "paymentMethods", label: "Payment Method" },
 ];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -155,7 +165,7 @@ function storedInvoiceToReceiptData(invoice: StoredInvoice): ReceiptData {
     invoiceNumber: generateInvoiceNumber(),
     date: `${year}-${month}-${day}`,
     time: `${hours}:${minutes}`,
-    paymentMethod: "Cash",
+    paymentMethod: invoice.paymentMethod?.trim() || "",
     productType: storageKeyToProductType(invoice.product),
     fuelRate: String(invoice.rate),
     volume: String(invoice.volume),
@@ -280,10 +290,16 @@ export default function AdminScreen() {
     message: string;
     type: "success" | "error";
   }>({ visible: false, message: "", type: "success" });
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
+  const [paymentMethodName, setPaymentMethodName] = useState("");
+  const [paymentMethodNameError, setPaymentMethodNameError] = useState("");
+  const [savingPaymentMethod, setSavingPaymentMethod] = useState(false);
+  const [deletingPaymentMethodId, setDeletingPaymentMethodId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [history, sessions, active, current, invoiceList, email, ip] = await Promise.all([
+    const [history, sessions, active, current, invoiceList, email, ip, methods] = await Promise.all([
       getPriceHistory(),
       getSessionHistory(),
       isSessionActive(),
@@ -291,12 +307,14 @@ export default function AdminScreen() {
       getOriginalInvoices(),
       AsyncStorage.getItem(EZPUMP_EMAIL),
       AsyncStorage.getItem(EZPUMP_IP),
+      getPaymentMethods(),
     ]);
     setPriceHistory(history);
     setSessionHistory(sessions);
     setSessionActive(active);
     setCurrentSession(current);
     setInvoices(invoiceList);
+    setPaymentMethods(methods);
     setSavedPortalEmail(email);
     setPortalConfigured(!!email && !!ip);
     if (email) setPortalEmail(email);
@@ -353,7 +371,8 @@ export default function AdminScreen() {
       if (!query) return true;
       return (
         inv.vehicleNo.toLowerCase().includes(query) ||
-        inv.dateTime.toLowerCase().includes(query)
+        inv.dateTime.toLowerCase().includes(query) ||
+        (inv.paymentMethod ?? "").toLowerCase().includes(query)
       );
     });
   }, [invoices, searchQuery, productFilter]);
@@ -381,6 +400,7 @@ export default function AdminScreen() {
           dateTime: formatSlipDateTime(),
           isDuplicate: true,
           isManual: invoice.isManual === true,
+          paymentMethod: invoice.paymentMethod?.trim() || "",
         });
 
         const updated = await getOriginalInvoices();
@@ -466,6 +486,72 @@ export default function AdminScreen() {
     } finally {
       setPortalTesting(false);
     }
+  }, []);
+
+  const openAddPaymentModal = useCallback(() => {
+    setPaymentMethodName("");
+    setPaymentMethodNameError("");
+    setShowAddPaymentModal(true);
+  }, []);
+
+  const closeAddPaymentModal = useCallback(() => {
+    Keyboard.dismiss();
+    setShowAddPaymentModal(false);
+    setPaymentMethodName("");
+    setPaymentMethodNameError("");
+  }, []);
+
+  const handleSavePaymentMethod = useCallback(async () => {
+    const trimmed = paymentMethodName.trim();
+    if (!trimmed) {
+      setPaymentMethodNameError("Name is required");
+      return;
+    }
+
+    setSavingPaymentMethod(true);
+    try {
+      await addPaymentMethod(trimmed);
+      const methods = await getPaymentMethods();
+      setPaymentMethods(methods);
+      closeAddPaymentModal();
+      setToast({
+        visible: true,
+        message: "Payment method added",
+        type: "success",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not save payment method";
+      setPaymentMethodNameError(message);
+    } finally {
+      setSavingPaymentMethod(false);
+    }
+  }, [paymentMethodName, closeAddPaymentModal]);
+
+  const handleDeletePaymentMethod = useCallback((method: PaymentMethod) => {
+    Alert.alert("Remove payment method", `Delete "${method.name}"?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          setDeletingPaymentMethodId(method.id);
+          try {
+            await deletePaymentMethod(method.id);
+            const methods = await getPaymentMethods();
+            setPaymentMethods(methods);
+          } catch {
+            setToast({
+              visible: true,
+              message: "Could not delete payment method",
+              type: "error",
+            });
+          } finally {
+            setDeletingPaymentMethodId(null);
+          }
+        },
+      },
+    ]);
   }, []);
 
   const weekTotal =
@@ -584,6 +670,11 @@ export default function AdminScreen() {
                       <Text style={styles.receiptVolumeRate}>
                         {invoice.volume} LTR · {formatCurrency(invoice.rate)}/ltr
                       </Text>
+                      {invoice.paymentMethod?.trim() ? (
+                        <Text style={styles.receiptPaymentMethod}>
+                          Payment Method: {invoice.paymentMethod}
+                        </Text>
+                      ) : null}
                     </View>
                     {invoice.vehicleNo.trim() ? (
                       <View style={styles.vehiclePill}>
@@ -921,6 +1012,59 @@ export default function AdminScreen() {
     </ScrollView>
   );
 
+  const renderPaymentMethodTab = () => (
+    <View style={styles.paymentTabRoot}>
+      <View style={styles.paymentTabHeader}>
+        <Pressable
+          onPress={openAddPaymentModal}
+          style={({ pressed }) => [
+            styles.paymentAddButton,
+            pressed && styles.paymentAddButtonPressed,
+          ]}
+        >
+          <Ionicons name="add" size={18} color="#FFFFFF" />
+          <Text style={styles.paymentAddButtonText}>Add</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.invoiceScrollContent} showsVerticalScrollIndicator={false}>
+        {paymentMethods.length === 0 ? (
+          <View style={styles.invoiceEmpty}>
+            <Text style={styles.invoiceEmptyIcon}>💳</Text>
+            <Text style={styles.invoiceEmptyTitle}>No payment methods yet</Text>
+            <Text style={styles.invoiceEmptySubtitle}>
+              Tap Add to create a payment method. It will appear on the print receipt popup.
+            </Text>
+          </View>
+        ) : (
+          paymentMethods.map((method) => (
+            <View key={method.id} style={styles.paymentMethodCard}>
+              <View style={styles.paymentMethodCardBody}>
+                <Text style={styles.paymentMethodName}>{method.name}</Text>
+              </View>
+              <Pressable
+                onPress={() => handleDeletePaymentMethod(method)}
+                disabled={deletingPaymentMethodId === method.id}
+                style={({ pressed }) => [
+                  styles.paymentMethodDelete,
+                  pressed && styles.paymentMethodDeletePressed,
+                ]}
+                accessibilityLabel={`Delete ${method.name}`}
+                hitSlop={8}
+              >
+                {deletingPaymentMethodId === method.id ? (
+                  <ActivityIndicator size="small" color={Colors.text.danger} />
+                ) : (
+                  <Ionicons name="trash-outline" size={18} color={Colors.text.danger} />
+                )}
+              </Pressable>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -965,9 +1109,78 @@ export default function AdminScreen() {
         renderPriceTab()
       ) : activeTab === "slips" ? (
         renderSlipsTab()
+      ) : activeTab === "paymentMethods" ? (
+        renderPaymentMethodTab()
       ) : (
         renderPortalTab()
       )}
+
+      <Modal
+        visible={showAddPaymentModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAddPaymentModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.paymentModalOverlay}
+        >
+          <Pressable style={styles.paymentModalBackdrop} onPress={closeAddPaymentModal} />
+          <View style={styles.paymentModalCard}>
+            <Text style={styles.paymentModalTitle}>Add Payment Method</Text>
+            <Text style={styles.paymentModalLabel}>
+              Name <Text style={styles.paymentModalRequired}>*</Text>
+            </Text>
+            <TextInput
+              style={[
+                styles.credentialsInput,
+                paymentMethodNameError ? styles.paymentModalInputError : null,
+              ]}
+              value={paymentMethodName}
+              onChangeText={(text) => {
+                setPaymentMethodName(text);
+                if (paymentMethodNameError) setPaymentMethodNameError("");
+              }}
+              placeholder="e.g. Cash"
+              placeholderTextColor={Colors.text.tertiary}
+              autoFocus
+              maxLength={32}
+              returnKeyType="done"
+              onSubmitEditing={handleSavePaymentMethod}
+            />
+            {paymentMethodNameError ? (
+              <Text style={styles.paymentModalError}>{paymentMethodNameError}</Text>
+            ) : null}
+
+            <View style={styles.paymentModalActions}>
+              <Pressable
+                onPress={closeAddPaymentModal}
+                disabled={savingPaymentMethod}
+                style={({ pressed }) => [
+                  styles.paymentModalCancel,
+                  pressed && styles.paymentModalCancelPressed,
+                ]}
+              >
+                <Text style={styles.paymentModalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSavePaymentMethod}
+                disabled={savingPaymentMethod}
+                style={({ pressed }) => [
+                  styles.paymentModalSave,
+                  (savingPaymentMethod || pressed) && styles.paymentModalSavePressed,
+                ]}
+              >
+                {savingPaymentMethod ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.paymentModalSaveText}>Save</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {showReprintOverlay ? (
         <View style={styles.reprintOverlay}>
@@ -1236,6 +1449,12 @@ const styles = StyleSheet.create({
   receiptVolumeRate: {
     color: Colors.text.secondary,
     fontSize: Typography.sm,
+    marginTop: Spacing.xs,
+  },
+  receiptPaymentMethod: {
+    color: Colors.text.secondary,
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
     marginTop: Spacing.xs,
   },
   vehiclePill: {
@@ -1814,5 +2033,146 @@ const styles = StyleSheet.create({
   toastText: {
     color: Colors.text.primary,
     fontSize: Typography.sm,
+  },
+  paymentTabRoot: {
+    flex: 1,
+  },
+  paymentTabHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+  },
+  paymentAddButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+    height: 40,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.full,
+  },
+  paymentAddButtonPressed: {
+    backgroundColor: Colors.accentDark,
+    transform: [{ scale: 0.97 }],
+  },
+  paymentAddButtonText: {
+    color: "#FFFFFF",
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+  },
+  paymentMethodCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: Spacing.lg,
+    marginBottom: 10,
+    backgroundColor: Colors.bg.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.lg,
+  },
+  paymentMethodCardBody: {
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  paymentMethodName: {
+    color: Colors.text.primary,
+    fontSize: Typography.md,
+    fontWeight: Typography.semibold,
+  },
+  paymentMethodDelete: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(239,68,68,0.1)",
+  },
+  paymentMethodDeletePressed: {
+    backgroundColor: "rgba(239,68,68,0.2)",
+  },
+  paymentModalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.xxl,
+  },
+  paymentModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.75)",
+  },
+  paymentModalCard: {
+    width: "100%",
+    backgroundColor: Colors.bg.elevated,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.xl,
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
+    zIndex: 1,
+    ...Shadow.elevated,
+  },
+  paymentModalTitle: {
+    color: Colors.text.primary,
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    marginBottom: Spacing.xl,
+  },
+  paymentModalLabel: {
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    marginBottom: Spacing.sm,
+  },
+  paymentModalRequired: {
+    color: Colors.text.danger,
+  },
+  paymentModalInputError: {
+    borderColor: Colors.text.danger,
+  },
+  paymentModalError: {
+    color: Colors.text.danger,
+    fontSize: Typography.xs,
+    marginTop: Spacing.sm,
+  },
+  paymentModalActions: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginTop: Spacing.xl,
+  },
+  paymentModalCancel: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.bg.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paymentModalCancelPressed: {
+    backgroundColor: Colors.bg.hover,
+  },
+  paymentModalCancelText: {
+    color: Colors.text.secondary,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+  },
+  paymentModalSave: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paymentModalSavePressed: {
+    backgroundColor: Colors.accentDark,
+  },
+  paymentModalSaveText: {
+    color: "#FFFFFF",
+    fontSize: Typography.base,
+    fontWeight: Typography.bold,
   },
 });

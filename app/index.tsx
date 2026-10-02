@@ -55,6 +55,10 @@ import {
 } from "../src/services/NozzleSalesHistoryService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NOZZLE_FILTER_ENABLED, NOZZLE_FILTER_IDS, MOCK_DATA_ENABLED } from "../utils/storage";
+import {
+  getPaymentMethods,
+  type PaymentMethod,
+} from "../src/services/PaymentMethodService";
 
 const TOTAL_STEPS = 3;
 const STEP_ANIM_MS = 180;
@@ -187,6 +191,12 @@ function ezPumpSaleToReceiptData(
     includeLogoInPrint: stationExtras.includeLogoInPrint,
     useTwoLogos: stationExtras.useTwoLogos,
   };
+}
+
+function matchPaymentMethodName(salePayment: string, methods: PaymentMethod[]): string {
+  const needle = salePayment.trim().toLowerCase();
+  if (!needle) return "";
+  return methods.find((method) => method.name.toLowerCase() === needle)?.name ?? "";
 }
 
 function CardSkeleton() {
@@ -331,6 +341,8 @@ export default function HomeScreen() {
   const [selectedSale, setSelectedSale] = useState<EzPumpSale | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [sheetVehicle, setSheetVehicle] = useState("");
+  const [sheetPaymentMethod, setSheetPaymentMethod] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [sheetPrinting, setSheetPrinting] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -606,6 +618,7 @@ export default function HomeScreen() {
         dateTime: formatSlipDateTime(),
         isDuplicate,
         isManual,
+        paymentMethod: receiptData.paymentMethod?.trim() || "",
       });
     },
     []
@@ -693,6 +706,8 @@ export default function HomeScreen() {
       (async () => {
         await loadLiveFeedFilter();
         if (cancelled) return;
+        const methods = await getPaymentMethods();
+        if (!cancelled) setPaymentMethods(methods);
         const enabled = await AsyncStorage.getItem(NOZZLE_FILTER_ENABLED);
         const idsRaw = await AsyncStorage.getItem(NOZZLE_FILTER_IDS);
         if (enabled === "true") {
@@ -749,8 +764,14 @@ export default function HomeScreen() {
   function openSheet(sale: EzPumpSale) {
     setSelectedSale(sale);
     setSheetVehicle("");
+    setSheetPaymentMethod(matchPaymentMethodName(sale.payment, paymentMethods));
     setSheetPrinting(false);
     setSheetVisible(true);
+
+    getPaymentMethods().then((methods) => {
+      setPaymentMethods(methods);
+      setSheetPaymentMethod(matchPaymentMethodName(sale.payment, methods));
+    });
 
     Animated.parallel([
       Animated.spring(sheetTranslateY, {
@@ -785,12 +806,18 @@ export default function HomeScreen() {
       setSheetVisible(false);
       setSelectedSale(null);
       setSheetVehicle("");
+      setSheetPaymentMethod("");
       sheetTranslateY.setValue(600);
     });
   }
 
   async function handleSheetPrint() {
     if (!selectedSale || sheetPrinting) return;
+
+    if (paymentMethods.length > 0 && !sheetPaymentMethod.trim()) {
+      Alert.alert("Payment method required", "Select a payment method before printing.");
+      return;
+    }
 
     Keyboard.dismiss();
     setSheetPrinting(true);
@@ -799,6 +826,7 @@ export default function HomeScreen() {
       const saleToPrint: EzPumpSale = {
         ...selectedSale,
         vehicle: sheetVehicle.trim() || selectedSale.vehicle,
+        payment: sheetPaymentMethod.trim() || selectedSale.payment,
       };
 
       closeSheet();
@@ -1829,6 +1857,82 @@ export default function HomeScreen() {
                   >
                     Optional — tap Print to skip
                   </Text>
+                </View>
+
+                <View
+                  style={{
+                    marginHorizontal: Spacing.lg,
+                    marginTop: Spacing.lg,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: Typography.xs,
+                      fontWeight: Typography.semibold,
+                      color: Colors.text.tertiary,
+                      letterSpacing: Typography.widest,
+                      textTransform: "uppercase",
+                      marginBottom: Spacing.sm,
+                    }}
+                  >
+                    PAYMENT METHOD
+                    {paymentMethods.length > 0 ? " *" : ""}
+                  </Text>
+
+                  {paymentMethods.length === 0 ? (
+                    <Text
+                      style={{
+                        fontSize: Typography.sm,
+                        color: Colors.text.tertiary,
+                      }}
+                    >
+                      No payment methods yet. Add them in Admin → Payment Method.
+                    </Text>
+                  ) : (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: Spacing.sm,
+                      }}
+                    >
+                      {paymentMethods.map((method) => {
+                        const active = sheetPaymentMethod === method.name;
+                        return (
+                          <Pressable
+                            key={method.id}
+                            onPress={() => setSheetPaymentMethod(method.name)}
+                            style={({ pressed }) => ({
+                              height: 36,
+                              paddingHorizontal: 14,
+                              borderRadius: Radius.full,
+                              borderWidth: 1,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              backgroundColor: active
+                                ? Colors.accentAlpha
+                                : pressed
+                                  ? Colors.bg.hover
+                                  : Colors.bg.card,
+                              borderColor: active
+                                ? Colors.border.accent
+                                : Colors.border.default,
+                            })}
+                          >
+                            <Text
+                              style={{
+                                fontSize: Typography.sm,
+                                fontWeight: Typography.semibold,
+                                color: active ? Colors.text.accent : Colors.text.secondary,
+                              }}
+                            >
+                              {method.name}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
 
                 <Pressable
