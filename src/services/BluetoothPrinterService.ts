@@ -132,9 +132,19 @@ const buildReceiptLines = (data: BluetoothReceiptData, isDuplicate = false): str
     lines.push(center("** DUPLICATE COPY **"));
   }
 
+  lines.push(DIV, row("DATE:", data.dateTime));
+
+  const transactionDate = data.transactionDate?.trim();
+  if (transactionDate) {
+    const label = "TRANSACTION DATE:";
+    if (label.length + 1 + transactionDate.length <= LINE) {
+      lines.push(row(label, transactionDate));
+    } else {
+      lines.push(label, transactionDate.padStart(LINE));
+    }
+  }
+
   lines.push(
-    DIV,
-    row("DATE:", data.dateTime),
     DIV,
     row("PRODUCT:", data.product),
     row("VOLUME:", `${data.volume} LTR`),
@@ -222,6 +232,7 @@ export interface BluetoothReceiptData {
   storeName: string;
   address: string;
   dateTime: string;
+  transactionDate?: string;
   product: string;
   volume: string;
   rate: string;

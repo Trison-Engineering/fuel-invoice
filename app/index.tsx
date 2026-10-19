@@ -38,12 +38,17 @@ import {
 import {
   saveInvoice,
   formatSlipDateTime,
+  formatTransactionDateForReceipt,
   productTypeToStorageKey,
 } from "../src/services/InvoiceHistoryService";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import {
   EzPumpService,
   fetchRates,
   getEffectiveRate,
+  getHistoricalSales,
   getOfficialRateForProduct,
   type EzPumpSale,
 } from "../src/services/EzPumpService";
@@ -65,6 +70,20 @@ const STEP_ANIM_MS = 180;
 const DUPLICATE_COUNTDOWN_SECONDS = 10;
 const ADMIN_EMAIL = "admin@admin.com";
 const ADMIN_PASSWORD = "admin@123";
+
+type SalesTab = "live" | "old";
+type DatePickerTarget = "start" | "end";
+type DatePickerStep = "date" | "time";
+
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatRangeField(date: Date): string {
+  return formatSlipDateTime(date);
+}
 
 const FUEL_OPTIONS = [
   { id: "Petrol", label: "PETROL", color: Colors.product.petrol },
@@ -101,9 +120,11 @@ function getProductRgb(product: string): string {
   if (p.includes("petrol")) return "34,197,94";
   if (p.includes("diesel")) return "59,130,246";
   if (
+    p.includes("hobc") ||
     p.includes("hioctane") ||
     p.includes("hi-octane") ||
-    p.includes("octane")
+    p.includes("hi octane") ||
+    (p.includes("octane") && !p.includes("cetane"))
   ) {
     return "168,85,247";
   }
@@ -130,7 +151,15 @@ function formatCardDateTime(dateStr: string): string {
 }
 
 function mapEzPumpProduct(product: string): string {
-  if (product === "HiOctane") return "Hi-Octane";
+  const p = (product || "").toLowerCase().replace(/[-_\s]+/g, "");
+  if (
+    product === "HiOctane" ||
+    p.includes("hobc") ||
+    p.includes("hioctane") ||
+    (p.includes("octane") && !p.includes("cetane"))
+  ) {
+    return "Hi-Octane";
+  }
   return product;
 }
 
@@ -178,6 +207,7 @@ function ezPumpSaleToReceiptData(
     invoiceNumber: sale.id,
     date: `${year}-${month}-${day}`,
     time: `${hours}:${minutes}`,
+    transactionDate: formatTransactionDateForReceipt(sale.date),
     paymentMethod: sale.payment || "Cash",
     productType: mapEzPumpProduct(sale.product),
     fuelRate: rate !== null ? String(rate) : "0",
@@ -344,6 +374,16 @@ export default function HomeScreen() {
   const [sheetPaymentMethod, setSheetPaymentMethod] = useState("");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [sheetPrinting, setSheetPrinting] = useState(false);
+  const [salesTab, setSalesTab] = useState<SalesTab>("live");
+  const [oldStartDate, setOldStartDate] = useState(startOfToday);
+  const [oldEndDate, setOldEndDate] = useState(() => new Date());
+  const [oldSales, setOldSales] = useState<EzPumpSale[]>([]);
+  const [oldSalesLoading, setOldSalesLoading] = useState(false);
+  const [oldSalesError, setOldSalesError] = useState<string | null>(null);
+  const [oldSalesLoaded, setOldSalesLoaded] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<DatePickerTarget | null>(null);
+  const [pickerStep, setPickerStep] = useState<DatePickerStep>("date");
+  const [pickerValue, setPickerValue] = useState(new Date());
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const stepOpacity = useRef(new Animated.Value(1)).current;
@@ -619,6 +659,7 @@ export default function HomeScreen() {
         isDuplicate,
         isManual,
         paymentMethod: receiptData.paymentMethod?.trim() || "",
+        transactionDate: receiptData.transactionDate?.trim() || "",
       });
     },
     []
@@ -738,10 +779,10 @@ export default function HomeScreen() {
     }, [currentStep, loadLiveFeedFilter])
   );
 
-  const displayedSales = ezPumpSales;
+  const displayedSales = salesTab === "live" ? ezPumpSales : oldSales;
 
   useEffect(() => {
-    if (currentStep !== 0) return;
+    if (currentStep !== 0 || salesTab !== "live") return;
 
     if (mockDataEnabled) {
       loadMockSales();
@@ -756,7 +797,86 @@ export default function HomeScreen() {
     fetchEzPumpSales();
     const interval = setInterval(fetchEzPumpSales, 10000);
     return () => clearInterval(interval);
-  }, [currentStep, ezPumpPollEnabled, fetchEzPumpSales, mockDataEnabled, loadMockSales]);
+  }, [
+    currentStep,
+    salesTab,
+    ezPumpPollEnabled,
+    fetchEzPumpSales,
+    mockDataEnabled,
+    loadMockSales,
+  ]);
+
+  const openDatePicker = useCallback(
+    (target: DatePickerTarget) => {
+      setPickerTarget(target);
+      setPickerStep("date");
+      setPickerValue(target === "start" ? oldStartDate : oldEndDate);
+    },
+    [oldStartDate, oldEndDate]
+  );
+
+  const applyPickerValue = useCallback(
+    (value: Date) => {
+      if (!pickerTarget) return;
+      if (pickerTarget === "start") setOldStartDate(value);
+      else setOldEndDate(value);
+      setPickerTarget(null);
+      setPickerStep("date");
+    },
+    [pickerTarget]
+  );
+
+  const handlePickerChange = useCallback(
+    (event: DateTimePickerEvent, selected?: Date) => {
+      if (event.type === "dismissed") {
+        setPickerTarget(null);
+        setPickerStep("date");
+        return;
+      }
+      if (!selected || !pickerTarget) return;
+
+      if (Platform.OS === "ios") {
+        setPickerValue(selected);
+        return;
+      }
+
+      // Android: date dialog, then time dialog
+      if (pickerStep === "date") {
+        const next = new Date(pickerValue);
+        next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+        setPickerValue(next);
+        setPickerStep("time");
+        return;
+      }
+
+      const next = new Date(pickerValue);
+      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      applyPickerValue(next);
+    },
+    [pickerTarget, pickerStep, pickerValue, applyPickerValue]
+  );
+
+  const handleLoadOldSales = useCallback(async () => {
+    if (oldStartDate.getTime() > oldEndDate.getTime()) {
+      Alert.alert("Invalid range", "Start date must be before end date.");
+      return;
+    }
+
+    setOldSalesLoading(true);
+    setOldSalesError(null);
+    try {
+      const sales = await getHistoricalSales(oldStartDate, oldEndDate);
+      setOldSales(sales);
+      setOldSalesLoaded(true);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "";
+      setOldSalesError(code || "LOAD_FAILED");
+      setOldSales([]);
+      setOldSalesLoaded(true);
+    } finally {
+      setOldSalesLoading(false);
+    }
+  }, [oldStartDate, oldEndDate]);
 
   const handleDismissDuplicate = useCallback(() => {
     if (closingDuplicate.current) return;
@@ -1117,48 +1237,80 @@ export default function HomeScreen() {
     }
   };
 
-  const renderDashboard = () => (
-    <ScrollView
-      style={styles.dashboardScroll}
-      contentContainerStyle={[
-        styles.dashboardContent,
-        { paddingBottom: Math.max(insets.bottom, 32) },
-      ]}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={ezPumpLoading}
-          onRefresh={mockDataEnabled ? loadMockSales : fetchEzPumpSales}
-          tintColor={Colors.accent}
-        />
-      }
-    >
-      <Pressable
-        onPress={() => {
-          setAdminLoginIntent("manualPrint");
-          setShowAdminLogin(true);
-        }}
-        style={({ pressed }) => [
-          styles.printNewReceiptButton,
-          pressed && styles.printNewReceiptButtonPressed,
-        ]}
-      >
-        <View style={styles.printNewReceiptContent}>
-          <View style={styles.printNewReceiptLeft}>
-            <Ionicons name="print-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.printNewReceiptText} numberOfLines={1}>
-              Print New Receipt
+  const renderSaleCard = (sale: EzPumpSale) => {
+    const displayProduct = mapEzPumpProduct(sale.product);
+    const badgeKey = productToBadgeKey(displayProduct);
+    const productColor = getProductColor(displayProduct);
+    const effectiveRate = getEffectiveRate(sale);
+    const rateLabel =
+      effectiveRate !== null ? `PKR ${effectiveRate.toFixed(2)}/ltr` : "Rate N/A";
+
+    return (
+      <Pressable key={sale.id} style={styles.receiptCardWrap} onPress={() => openSheet(sale)}>
+        <View style={[styles.receiptCardAccent, { backgroundColor: productColor }]} />
+        <View style={styles.receiptCard}>
+          <View style={styles.receiptRow1}>
+            <View
+              style={[
+                styles.productPill,
+                {
+                  backgroundColor: `${productColor}1A`,
+                  borderColor: `${productColor}40`,
+                },
+              ]}
+            >
+              <Text style={[styles.productPillText, { color: productColor }]}>
+                ● {badgeKey}
+              </Text>
+            </View>
+            <Text style={styles.receiptMeta}>
+              N°{sale.nozzleId || "—"}
+              <Text style={styles.receiptMetaDot}> · </Text>#{sale.id.slice(0, 12)}
             </Text>
           </View>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color="rgba(255,255,255,0.5)"
-            style={styles.printNewReceiptChevron}
-          />
+
+          <View style={styles.receiptRow2}>
+            <View style={styles.receiptAmountBlock}>
+              <Text style={styles.receiptAmount}>PKR {sale.amount}</Text>
+              <Text style={styles.receiptVolumeRate}>
+                {sale.qty} LTR · {rateLabel}
+              </Text>
+            </View>
+            {sale.vehicle.trim() ? (
+              <View style={styles.vehiclePill}>
+                <Text style={styles.vehiclePillText}>{sale.vehicle}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.receiptRow3}>
+            <Text style={styles.receiptDate}>{formatCardDateTime(sale.date)}</Text>
+            <Pressable
+              onPress={() => openSheet(sale)}
+              disabled={cardReprintingId === sale.id}
+              style={({ pressed }) => [
+                styles.cardPrintButton,
+                cardReprintingId === sale.id && styles.printButtonDisabled,
+                pressed && styles.cardPrintButtonPressed,
+              ]}
+            >
+              {cardReprintingId === sale.id ? (
+                <ActivityIndicator size="small" color={Colors.text.accent} />
+              ) : (
+                <>
+                  <Ionicons name="print-outline" size={13} color={Colors.text.accent} />
+                  <Text style={styles.cardPrintButtonText}>Print</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
         </View>
       </Pressable>
+    );
+  };
 
+  const renderLiveSalesContent = () => (
+    <>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>LIVE RECEIPTS</Text>
         <View style={styles.sectionHeaderRight}>
@@ -1242,79 +1394,215 @@ export default function HomeScreen() {
         </>
       ) : null}
 
-      {displayedSales.map((sale) => {
-        const displayProduct = mapEzPumpProduct(sale.product);
-        const badgeKey = productToBadgeKey(displayProduct);
-        const productColor = getProductColor(displayProduct);
-        const effectiveRate = getEffectiveRate(sale);
-        const rateLabel =
-          effectiveRate !== null
-            ? `PKR ${effectiveRate.toFixed(2)}/ltr`
-            : "Rate N/A";
+      {displayedSales.map(renderSaleCard)}
+    </>
+  );
 
-        return (
-          <Pressable key={sale.id} style={styles.receiptCardWrap} onPress={() => openSheet(sale)}>
-            <View style={[styles.receiptCardAccent, { backgroundColor: productColor }]} />
-            <View style={styles.receiptCard}>
-              <View style={styles.receiptRow1}>
-                <View
-                  style={[
-                    styles.productPill,
-                    {
-                      backgroundColor: `${productColor}1A`,
-                      borderColor: `${productColor}40`,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.productPillText, { color: productColor }]}>
-                    ● {badgeKey}
-                  </Text>
-                </View>
-                <Text style={styles.receiptMeta}>
-                  N°{sale.nozzleId || "—"}
-                  <Text style={styles.receiptMetaDot}> · </Text>#{sale.id}
+  const renderOldSalesContent = () => (
+    <>
+      <View style={styles.oldSalesFilters}>
+        <Text style={styles.oldSalesFieldLabel}>START DATE</Text>
+        <Pressable
+          onPress={() => openDatePicker("start")}
+          style={({ pressed }) => [
+            styles.oldSalesDateField,
+            pressed && styles.oldSalesDateFieldPressed,
+          ]}
+        >
+          <Ionicons name="calendar-outline" size={16} color={Colors.text.accent} />
+          <Text style={styles.oldSalesDateFieldText}>{formatRangeField(oldStartDate)}</Text>
+        </Pressable>
+
+        <Text style={[styles.oldSalesFieldLabel, styles.oldSalesFieldLabelSpaced]}>
+          END DATE
+        </Text>
+        <Pressable
+          onPress={() => openDatePicker("end")}
+          style={({ pressed }) => [
+            styles.oldSalesDateField,
+            pressed && styles.oldSalesDateFieldPressed,
+          ]}
+        >
+          <Ionicons name="calendar-outline" size={16} color={Colors.text.accent} />
+          <Text style={styles.oldSalesDateFieldText}>{formatRangeField(oldEndDate)}</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleLoadOldSales}
+          disabled={oldSalesLoading}
+          style={({ pressed }) => [
+            styles.loadSalesButton,
+            (oldSalesLoading || pressed) && styles.loadSalesButtonPressed,
+          ]}
+        >
+          {oldSalesLoading ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Ionicons name="cloud-download-outline" size={18} color="#FFFFFF" />
+          )}
+          <Text style={styles.loadSalesButtonText}>
+            {oldSalesLoading ? "Loading..." : "Load Sales"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {oldSalesError ? (
+        <EmptyState
+          icon={<Ionicons name="cloud-offline-outline" size={48} color={Colors.text.tertiary} />}
+          title={
+            oldSalesError === "CREDENTIALS_NOT_SET" || oldSalesError === "PORTAL_URL_NOT_SET"
+              ? "Portal not configured"
+              : oldSalesError === "NETWORK_UNAVAILABLE"
+                ? "Can't reach the portal"
+                : oldSalesError === "AUTH_FAILED"
+                  ? "Portal login failed"
+                  : "Unable to load sales"
+          }
+          subtitle={
+            oldSalesError === "CREDENTIALS_NOT_SET" || oldSalesError === "PORTAL_URL_NOT_SET"
+              ? "Set portal link and credentials in Admin → Portal"
+              : oldSalesError === "NETWORK_UNAVAILABLE"
+                ? "Check your internet connection"
+                : oldSalesError === "AUTH_FAILED"
+                  ? "Check email and password in Admin → Portal"
+                  : "Try a different date range"
+          }
+          actionLabel="Retry"
+          onAction={handleLoadOldSales}
+        />
+      ) : null}
+
+      {!oldSalesError && oldSalesLoaded && !oldSalesLoading && oldSales.length === 0 ? (
+        <EmptyState
+          icon={<Ionicons name="receipt-outline" size={48} color={Colors.text.tertiary} />}
+          title="No sales in this range"
+          subtitle="Try adjusting the start and end dates"
+        />
+      ) : null}
+
+      {!oldSalesLoaded && !oldSalesLoading && !oldSalesError ? (
+        <EmptyState
+          icon={<Ionicons name="time-outline" size={48} color={Colors.text.tertiary} />}
+          title="Select a date range"
+          subtitle="Choose start and end, then tap Load Sales"
+        />
+      ) : null}
+
+      {oldSalesLoading ? (
+        <>
+          <CardSkeleton />
+          <CardSkeleton />
+        </>
+      ) : null}
+
+      {!oldSalesLoading ? oldSales.map(renderSaleCard) : null}
+    </>
+  );
+
+  const renderDashboard = () => (
+    <ScrollView
+      style={styles.dashboardScroll}
+      contentContainerStyle={[
+        styles.dashboardContent,
+        { paddingBottom: Math.max(insets.bottom, 32) },
+      ]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        salesTab === "live" ? (
+          <RefreshControl
+            refreshing={ezPumpLoading}
+            onRefresh={mockDataEnabled ? loadMockSales : fetchEzPumpSales}
+            tintColor={Colors.accent}
+          />
+        ) : undefined
+      }
+    >
+      <Pressable
+        onPress={() => {
+          setAdminLoginIntent("manualPrint");
+          setShowAdminLogin(true);
+        }}
+        style={({ pressed }) => [
+          styles.printNewReceiptButton,
+          pressed && styles.printNewReceiptButtonPressed,
+        ]}
+      >
+        <View style={styles.printNewReceiptContent}>
+          <View style={styles.printNewReceiptLeft}>
+            <Ionicons name="print-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.printNewReceiptText} numberOfLines={1}>
+              Print New Receipt
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color="rgba(255,255,255,0.5)"
+            style={styles.printNewReceiptChevron}
+          />
+        </View>
+      </Pressable>
+
+      <View style={styles.salesTabsRow}>
+        {(
+          [
+            { id: "live" as const, label: "Live Sales" },
+            { id: "old" as const, label: "Old Sales" },
+          ] as const
+        ).map((tab) => {
+          const active = salesTab === tab.id;
+          return (
+            <Pressable
+              key={tab.id}
+              onPress={() => setSalesTab(tab.id)}
+              style={[styles.salesTab, active && styles.salesTabActive]}
+            >
+              <Text style={[styles.salesTabText, active && styles.salesTabTextActive]}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {salesTab === "live" ? renderLiveSalesContent() : renderOldSalesContent()}
+
+      {pickerTarget && Platform.OS === "android" ? (
+        <DateTimePicker
+          key={`${pickerTarget}-${pickerStep}`}
+          value={pickerValue}
+          mode={pickerStep}
+          display="default"
+          onChange={handlePickerChange}
+        />
+      ) : null}
+
+      {pickerTarget && Platform.OS === "ios" ? (
+        <Modal transparent animationType="fade" visible onRequestClose={() => setPickerTarget(null)}>
+          <View style={styles.iosPickerOverlay}>
+            <View style={styles.iosPickerCard}>
+              <View style={styles.iosPickerHeader}>
+                <Pressable onPress={() => setPickerTarget(null)}>
+                  <Text style={styles.iosPickerCancel}>Cancel</Text>
+                </Pressable>
+                <Text style={styles.iosPickerTitle}>
+                  {pickerTarget === "start" ? "Start Date" : "End Date"}
                 </Text>
-              </View>
-
-              <View style={styles.receiptRow2}>
-                <View style={styles.receiptAmountBlock}>
-                  <Text style={styles.receiptAmount}>PKR {sale.amount}</Text>
-                  <Text style={styles.receiptVolumeRate}>
-                    {sale.qty} LTR · {rateLabel}
-                  </Text>
-                </View>
-                {sale.vehicle.trim() ? (
-                  <View style={styles.vehiclePill}>
-                    <Text style={styles.vehiclePillText}>{sale.vehicle}</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              <View style={styles.receiptRow3}>
-                <Text style={styles.receiptDate}>{formatCardDateTime(sale.date)}</Text>
-                <Pressable
-                  onPress={() => openSheet(sale)}
-                  disabled={cardReprintingId === sale.id}
-                  style={({ pressed }) => [
-                    styles.cardPrintButton,
-                    cardReprintingId === sale.id && styles.printButtonDisabled,
-                    pressed && styles.cardPrintButtonPressed,
-                  ]}
-                >
-                  {cardReprintingId === sale.id ? (
-                    <ActivityIndicator size="small" color={Colors.text.accent} />
-                  ) : (
-                    <>
-                      <Ionicons name="print-outline" size={13} color={Colors.text.accent} />
-                      <Text style={styles.cardPrintButtonText}>Print</Text>
-                    </>
-                  )}
+                <Pressable onPress={() => applyPickerValue(pickerValue)}>
+                  <Text style={styles.iosPickerDone}>Done</Text>
                 </Pressable>
               </View>
+              <DateTimePicker
+                value={pickerValue}
+                mode="datetime"
+                display="spinner"
+                onChange={handlePickerChange}
+                style={styles.iosPickerControl}
+              />
             </View>
-          </Pressable>
-        );
-      })}
+          </View>
+        </Modal>
+      ) : null}
     </ScrollView>
   );
 
@@ -2168,10 +2456,12 @@ const styles = StyleSheet.create({
   },
   printNewReceiptButton: {
     ...Buttons.primary,
-    height: 60,
-    marginTop: Spacing.lg,
+    height: 44,
+    minHeight: 44,
+    marginTop: Spacing.md,
     marginHorizontal: Spacing.lg,
     alignSelf: "stretch",
+    borderRadius: Radius.md,
   },
   printNewReceiptButtonPressed: {
     ...Buttons.primaryPressed,
@@ -2181,13 +2471,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
     height: "100%",
   },
   printNewReceiptLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: Spacing.sm,
     flex: 1,
     marginRight: Spacing.sm,
   },
@@ -2196,7 +2486,134 @@ const styles = StyleSheet.create({
   },
   printNewReceiptText: {
     ...Buttons.primaryText,
+    fontSize: Typography.base,
     flexShrink: 1,
+  },
+  salesTabsRow: {
+    flexDirection: "row",
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    backgroundColor: Colors.bg.secondary,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    padding: 4,
+    gap: 4,
+  },
+  salesTab: {
+    flex: 1,
+    height: 36,
+    borderRadius: Radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  salesTabActive: {
+    backgroundColor: Colors.accentAlpha,
+    borderWidth: 1,
+    borderColor: Colors.border.accent,
+  },
+  salesTabText: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    color: Colors.text.tertiary,
+  },
+  salesTabTextActive: {
+    color: Colors.text.accent,
+  },
+  oldSalesFilters: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.bg.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+  },
+  oldSalesFieldLabel: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+    color: Colors.text.tertiary,
+    letterSpacing: Typography.widest,
+    marginBottom: Spacing.sm,
+  },
+  oldSalesFieldLabelSpaced: {
+    marginTop: Spacing.md,
+  },
+  oldSalesDateField: {
+    height: 44,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.bg.input,
+    paddingHorizontal: Spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  oldSalesDateFieldPressed: {
+    backgroundColor: Colors.bg.hover,
+  },
+  oldSalesDateFieldText: {
+    flex: 1,
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    color: Colors.text.primary,
+  },
+  loadSalesButton: {
+    marginTop: Spacing.lg,
+    height: 44,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  loadSalesButtonPressed: {
+    backgroundColor: Colors.accentDark,
+  },
+  loadSalesButtonText: {
+    color: "#FFFFFF",
+    fontSize: Typography.base,
+    fontWeight: Typography.bold,
+  },
+  iosPickerOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  iosPickerCard: {
+    backgroundColor: Colors.bg.elevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    paddingBottom: Spacing.xxl,
+  },
+  iosPickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.default,
+  },
+  iosPickerCancel: {
+    color: Colors.text.secondary,
+    fontSize: Typography.base,
+  },
+  iosPickerTitle: {
+    color: Colors.text.primary,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+  },
+  iosPickerDone: {
+    color: Colors.text.accent,
+    fontSize: Typography.base,
+    fontWeight: Typography.bold,
+  },
+  iosPickerControl: {
+    height: 200,
   },
   sectionHeader: {
     flexDirection: "row",

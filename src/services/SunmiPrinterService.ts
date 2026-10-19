@@ -13,6 +13,7 @@ export interface SunmiReceiptData {
   storeName: string;
   address: string;
   dateTime: string;
+  transactionDate?: string;
   product: string;
   volume: string;
   rate: string;
@@ -46,6 +47,7 @@ export async function printSunmiReceipt(
       storeName: data.storeName,
       address: data.address,
       dateTime: data.dateTime,
+      transactionDate: data.transactionDate,
       product: data.product,
       volume: data.volume,
       rate: data.rate,
@@ -70,6 +72,7 @@ export async function printSunmiReceiptFromFuelData(
       storeName: view.storeName,
       address: view.address,
       dateTime,
+      transactionDate: data.transactionDate?.trim() || undefined,
       product: view.product,
       volume: formatVolume(data.volume),
       rate: formatCurrency(data.fuelRate),

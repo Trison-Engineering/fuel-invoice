@@ -49,15 +49,45 @@ function decodeEntities(text: string): string {
     .trim();
 }
 
+/** Normalize for matching: "Hi-Octane" / "hi octane" / "HiOctane" → "hioctane". */
+function normalizeProductKey(label: string): string {
+  return label.toLowerCase().replace(/[-_\s]+/g, "");
+}
+
+/**
+ * Hi-Octane aliases from different station brands / portal labels:
+ * HOBC, Hi-Octane, Hi Octane, Octane, Octane+, etc.
+ * (Hi-Cetane is diesel — excluded via "cetane".)
+ */
+function isHiOctaneLabel(label: string): boolean {
+  const p = normalizeProductKey(label);
+  if (p.includes("hobc")) return true;
+  if (p.includes("hioctane")) return true;
+  if (p.includes("octane") && !p.includes("cetane")) return true;
+  return false;
+}
+
+/** Map a portal product label (HOBC, Diesel, …) to a canonical app product. */
+export function canonicalProductFromLabel(label: string): string {
+  if (isHiOctaneLabel(label)) return "HiOctane";
+  const p = label.toLowerCase();
+  if (p.includes("diesel") || p.includes("cetane") || p.includes("hsd")) return "Diesel";
+  if (p.includes("petrol") || p.includes("premier") || p.includes("super")) return "Petrol";
+  return label;
+}
+
 /** Brand labels differ per station (GO: Petrol/HOBC/Diesel, PSO: Premier/Octane+/Hi-Cetane). */
 function canonicalProduct(label: string, labelToIcode: Map<string, string>): string {
+  // Prefer known label aliases so HOBC / Hi-Octane / Octane always map correctly
+  // even when portal icode options differ by station.
+  const fromLabel = canonicalProductFromLabel(label);
+  if (fromLabel === "HiOctane" || fromLabel === "Diesel" || fromLabel === "Petrol") {
+    return fromLabel;
+  }
+
   const icode = labelToIcode.get(label.toLowerCase());
   if (icode && ICODE_TO_PRODUCT[icode]) return ICODE_TO_PRODUCT[icode];
 
-  const p = label.toLowerCase();
-  if (p.includes("diesel") || p.includes("cetane") || p.includes("hsd")) return "Diesel";
-  if (p.includes("octane") || p.includes("hobc")) return "HiOctane";
-  if (p.includes("petrol") || p.includes("premier") || p.includes("super")) return "Petrol";
   return label;
 }
 
@@ -141,12 +171,27 @@ export function parsePortalSalesPage(html: string): ParsedPortalSale[] | null {
   });
 }
 
-/** Station id from a portal URL like /portal/s/6/ or the first site link on /portal/cluster/. */
-export function findStationId(url: string, html: string): string | null {
+/** Site id encoded in the login email, e.g. "nabeel@sid13.com" -> "13". */
+export function stationIdFromEmail(email: string): string | null {
+  const match = email.match(/@sid(\d+)\b/i) ?? email.match(/sid(\d+)/i);
+  return match ? String(Number(match[1])) : null;
+}
+
+/**
+ * Station id after login: single-site accounts redirect to /portal/s/<id>/; multi-site
+ * accounts land on /portal/cluster/, where we pick the site matching the email's sid
+ * (falling back to the first site listed).
+ */
+export function findStationId(url: string, html: string, email = ""): string | null {
   const fromUrl = url.match(/\/portal\/s\/(\d+)\//);
   if (fromUrl) return fromUrl[1];
-  const fromPage = html.match(/href="\/portal\/s\/(\d+)\/"/);
-  return fromPage ? fromPage[1] : null;
+
+  const siteIds = Array.from(html.matchAll(/href="\/portal\/s\/(\d+)\/"/g), (m) => m[1]);
+  if (siteIds.length === 0) return null;
+
+  const preferred = stationIdFromEmail(email);
+  if (preferred && siteIds.includes(preferred)) return preferred;
+  return siteIds[0];
 }
 
 export function extractCsrfMiddlewareToken(html: string): string | null {

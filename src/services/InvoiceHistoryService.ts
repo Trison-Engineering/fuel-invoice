@@ -19,6 +19,8 @@ export interface StoredInvoice {
   /** True when printed via the Print New Receipt (manual) flow */
   isManual?: boolean;
   paymentMethod?: string;
+  /** Portal sale / transaction timestamp shown on the slip */
+  transactionDate?: string;
 }
 
 export function formatSlipDateTime(date: Date = new Date()): string {
@@ -33,10 +35,31 @@ export function formatSlipDateTime(date: Date = new Date()): string {
   })}`;
 }
 
+/** Format a portal/mock sale date string for the TRANSACTION DATE receipt line. */
+export function formatTransactionDateForReceipt(dateStr: string): string {
+  const trimmed = dateStr.trim();
+  if (!trimmed) return "";
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return formatSlipDateTime(parsed);
+  }
+
+  return trimmed.replace(/,\s*/, "  ");
+}
+
 export function productTypeToStorageKey(productType: string): string {
-  const lower = productType.toLowerCase();
-  if (lower.includes("diesel")) return "DIESEL";
-  if (lower.includes("octane")) return "HI-OCTANE";
+  const key = productType.toLowerCase().replace(/[-_\s]+/g, "");
+  if (key.includes("diesel") || key.includes("cetane") || key.includes("hsd")) {
+    return "DIESEL";
+  }
+  if (
+    key.includes("hobc") ||
+    key.includes("hioctane") ||
+    (key.includes("octane") && !key.includes("cetane"))
+  ) {
+    return "HI-OCTANE";
+  }
   return "PETROL";
 }
 

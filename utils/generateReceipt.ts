@@ -14,6 +14,8 @@ export interface ReceiptData {
   invoiceNumber: string;
   date: string;
   time: string;
+  /** Portal sale timestamp; printed as TRANSACTION DATE when present */
+  transactionDate?: string;
   paymentMethod: string;
   productType: string;
   fuelRate: string;

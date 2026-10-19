@@ -169,6 +169,7 @@ function storedInvoiceToReceiptData(invoice: StoredInvoice): ReceiptData {
     date: `${year}-${month}-${day}`,
     time: `${hours}:${minutes}`,
     paymentMethod: invoice.paymentMethod?.trim() || "",
+    transactionDate: invoice.transactionDate?.trim() || "",
     productType: storageKeyToProductType(invoice.product),
     fuelRate: String(invoice.rate),
     volume: String(invoice.volume),
@@ -375,7 +376,8 @@ export default function AdminScreen() {
       return (
         inv.vehicleNo.toLowerCase().includes(query) ||
         inv.dateTime.toLowerCase().includes(query) ||
-        (inv.paymentMethod ?? "").toLowerCase().includes(query)
+        (inv.paymentMethod ?? "").toLowerCase().includes(query) ||
+        (inv.transactionDate ?? "").toLowerCase().includes(query)
       );
     });
   }, [invoices, searchQuery, productFilter]);
@@ -404,6 +406,7 @@ export default function AdminScreen() {
           isDuplicate: true,
           isManual: invoice.isManual === true,
           paymentMethod: invoice.paymentMethod?.trim() || "",
+          transactionDate: invoice.transactionDate?.trim() || "",
         });
 
         const updated = await getOriginalInvoices();
@@ -693,6 +696,11 @@ export default function AdminScreen() {
                       {invoice.paymentMethod?.trim() ? (
                         <Text style={styles.receiptPaymentMethod}>
                           Payment Method: {invoice.paymentMethod}
+                        </Text>
+                      ) : null}
+                      {invoice.transactionDate?.trim() ? (
+                        <Text style={styles.receiptPaymentMethod}>
+                          Transaction Date: {invoice.transactionDate}
                         </Text>
                       ) : null}
                     </View>
